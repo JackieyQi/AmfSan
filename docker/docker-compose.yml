@@ -32,5 +32,5 @@ services:
       - amf-rabbitmq
       - amf-redis
         #command: bash -c "pip install -r requirements.txt -i https://pypi.doubanio.com/simple/; /usr/bin/supervisord -n -n /app/docker/supervisord.conf"
-    command: bash -c "pip install -r requirements.txt; /usr/bin/supervisord -n -n /app/docker/supervisord.conf"
+    command: bash -c "pip install -r requirements.txt; /usr/bin/supervisord -n -c /app/docker/supervisord.conf"
     tty: True
