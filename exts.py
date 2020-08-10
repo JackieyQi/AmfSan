@@ -4,12 +4,12 @@
 import redis
 from kombu import Queue, Exchange, Connection
 
-from amf import app
+from settings.setting import cfgs
 
 
 redis_client = redis.Redis(
     connection_pool=redis.ConnectionPool(
-        host=app.config.redis["host"], port=app.config.redis["port"], db=app.config.redis["db"], decode_responses=True
+        host=cfgs["redis"]["host"], port=cfgs["redis"]["port"], db=cfgs["redis"]["db"], decode_responses=True
     )
 )
 try:
@@ -18,12 +18,12 @@ except BaseException as e:
     print("Error: Cant connect to redis, {}".format(e))
 
 
-amf_exchange = Exchange(app.config.rabbitmq["amf_exchange"], "direct", durable=True)
+amf_exchange = Exchange(cfgs["rabbitmq"]["amf_exchange"], "direct", durable=True)
 amf_queue = Queue("amf", exchange=amf_exchange, routing_key="amf")
 queue_conn = Connection(
-    "amqp://{}:{}@{}:{}/{}".format(app.config.rabbitmq["user"], app.config.rabbitmq["pwd"],
-                                   app.config.rabbitmq["host"], app.config.rabbitmq["port"],
-                                   app.config.rabbitmq["vhost"])
+    "amqp://{}:{}@{}:{}/{}".format(cfgs["rabbitmq"]["user"], cfgs["rabbitmq"]["pwd"],
+                                   cfgs["rabbitmq"]["host"], cfgs["rabbitmq"]["port"],
+                                   cfgs["rabbitmq"]["vhost"])
 )
 try:
     queue_conn.connect()

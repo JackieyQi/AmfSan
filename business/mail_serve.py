@@ -3,13 +3,14 @@
 
 import logging
 import traceback
+import ssl
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import Header
 from email.utils import formatdate
 
-from amf import app
+from settings.setting import cfgs
 
 
 logger = logging.getLogger(__name__)
@@ -30,22 +31,19 @@ def send_email(recipient, subject, text, from_name="AMF"):
     msg_body.set_charset("utf-8")
     msg.attach(msg_body)
 
-    accounts = [{
-        "username": app.config.email["sys_name"],
-        "password": app.config.email["sys_pwd"],
-        "smtp": "smtp.gmail.com",
-        "port": 465
-    }, ]
-
-    for i in accounts:
-        msg["From"] = "{} <{}>".format(Header(from_name, "utf-8"), i["username"])
-        try:
-            mail_server = smtplib.SMTP_SSL("{}:{}".format(i["smtp"], a["port"]), timeout=15)
-            mail_server.login(i["username"], i["password"])
-            mail_server.sendmail(i["username"], recipient, msg.as_string())
-            mail_server.quit()
-            logger.info("Email send success")
-            return True
-        except BaseException as e:
-            logger.error(",".join((e, traceback.format_exc())))
+    account = cfgs["email_sender"]
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+    msg["From"] = "{} <{}>".format(Header(from_name, "utf-8"), account["user"])
+    try:
+        mail_server = smtplib.SMTP("{}:{}".format(account["smtp"], account["port"]), timeout=15)
+        mail_server.ehlo()
+        mail_server.starttls(context=context)
+        mail_server.ehlo()
+        mail_server.login(account["user"], account["pwd"])
+        mail_server.sendmail(account["user"], recipient, msg.as_string())
+        mail_server.quit()
+        logger.info("Email send success")
+        return True
+    except BaseException as e:
+        logger.error(",".join((str(e), traceback.format_exc())))
 

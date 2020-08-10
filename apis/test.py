@@ -5,7 +5,7 @@ from sanic.views import HTTPMethodView
 from sanic.response import text, json
 
 
-def get_test(*args, **kwargs):
+async def get_test(*args, **kwargs):
     return "test", args, kwargs
 
 

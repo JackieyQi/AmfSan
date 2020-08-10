@@ -3,9 +3,11 @@
 	"debug": false,
 	"host": "0.0.0.0",
 	"port": 8080,
-	"email": {
-		"sys_name": "",
-		"sys_pwd": ""
+	"email_sender": {
+		"user": "",
+		"pwd": "",
+		"smtp": "smtp.gmail.com",
+		"port": 587
 	},
 	"redis": {
 		"host": "127.0.0.1",

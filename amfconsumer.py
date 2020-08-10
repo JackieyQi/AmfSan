@@ -3,20 +3,17 @@
 
 import sys
 import asyncio
-import signal
-import uvloop
 import logging
 
 from exts import amf_queue, queue_conn
-from tasks import deal_msg 
+from msgqueue import deal_msg 
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("amfconsumer")
 
 RESTART = False
 
-
-async def worker():
+async def consumer():
     queue_conn.connect()
     mq = queue_conn.SimpleQueue(amf_queue)
 
@@ -39,6 +36,8 @@ async def worker():
         if not value:
             await asyncio.sleep(0.5)
             continue
+        print(value)
+        print(type(value), value.body)
         await deal_msg(value.body)
 
 
@@ -47,20 +46,3 @@ def deal_signal(*args, **kwargs):
     RESTART = True
     logger.info("Consumer restart")
 
-
-def main():
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    logger.info("Consumer start")
-    signal.signal(signal.SIGINT, deal_signal)
-    signal.signal(signal.SIGUSR2, deal_signal)
-    signal.signal(signal.SIGTERM, deal_signal)
-    signal.signal(signal.SIGQUIT, deal_signal)
-    signal.signal(signal.SIGHUP, deal_signal)
-
-    _loop = asyncio.get_event_loop()
-    _loop.run_until_complete(worker())
-    _loop.close()
-
-
-if __name__ == "__main__":
-    main()

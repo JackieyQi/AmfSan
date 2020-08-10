@@ -5,10 +5,10 @@ import logging
 import traceback
 import ujson as json
 
-import msgqueue
 from amf import app
 from utils.common import ts2fmt
-from . import sms
+from .queue import push
+from .tasks import sms
 
 
 logger = logging.getLogger(__name__)
@@ -36,11 +36,11 @@ async def deal_msg(msg):
         error = traceback.format_exc()
         logger.error("tasks route exception, msg bp:{}, exc:{}".format(msg_bp, error))
         err_info = msg.copy()
-        err_info["type"] = "_function_call"
+        err_info["bp"] = "_function_call"
         err_info["function_module"] = "{}".format(func.__module__)
         err_info["function_name"] = "{}".format(func.__name__)
-        _ = await msgqueue.push({
-            "type": "send_email", "title": msg_bp, "receiver": app.config.systemer,
+        _ = await push({
+            "bp": "send_email", "title": msg_bp, "receiver": app.config.systemer,
             "content": "{}<br/><br/><br/>{}".format(error, json.dumps(err_info))
         })
         return
