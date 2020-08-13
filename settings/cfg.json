@@ -16,6 +16,16 @@
 		"user": "",
 		"pwd": ""
 	},
+	"mysql": {
+		"user": "",
+		"pwd": "",
+		"db": "",
+		"port": 3306,
+		"host": "127.0.0.1",
+		"timeout": 300,
+		"connections": 50,
+		"charset": "utf8mb4"
+	},
 	"rabbitmq": {
 		"host": "127.0.0.1",
 		"user": "",

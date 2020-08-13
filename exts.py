@@ -2,6 +2,7 @@
 # coding:utf8
 
 import redis
+from playhouse.pool import PooledMySQLDatabase
 from kombu import Queue, Exchange, Connection
 
 from settings.setting import cfgs
@@ -16,6 +17,13 @@ try:
     redis_client.get("test")
 except BaseException as e:
     print("Error: Cant connect to redis, {}".format(e))
+
+
+mycnf = cfgs["mysql"]
+db = PooledMySQLDatabase(
+    mycnf["db"], host=mycnf["host"], port=mycnf["port"], charset=mycnf["charset"],
+    user=mycnf["user"], passwd=mycnf["pwd"], max_connections=mycnf["connections"], stale_timeout=mycnf["timeout"]
+)
 
 
 amf_exchange = Exchange(cfgs["rabbitmq"]["amf_exchange"], "direct", durable=True)

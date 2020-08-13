@@ -8,13 +8,15 @@ import ujson as json
 from amf import app
 from utils.common import ts2fmt
 from .queue import push
-from .tasks import sms
+from .tasks import sms, market
 
 
 logger = logging.getLogger(__name__)
 
 route_map = {
-    "send_email": sms.send_email,
+    "send_email_task": sms.send_email,
+
+    "check_price_job": market.check_price, 
 }
 
 async def deal_msg(msg):
@@ -23,12 +25,12 @@ async def deal_msg(msg):
     if not isinstance(msg, dict):
         return
 
-    msg_bp = msg["bp"]
+    msg_bp = msg.pop("bp")
     if msg_bp not in route_map:
-        logger.info("tasks deal_msg, msg bp not exist:{}".format(msg_bp))
+        logger.info("tasks deal_msg, msg bp not exist:{}".format(msg))
         return
 
-    logger.info("tasks deal_msg, task:{}, start:{}".format(msg_bp, ts2fmt()))
+    logger.info("tasks deal_msg, task:{}, start:{}, kwargs:{}".format(msg_bp, ts2fmt(), msg))
     func = route_map[msg_bp]
     try:
         _ = await func(msg)
@@ -44,5 +46,5 @@ async def deal_msg(msg):
             "content": "{}<br/><br/><br/>{}".format(error, json.dumps(err_info))
         })
         return
-    logger.info("tasks deal_msg, task:{}, end:{}".format(msg_bp, ts2fmt()))
+    logger.info("tasks deal_msg, task:{}, end:{}, kwargs:{}".format(msg_bp, ts2fmt(), msg))
 

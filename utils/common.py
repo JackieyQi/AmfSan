@@ -4,6 +4,7 @@
 import time
 import hashlib
 from uuid import uuid4
+from decimal import Decimal, ROUND_DOWN
 from datetime import datetime
 
 
@@ -17,4 +18,13 @@ def to_ctime(ts:int):
 
 def ts2fmt(ts=time.time()):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+
+
+def decimal2str(val:Decimal, num=8):
+    val = val.quantize(Decimal((0, (1,), -num)), ROUND_DOWN)
+    return "{:f}".format(val.normalize())
+
+
+def str2decimal(val:str, num=8):
+    return Decimal(val).quantize(Decimal((0, (1,), -num)), ROUND_DOWN).normalize()
 

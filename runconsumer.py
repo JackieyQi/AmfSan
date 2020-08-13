@@ -10,7 +10,8 @@ from amfconsumer import logger, deal_signal, consumer
 
 def main():
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    logger.info("Consumer start")
+    print("Consumer start.")
+    logger.info("Consumer start.")
     signal.signal(signal.SIGINT, deal_signal)
     signal.signal(signal.SIGUSR2, deal_signal)
     signal.signal(signal.SIGTERM, deal_signal)
