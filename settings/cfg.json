@@ -35,14 +35,4 @@
 		"default_exchange": "default",
 		"amf_exchange": "amf"
 	},
-	"mysql": {
-		"user": "",
-		"pwd": "",
-		"db": "amf",
-		"port": 3306,
-		"charset": "utf8mb4",
-		"host": "127.0.0.1",
-		"timeout": 300,
-		"connections": 50
-	}
 }
