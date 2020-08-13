@@ -34,5 +34,5 @@
 		"vhost": "/",
 		"default_exchange": "default",
 		"amf_exchange": "amf"
-	},
+	}
 }
