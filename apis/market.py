@@ -9,14 +9,14 @@ from utils.exception import StandardResponseExc
 
 class MarketPriceView(HTTPMethodView):
     async def get(self, request):
-        symbol = request.args.get("symbol", "btcusdt")
+        symbol = request.form.get("symbol", "btcusdt")
 
         result = MarketPriceHandler().get_limit_price(symbol)
         return result
 
     async def post(self, request):
-        price = request.json.get("price")
-        symbol = request.json.get("symbol", "btcusdt")
+        price = request.form.get("price")
+        symbol = request.form.get("symbol", "btcusdt")
         if not price:
             raise StandardResponseExc()
 

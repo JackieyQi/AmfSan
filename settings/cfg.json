@@ -34,5 +34,8 @@
 		"vhost": "/",
 		"default_exchange": "default",
 		"amf_exchange": "amf"
+	},
+	"http": {
+		"inner_url": "http://127.0.0.1:8080"
 	}
 }

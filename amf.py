@@ -2,6 +2,7 @@
 # coding:utf8
 
 from sanic import Sanic
+import ujson as json
 from sanic.response import json as json_view
 from sanic.handlers import ErrorHandler
 
@@ -13,8 +14,15 @@ app.config.update(cfgs)
 
 
 @app.middleware("request")
-async def test(request):
-    pass
+async def parse_request_params(request):
+    request.form.update(request.args)
+    try:
+        _body = json.loads(request.body)
+        request.form.update({
+            k: [json.dumps(v) if isinstance(v, (list, dict)) else str(v)] for k, v in _body.items()
+        })
+    except:
+        pass
 
 
 @app.middleware("response")

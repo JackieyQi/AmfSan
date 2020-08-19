@@ -13,10 +13,12 @@ idna==2.10
 importlib-metadata==1.7.0
 kombu==4.6.11
 multidict==4.7.6
+peewee==3.13.3
 redis==3.5.3
 requests==2.24.0
 rfc3986==1.4.0
 sanic==20.6.3
+schedule==0.6.0
 sniffio==1.1.0
 ujson==3.0.0
 urllib3==1.25.10
