@@ -35,7 +35,7 @@ async def check_price(*args, **kwargs):
         if limit_low_price and current_price < limit_low_price:
             notice_result[symbol] = "<br><br><b> {}: </b><br>new low price:{}, <br>last limit low price:{} !!! <br><a href={}{}>Get current price info.</a> <br><a href={}{}/{}/>Update new low price.<a>".format(symbol, current_price, limit_low_price, INNER_GET_PRICE_URL, symbol, INNER_GET_UPDATE_PRICE_URL, "low", symbol)
         elif limit_high_price and current_price > limit_high_price:
-            notice_result[symbol] = "<br><br><b> {}: </b><br>new low price:{}, <br>last limit low price:{} !!! <br><a href={}{}>Get current price info.</a> <br><a href={}{}/{}/>Update new high price.<a>".format(symbol, current_price, limit_low_price, INNER_GET_PRICE_URL, symbol, INNER_GET_UPDATE_PRICE_URL, "high", symbol)
+            notice_result[symbol] = "<br><br><b> {}: </b><br>new high price:{}, <br>last high low price:{} !!! <br><a href={}{}>Get current price info.</a> <br><a href={}{}/{}/>Update new high price.<a>".format(symbol, current_price, limit_high_price, INNER_GET_PRICE_URL, symbol, INNER_GET_UPDATE_PRICE_URL, "high", symbol)
 
     if not notice_result:
         return

@@ -26,5 +26,5 @@ def decimal2str(val:Decimal, num=8):
 
 
 def str2decimal(val:str, num=8):
-    return Decimal(val)
+    return Decimal(decimal2str(Decimal(val)))
 

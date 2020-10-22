@@ -8,7 +8,7 @@ import ujson as json
 from amf import app
 from utils.common import ts2fmt
 from .queue import push
-from .tasks import sms, market
+from .tasks import sms, market, account
 
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 route_map = {
     "send_email_task": sms.send_email,
 
-    "check_price_job": market.check_price, 
+    "check_price_job": market.check_price,
+    "save_account_balance_job": account.save_account_balance_job,
 }
 
 async def deal_msg(msg):

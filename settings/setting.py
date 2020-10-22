@@ -19,3 +19,10 @@ try:
 except BaseException as e:
     print(e)
 
+try:
+    with open("{}/settings/cfg_huobi.json".format(BASE_DIR)) as f:
+        cfgs_huobi = json.loads(f.read())
+except BaseException as e:
+    print(e)
+    cfgs_huobi = None
+

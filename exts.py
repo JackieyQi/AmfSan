@@ -19,8 +19,16 @@ except BaseException as e:
     print("Error: Cant connect to redis, {}".format(e))
 
 
+"""
+Initialize Database:
+from exts import database
+from models import Table
+# database.connect()
+database.create_tables([Table, ])
+
+"""
 mycnf = cfgs["mysql"]
-db = PooledMySQLDatabase(
+database = PooledMySQLDatabase(
     mycnf["db"], host=mycnf["host"], port=mycnf["port"], charset=mycnf["charset"],
     user=mycnf["user"], passwd=mycnf["pwd"], max_connections=mycnf["connections"], stale_timeout=mycnf["timeout"]
 )

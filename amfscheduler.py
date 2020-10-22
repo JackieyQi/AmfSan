@@ -26,8 +26,14 @@ def check_price_job():
     push2mq("check_price_job")
 
 
+def save_account_balance_job():
+    push2mq("save_account_balance_job")
+
+
 def schedules():
     schedule.every(30).seconds.do(check_price_job)
+    schedule.every().day.at("02:00").do(save_account_balance_job)
+    schedule.every().day.at("14:00").do(save_account_balance_job)
 
     while True:
         schedule.run_pending()
