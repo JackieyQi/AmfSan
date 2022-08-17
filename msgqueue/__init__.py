@@ -51,8 +51,7 @@ async def deal_msg(msg):
             {
                 "bp": "send_email",
                 "title": msg_bp,
-                # TODO: config no systemer
-                "receiver": app.config.systemer,
+                "receiver": app.config.administrator_email,
                 "content": "{}<br/><br/><br/>{}".format(error, json.dumps(err_info)),
             }
         )

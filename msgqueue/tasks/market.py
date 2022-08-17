@@ -53,7 +53,7 @@ async def check_price(*args, **kwargs):
 
 async def check_macd(*args, **kwargs):
     macd_config = ["4h", "1h", "1d"]
-    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid is True)
+    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in macd_config:
             await PlotMacdHandle(row.symbol, _interval).get_result()
@@ -263,13 +263,19 @@ class PlotMacdHandle(object):
         return count + 1
 
     def get_k_lines_by_openapi(self):
-        db_last_macd = (
-            MacdTable.select()
-            .where(MacdTable.symbol == self.symbol, MacdTable.interval == self.interval)
-            .order_by(MacdTable.id.desc())
-            .limit(1)
-            .get()
-        )
+        try:
+            db_last_macd = (
+                MacdTable.select()
+                .where(
+                    MacdTable.symbol == self.symbol, MacdTable.interval == self.interval
+                )
+                .order_by(MacdTable.id.desc())
+                .limit(1)
+                .get()
+            )
+        except db_last_macd.DoesNotExist:
+            return
+
         resp_k = BinanceExchangeRequestHandle().get_k_lines(
             self.symbol.upper(),
             self.interval,
@@ -282,6 +288,9 @@ class PlotMacdHandle(object):
             return
 
         k_data = self.get_k_lines_by_openapi()
+        if not k_data:
+            return
+
         total_count, count = len(k_data), 1
         for _data in k_data:
             count = self.__parsed_k_lines_data(total_count, count, _data)
