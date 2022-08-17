@@ -1,0 +1,41 @@
+{
+	"version": "0.1.0",
+	"debug": false,
+	"host": "0.0.0.0",
+	"port": 8080,
+	"email_sender": {
+		"user": "",
+		"pwd": "",
+		"smtp": "smtp.gmail.com",
+		"port": 587
+	},
+	"redis": {
+		"host": "127.0.0.1",
+		"port": 6379,
+		"db": 1,
+		"user": "",
+		"pwd": ""
+	},
+	"mysql": {
+		"user": "",
+		"pwd": "",
+		"db": "",
+		"port": 3306,
+		"host": "127.0.0.1",
+		"timeout": 300,
+		"connections": 50,
+		"charset": "utf8mb4"
+	},
+	"rabbitmq": {
+		"host": "127.0.0.1",
+		"user": "",
+		"pwd": "",
+		"port": 5672,
+		"vhost": "/",
+		"default_exchange": "default",
+		"amf_exchange": "amf"
+	},
+	"http": {
+		"inner_url": "http://127.0.0.1:8080"
+	}
+}

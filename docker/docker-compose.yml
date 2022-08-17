@@ -1,0 +1,45 @@
+version: '3'
+
+services:
+  amf-mysql:
+    hostname: mysql
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=mysqlpwd
+
+  amf-redis:
+    hostname: redis
+    image: redis
+    command: redis-server --appendonly yes
+
+  amf-rabbitmq:
+    hostname: rabbitmq
+    image: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=amf
+      - RABBITMQ_DEFAULT_PASS=amfpwd
+
+  amf-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    hostname: web
+    volumes:
+      - ..:/app
+        #- /root/docker-amf/uploads:/app/uploads:rw
+    ports:
+      - "8080:8080"
+    # external_links:
+      # - amf-mysql
+    links:
+      - amf-rabbitmq
+      - amf-redis
+      - amf-mysql
+    depends_on:
+      - amf-rabbitmq
+      - amf-redis
+      - amf-mysql
+
+        #command: bash -c "pip install -r requirements.txt -i https://pypi.doubanio.com/simple/; /usr/bin/supervisord -n -n /app/docker/supervisord.conf"
+    command: bash -c "pip install -r requirements.txt; /usr/bin/supervisord -n -c /app/docker/supervisord.conf"
+    tty: True
