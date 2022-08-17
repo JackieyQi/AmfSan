@@ -273,7 +273,7 @@ class PlotMacdHandle(object):
                 .limit(1)
                 .get()
             )
-        except db_last_macd.DoesNotExist:
+        except MacdTable.DoesNotExist:
             return
 
         resp_k = BinanceExchangeRequestHandle().get_k_lines(
