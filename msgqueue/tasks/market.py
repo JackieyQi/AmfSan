@@ -8,7 +8,7 @@ from business.market import MarketPriceHandler
 from cache import StringCache
 from models.order import MacdTable, SymbolPlotTable
 from settings.constants import INNER_GET_PRICE_URL, INNER_GET_UPDATE_PRICE_URL
-from utils.common import decimal2str, str2decimal, ts2fmt
+from utils.common import decimal2str, str2decimal, ts2bjfmt
 
 
 def parse_form_data(symbol):
@@ -45,7 +45,9 @@ async def check_price(*args, **kwargs):
             "receiver": [
                 "wayley@live.com",
             ],
-            "title": "New Market Price Notice",
+            "title": "{} New Market Price Notice".format(
+                ",".join(list(notice_result.keys()))
+            ),
             "content": "".join(notice_result.values()),
         }
     )
@@ -82,8 +84,9 @@ class PlotPriceHandle(object):
             ] = """
             <br><br><b> {}: </b><br>http get price fail.
             <br><a href={}{}>Get current price info.</a>
+            <br>now time: {}.
             """.format(
-                self.symbol, INNER_GET_PRICE_URL, self.symbol
+                self.symbol, INNER_GET_PRICE_URL, self.symbol, ts2bjfmt()
             )
             return
 
@@ -103,6 +106,7 @@ class PlotPriceHandle(object):
         <br>last limit low price:{} !!!
         <br><a href={}{}>Get current price info.</a>
         <br><a href={}{}/{}/>Update new low price.<a>
+        <br>now time: {}.
         """.format(
             self.symbol,
             current_price,
@@ -112,6 +116,7 @@ class PlotPriceHandle(object):
             INNER_GET_UPDATE_PRICE_URL,
             "low",
             self.symbol,
+            ts2bjfmt(),
         )
 
         if (
@@ -137,6 +142,7 @@ class PlotPriceHandle(object):
         <br>last high low price:{} !!!
         <br><a href={}{}>Get current price info.</a>
         <br><a href={}{}/{}/>Update new high price.<a>
+        <br>now time: {}.
         """.format(
             self.symbol,
             current_price,
@@ -146,6 +152,7 @@ class PlotPriceHandle(object):
             INNER_GET_UPDATE_PRICE_URL,
             "high",
             self.symbol,
+            ts2bjfmt(),
         )
 
         if (
@@ -206,7 +213,7 @@ class PlotMacdHandle(object):
             self.interval,
             last_macd_data.macd,
             now_macd_data.macd,
-            ts2fmt(opening_ts),
+            ts2bjfmt(opening_ts),
         )
 
     def __parsed_k_lines_data(self, total_count, count, data):

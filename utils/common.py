@@ -3,11 +3,9 @@
 
 import hashlib
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import ROUND_DOWN, Decimal
 from uuid import uuid4
-
-import pytz
 
 
 def generate_token(random_string, length=32):
@@ -28,8 +26,9 @@ def ts2fmt(ts=time.time()):
 
 
 def ts2bjfmt(ts=time.time()):
-    _dt = datetime.strptime(time.ctime(ts), "%Y-%m-%d %H:%M:%S")
-    return pytz.timezone("Asia/Hong_Kong").localize(_dt)
+    return (datetime.fromtimestamp(ts) + timedelta(hours=8)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
 def decimal2str(val: Decimal, num=8):

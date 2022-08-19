@@ -4,8 +4,7 @@
 from business import mail_serve
 
 
-async def send_email(value:dict):
+async def send_email(value: dict):
     mail_serve.send_email(
         value.get("receiver", ""), value.get("title", ""), value.get("content", "")
     )
-
