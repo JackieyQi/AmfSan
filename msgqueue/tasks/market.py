@@ -139,7 +139,7 @@ class PlotPriceHandle(object):
             self.symbol
         ] = """
         <br><br><b> {}: </b><br>new high price:{},
-        <br>last high low price:{} !!!
+        <br>last limit high price:{} !!!
         <br><a href={}{}>Get current price info.</a>
         <br><a href={}{}/{}/>Update new high price.<a>
         <br>now time: {}.

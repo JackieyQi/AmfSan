@@ -86,13 +86,13 @@ class MacdInitData(object):
         for i in data:
             if MacdTable.select().where(
                 MacdTable.opening_ts == i["opening_ts"],
-                MacdTable.interval == i["interval"],
+                MacdTable.interval == i["interval"].lower(),
             ):
                 print("already")
             else:
                 r = MacdTable(
-                    symbol=i["symbol"],
-                    interval=i["interval"],
+                    symbol=i["symbol"].lower(),
+                    interval=i["interval"].lower(),
                     opening_ts=i["opening_ts"],
                     opening_price=i["opening_price"],
                     closing_price=i["closing_price"],
@@ -117,13 +117,13 @@ class MacdInitData(object):
         for i in data:
             if MacdTable.select().where(
                 MacdTable.opening_ts == i["opening_ts"],
-                MacdTable.interval == i["interval"],
+                MacdTable.interval == i["interval"].lower(),
             ):
                 print("already")
             else:
                 r = MacdTable(
-                    symbol=i["symbol"],
-                    interval=i["interval"],
+                    symbol=i["symbol"].lower(),
+                    interval=i["interval"].lower(),
                     opening_ts=i["opening_ts"],
                     opening_price=i["opening_price"],
                     closing_price=i["closing_price"],
@@ -148,13 +148,13 @@ class MacdInitData(object):
         for i in data:
             if MacdTable.select().where(
                 MacdTable.opening_ts == i["opening_ts"],
-                MacdTable.interval == i["interval"],
+                MacdTable.interval == i["interval"].lower(),
             ):
                 print("already")
             else:
                 r = MacdTable(
-                    symbol=i["symbol"],
-                    interval=i["interval"],
+                    symbol=i["symbol"].lower(),
+                    interval=i["interval"].lower(),
                     opening_ts=i["opening_ts"],
                     opening_price=i["opening_price"],
                     closing_price=i["closing_price"],

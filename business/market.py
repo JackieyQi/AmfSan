@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from cache.order import (LimitPriceNoticeValueCache,
                          LimitPriceNoticeValveCache, MarketPriceLimitCache)
-from models.order import SymbolPlotTable
+from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime
 from utils.exception import StandardResponseExc
@@ -55,6 +55,7 @@ class MarketPriceHandler(object):
         current_price = self.get_current_price(symbol).get("price")
         if not current_price:
             raise StandardResponseExc()
+
         current_price = str2decimal(current_price)
         if low_price and current_price < low_price:
             raise StandardResponseExc(
@@ -77,6 +78,15 @@ class MarketPriceHandler(object):
                 low_price or limit_low_price, high_price or limit_high_price
             ),
         )
+
+        SymbolPriceChangeHistoryTable(
+            symbol=symbol,
+            current_price=current_price,
+            limit_low_price=limit_low_price or Decimal("0"),
+            low_price=low_price or Decimal("0"),
+            limit_high_price=limit_high_price or Decimal("0"),
+            high_price=high_price or Decimal("0"),
+        ).save()
         return result
 
     def get_limit_price(self, symbol: str = "btcusdt"):

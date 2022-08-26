@@ -47,7 +47,10 @@ def command_insert_mytrades(key, secret, symbol):
 
     print("***************start**************")
 
-    trades_data = BinanceExchangeRequestHandle(key, secret).get_my_trades(symbol)
+    symbol = symbol.lower()
+    trades_data = BinanceExchangeRequestHandle(key, secret).get_my_trades(
+        symbol.upper()
+    )
     count = 0
     for i in trades_data:
         _trade_id = i["id"]
@@ -61,7 +64,7 @@ def command_insert_mytrades(key, secret, symbol):
             user_id=2,
             trade_id=_trade_id,
             order_id=i["orderId"],
-            symbol=i["symbol"],
+            symbol=i["symbol"].lower(),
             price=D(i["price"]),
             qty=D(i["qty"]),
             quote_qty=D(i["quoteQty"]),
@@ -80,7 +83,7 @@ def command_add_new_symbol(symbol):
     from models.order import OrderTradeHistoryTable, SymbolPlotTable
 
     print("***************start**************")
-    symbol = symbol.upper()
+    symbol = symbol.lower()
 
     last_trade = (
         OrderTradeHistoryTable.select()

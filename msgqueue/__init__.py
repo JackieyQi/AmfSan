@@ -18,6 +18,7 @@ route_map = {
     "check_price_job": market.check_price,
     "check_macd_job": market.check_macd,
     "save_account_balance_job": account.save_account_balance_job,
+    "update_trade_history_job": account.update_trade_history_job,
 }
 
 

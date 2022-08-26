@@ -16,6 +16,7 @@ class MarketPriceView(HTTPMethodView):
         result = {}
         price_handler = MarketPriceHandler()
         if symbol:
+            symbol = symbol.strip().lower()
             price_data = price_handler.get_limit_price(symbol)
 
             last_my_trade_price = price_handler.get_last_trade_price(symbol)
@@ -42,7 +43,7 @@ class MarketPriceView(HTTPMethodView):
     async def post(self, request):
         low_price = request.form.get("low_price", "0")
         high_price = request.form.get("high_price", "0")
-        symbol = request.form.get("symbol", "btcusdt")
+        symbol = request.form.get("symbol", "btcusdt").strip().lower()
         if not low_price and not high_price:
             raise StandardResponseExc()
 
