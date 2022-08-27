@@ -229,6 +229,7 @@ class MacdInitData(object):
         data = macd_init_data.get("macd_1h")
         for i in data:
             if MacdTable.select().where(
+                MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
                 MacdTable.interval == i["interval"].lower(),
             ):
@@ -249,7 +250,10 @@ class MacdInitData(object):
 
         db_last_macd = (
             MacdTable.select()
-            .where(MacdTable.symbol == "btcusdt", MacdTable.interval == "1h")
+            .where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.interval == i["interval"].lower(),
+            )
             .order_by(MacdTable.create_ts.desc())
             .limit(1)
             .get()
@@ -260,6 +264,7 @@ class MacdInitData(object):
         data = macd_init_data.get("macd_4h")
         for i in data:
             if MacdTable.select().where(
+                MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
                 MacdTable.interval == i["interval"].lower(),
             ):
@@ -280,7 +285,10 @@ class MacdInitData(object):
 
         db_last_macd = (
             MacdTable.select()
-            .where(MacdTable.symbol == "btcusdt", MacdTable.interval == "4h")
+            .where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.interval == i["interval"].lower(),
+            )
             .order_by(MacdTable.create_ts.desc())
             .limit(1)
             .get()
@@ -291,6 +299,7 @@ class MacdInitData(object):
         data = macd_init_data.get("macd_1d")
         for i in data:
             if MacdTable.select().where(
+                MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
                 MacdTable.interval == i["interval"].lower(),
             ):
@@ -311,7 +320,10 @@ class MacdInitData(object):
 
         db_last_macd = (
             MacdTable.select()
-            .where(MacdTable.symbol == "btcusdt", MacdTable.interval == "1d")
+            .where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.interval == i["interval"].lower(),
+            )
             .order_by(MacdTable.create_ts.desc())
             .limit(1)
             .get()
