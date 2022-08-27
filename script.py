@@ -33,9 +33,10 @@ def command_update_tables():
     migrator = MySQLMigrator(database)
     with database.atomic():
         migrate(
-            migrator.add_column(
-                "order_trade_history_table", "order_id", order_id_field
-            ),
+            # migrator.add_column(
+            #     "order_trade_history_table", "order_id", order_id_field
+            # ),
+            migrator.rename_column("macd_table", "interval", "interval_val"),
         )
 
     print("***************end****************")

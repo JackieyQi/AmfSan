@@ -225,7 +225,7 @@ class PlotMacdHandle(object):
             MacdTable.select()
             .where(
                 MacdTable.symbol == self.symbol,
-                MacdTable.interval == self.interval,
+                MacdTable.interval_val == self.interval,
                 MacdTable.opening_ts.in_([opening_ts - self.interval_sec, opening_ts]),
             )
             .order_by(MacdTable.id)
@@ -255,7 +255,7 @@ class PlotMacdHandle(object):
         else:
             now_macd_data = MacdTable.create(
                 symbol=self.symbol,
-                interval=self.interval,
+                interval_val=self.interval,
                 opening_ts=opening_ts,
                 opening_price=opening_price,
                 closing_price=closing_price,
@@ -274,7 +274,7 @@ class PlotMacdHandle(object):
             db_last_macd = (
                 MacdTable.select()
                 .where(
-                    MacdTable.symbol == self.symbol, MacdTable.interval == self.interval
+                    MacdTable.symbol == self.symbol, MacdTable.interval_val == self.interval
                 )
                 .order_by(MacdTable.id.desc())
                 .limit(1)

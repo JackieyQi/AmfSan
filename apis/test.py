@@ -231,13 +231,13 @@ class MacdInitData(object):
             if MacdTable.select().where(
                 MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
-                MacdTable.interval == i["interval"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
             ):
                 print("already")
             else:
                 r = MacdTable(
                     symbol=i["symbol"].lower(),
-                    interval=i["interval"].lower(),
+                    interval_val=i["interval"].lower(),
                     opening_ts=i["opening_ts"],
                     opening_price=i["opening_price"],
                     closing_price=i["closing_price"],
@@ -252,7 +252,7 @@ class MacdInitData(object):
             MacdTable.select()
             .where(
                 MacdTable.symbol == i["symbol"].lower(),
-                MacdTable.interval == i["interval"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
             )
             .order_by(MacdTable.create_ts.desc())
             .limit(1)
@@ -266,13 +266,13 @@ class MacdInitData(object):
             if MacdTable.select().where(
                 MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
-                MacdTable.interval == i["interval"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
             ):
                 print("already")
             else:
                 r = MacdTable(
                     symbol=i["symbol"].lower(),
-                    interval=i["interval"].lower(),
+                    interval_val=i["interval"].lower(),
                     opening_ts=i["opening_ts"],
                     opening_price=i["opening_price"],
                     closing_price=i["closing_price"],
@@ -287,7 +287,7 @@ class MacdInitData(object):
             MacdTable.select()
             .where(
                 MacdTable.symbol == i["symbol"].lower(),
-                MacdTable.interval == i["interval"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
             )
             .order_by(MacdTable.create_ts.desc())
             .limit(1)
@@ -301,13 +301,13 @@ class MacdInitData(object):
             if MacdTable.select().where(
                 MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
-                MacdTable.interval == i["interval"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
             ):
                 print("already")
             else:
                 r = MacdTable(
                     symbol=i["symbol"].lower(),
-                    interval=i["interval"].lower(),
+                    interval_val=i["interval"].lower(),
                     opening_ts=i["opening_ts"],
                     opening_price=i["opening_price"],
                     closing_price=i["closing_price"],
@@ -322,7 +322,7 @@ class MacdInitData(object):
             MacdTable.select()
             .where(
                 MacdTable.symbol == i["symbol"].lower(),
-                MacdTable.interval == i["interval"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
             )
             .order_by(MacdTable.create_ts.desc())
             .limit(1)
