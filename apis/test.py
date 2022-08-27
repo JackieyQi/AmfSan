@@ -79,6 +79,150 @@ macd_init_data = {
     ],
 }
 
+bnbusdt_macd_init_data = {
+    "macd_1h": [
+        {
+            "symbol": "bnbusdt",
+            "interval": "1h",
+            "opening_ts": 1661007600,
+            "opening_price": D("286.7"),
+            "closing_price": D("286.9"),
+            "ema_12": D("286.5"),
+            "ema_26": D("286.8"),
+            "dea": D("-0.8"),
+        },
+        {
+            "symbol": "bnbusdt",
+            "interval": "1h",
+            "opening_ts": 1661011200,
+            "opening_price": D("286.9"),
+            "closing_price": D("286.0"),
+            "ema_12": D("286.5"),
+            "ema_26": D("286.8"),
+            "dea": D("-0.7"),
+            "macd": D("0.3"),
+        },
+    ],
+    "macd_4h": [
+        {
+            "symbol": "bnbusdt",
+            "interval": "4h",
+            "opening_ts": 1661011200,
+            "opening_price": D("286.9"),
+            "closing_price": D("279.5"),
+            "ema_12": D("288.1"),
+            "ema_26": D("296.5"),
+            "dea": D("-8.0"),
+        },
+        {
+            "symbol": "bnbusdt",
+            "interval": "4h",
+            "opening_ts": 1661025600,
+            "opening_price": D("279.5"),
+            "closing_price": D("283.7"),
+            "ema_12": D("287.4"),
+            "ema_26": D("295.5"),
+            "dea": D("-8.0"),
+            "macd": D("-0.0"),
+        },
+    ],
+    "macd_1d": [
+        {
+            "symbol": "bnbusdt",
+            "interval": "1d",
+            "opening_ts": 1659139200,
+            "opening_price": D("293.6"),
+            "closing_price": D("287.8"),
+            "ema_12": D("267.7"),
+            "ema_26": D("257.2"),
+            "dea": D("6.7"),
+        },
+        {
+            "symbol": "bnbusdt",
+            "interval": "1d",
+            "opening_ts": 1659225600,
+            "opening_price": D("287.8"),
+            "closing_price": D("283.4"),
+            "ema_12": D("270.1"),
+            "ema_26": D("259.2"),
+            "dea": D("7.5"),
+            "macd": D("3.3"),
+        },
+    ],
+}
+
+ethusdt_macd_init_data = {
+    "macd_1h": [
+        {
+            "symbol": "ethusdt",
+            "interval": "1h",
+            "opening_ts": 1661007600,
+            "opening_price": D("1633.36"),
+            "closing_price": D("1634.69"),
+            "ema_12": D("1637.43"),
+            "ema_26": D("1661.00"),
+            "dea": D("-29.54"),
+        },
+        {
+            "symbol": "ethusdt",
+            "interval": "1h",
+            "opening_ts": 1661011200,
+            "opening_price": D("1634.70"),
+            "closing_price": D("1618.80"),
+            "ema_12": D("1634.56"),
+            "ema_26": D("1657.87"),
+            "dea": D("-28.30"),
+            "macd": D("4.99"),
+        },
+    ],
+    "macd_4h": [
+        {
+            "symbol": "ethusdt",
+            "interval": "4h",
+            "opening_ts": 1661011200,
+            "opening_price": D("1634.70"),
+            "closing_price": D("1564.23"),
+            "ema_12": D("1677.53"),
+            "ema_26": D("1751.35"),
+            "dea": D("-56.85"),
+        },
+        {
+            "symbol": "ethusdt",
+            "interval": "4h",
+            "opening_ts": 1661025600,
+            "opening_price": D("1564.23"),
+            "closing_price": D("1576.04"),
+            "ema_12": D("1661.92"),
+            "ema_26": D("1738.36"),
+            "dea": D("-60.77"),
+            "macd": D("-15.66"),
+        },
+    ],
+    "macd_1d": [
+        {
+            "symbol": "ethusdt",
+            "interval": "1d",
+            "opening_ts": 1659139200,
+            "opening_price": D("1721.68"),
+            "closing_price": D("1697.00"),
+            "ema_12": D("1570.98"),
+            "ema_26": D("1461.01"),
+            "dea": D("82.26"),
+        },
+        {
+            "symbol": "ethusdt",
+            "interval": "1d",
+            "opening_ts": 1659225600,
+            "opening_price": D("1697.00"),
+            "closing_price": D("1678.12"),
+            "ema_12": D("1587.46"),
+            "ema_26": D("1477.09"),
+            "dea": D("87.88"),
+            "macd": D("22.48"),
+        },
+    ],
+}
+
 
 class MacdInitData(object):
     def init_1h(self):

@@ -13,10 +13,10 @@ def command_create_tables():
     with database:
         database.create_tables(
             [
-                order.MacdTable,
-                order.OrderTradeHistoryTable,
-                order.SymbolPlotTable,
-                wallet.BalanceHistoryTable,
+                order.SymbolPriceChangeHistoryTable,
+                # order.OrderTradeHistoryTable,
+                # order.SymbolPlotTable,
+                # wallet.BalanceHistoryTable,
             ]
         )
 
