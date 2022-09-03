@@ -39,7 +39,7 @@ async def update_trade_history_job(*args, **kwargs):
                 user_id=2,
                 trade_id=_trade_id,
                 order_id=i["orderId"],
-                symbol=i["symbol"],
+                symbol=symbol,
                 price=D(i["price"]),
                 qty=D(i["qty"]),
                 quote_qty=D(i["quoteQty"]),

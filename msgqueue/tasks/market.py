@@ -9,6 +9,7 @@ from cache import StringCache
 from models.order import MacdTable, SymbolPlotTable
 from settings.constants import INNER_GET_PRICE_URL, INNER_GET_UPDATE_PRICE_URL
 from utils.common import decimal2str, str2decimal, ts2bjfmt
+from utils.templates import template_macd_change_notice
 
 
 def parse_form_data(symbol):
@@ -204,16 +205,16 @@ class PlotMacdHandle(object):
         if MacdMsgCountCache.get():
             return
         MacdMsgCountCache.set(1, 24 * 3600)
-        self.result[
-            self.symbol
-        ] = """
-            <br><br><b> {}: </b><br> macd changing. interval: {}, last macd:{}, new macd:{}, opening time:{}
-            """.format(
+
+        history_macd_list = self.get_macd_change_list()
+
+        self.result[self.symbol] = template_macd_change_notice(
             self.symbol,
             self.interval,
             last_macd_data.macd,
             now_macd_data.macd,
-            ts2bjfmt(opening_ts),
+            opening_ts,
+            history_macd_list,
         )
 
     def __parsed_k_lines_data(self, total_count, count, data):
@@ -269,12 +270,30 @@ class PlotMacdHandle(object):
             self.__add_msg_notice(opening_ts, last_macd_data, now_macd_data)
         return count + 1
 
+    def get_macd_change_list(self, limit_count=7):
+        result = []
+
+        query = (
+            MacdTable.select(MacdTable.macd)
+            .where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == self.interval,
+            )
+            .order_by(MacdTable.id.desc())
+            .limit(limit_count)
+        )
+        for row in query:
+            result.append(decimal2str(row.macd))
+
+        return result[::-1]
+
     def get_k_lines_by_openapi(self):
         try:
             db_last_macd = (
                 MacdTable.select()
                 .where(
-                    MacdTable.symbol == self.symbol, MacdTable.interval_val == self.interval
+                    MacdTable.symbol == self.symbol,
+                    MacdTable.interval_val == self.interval,
                 )
                 .order_by(MacdTable.id.desc())
                 .limit(1)
