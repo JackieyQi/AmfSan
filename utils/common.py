@@ -38,3 +38,11 @@ def decimal2str(val: Decimal, num=8):
 
 def str2decimal(val: str, num=8):
     return Decimal(decimal2str(Decimal(val)))
+
+
+def usdt2busd(val: str):
+    return val.replace("usdt", "busd").replace("USDT", "BUSD")
+
+
+def busd2usdt(val: str):
+    return val.replace("busd", "usdt").replace("BUSD", "USDT")
