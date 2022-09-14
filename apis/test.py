@@ -6,6 +6,7 @@ from decimal import Decimal as D
 
 from models.order import MacdTable
 from sanic.views import HTTPMethodView
+from utils.common import ts2bjfmt
 
 macd_init_data = {
     "macd_1h": [
@@ -344,4 +345,4 @@ class TestView(HTTPMethodView):
 
 class ServerTimeView(HTTPMethodView):
     async def get(self, request):
-        return {"ts": time.time(), "dt": time.ctime()}
+        return {"ts": time.time(), "dt": time.ctime(), "bjDt": ts2bjfmt()}

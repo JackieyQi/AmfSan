@@ -21,12 +21,12 @@ def to_ctime(ts: int):
     return time.ctime(ts)
 
 
-def ts2fmt(ts=time.time()):
-    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+def ts2fmt(ts=None):
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts or time.time()))
 
 
-def ts2bjfmt(ts=time.time()):
-    return (datetime.fromtimestamp(ts) + timedelta(hours=8)).strftime(
+def ts2bjfmt(ts=None):
+    return (datetime.fromtimestamp(ts or time.time()) + timedelta(hours=8)).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
 
