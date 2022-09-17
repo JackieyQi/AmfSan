@@ -27,8 +27,16 @@ def check_price_job():
     push2mq("check_price_job")
 
 
-def check_macd_job():
-    push2mq("check_macd_job")
+def check_macd_cross_job():
+    push2mq("check_macd_cross_job")
+
+
+def check_macd_trend_job():
+    push2mq("check_macd_trend_job")
+
+
+def save_macd_job():
+    push2mq("save_macd_job")
 
 
 def save_account_balance_job():
@@ -41,7 +49,9 @@ def update_trade_history_job():
 
 def schedules():
     schedule.every(30).seconds.do(check_price_job)
-    schedule.every(13).minutes.do(check_macd_job)
+    schedule.every(13).minutes.do(check_macd_cross_job)
+    schedule.every(13).minutes.do(check_macd_trend_job)
+    schedule.every(7).minutes.do(save_macd_job)
     schedule.every().day.at("02:00").do(save_account_balance_job)
     schedule.every().day.at("14:00").do(save_account_balance_job)
     schedule.every().day.at("05:00").do(update_trade_history_job)

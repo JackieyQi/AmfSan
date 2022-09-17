@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 route_map = {
     "send_email_task": sms.send_email,
     "check_price_job": market.check_price,
-    "check_macd_job": market.check_macd,
+    "check_macd_cross_job": market.check_macd_cross,
+    "check_macd_trend_job": market.check_macd_trend,
+    "save_macd_job": market.save_macd,
     "save_account_balance_job": account.save_account_balance_job,
     "update_trade_history_job": account.update_trade_history_job,
 }

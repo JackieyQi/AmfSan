@@ -1,15 +1,18 @@
 #! /usr/bin/env python
 # coding:utf8
 
+import hashlib
+import time
 from decimal import Decimal
 
 from business.binance_exchange import BinanceExchangeRequestHandle
 from business.market import MarketPriceHandler
 from cache import StringCache
 from models.order import MacdTable, SymbolPlotTable
+from models.user import EmailMsgHistoryTable
 from settings.constants import INNER_GET_PRICE_URL, INNER_GET_UPDATE_PRICE_URL
 from utils.common import decimal2str, str2decimal, ts2bjfmt
-from utils.templates import template_macd_change_notice
+from utils.templates import template_macd_cross_notice
 
 
 def parse_form_data(symbol):
@@ -54,12 +57,28 @@ async def check_price(*args, **kwargs):
     )
 
 
-async def check_macd(*args, **kwargs):
+async def check_macd_cross(*args, **kwargs):
     macd_config = ["4h", "1h", "1d"]
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in macd_config:
-            await PlotMacdHandle(row.symbol, _interval).get_result()
+            await PlotMacdHandle(row.symbol, _interval).check_cross()
+
+
+async def check_macd_trend(*args, **kwargs):
+    macd_config = ["4h", "1h", "1d"]
+    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    for row in query:
+        for _interval in macd_config:
+            await PlotMacdHandle(row.symbol, _interval).check_trend()
+
+
+async def save_macd(*args, **kwargs):
+    macd_config = ["4h", "1h", "1d"]
+    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    for row in query:
+        for _interval in macd_config:
+            await MacdDataSaveHandle(row.symbol, _interval).save_data()
 
 
 class PlotPriceHandle(object):
@@ -176,9 +195,8 @@ class PlotPriceHandle(object):
         return self.result
 
 
-class PlotMacdHandle(object):
+class MacdDataSaveHandle(object):
     def __init__(self, symbol, interval):
-        self.result = {}
         self.symbol = symbol
 
         if interval == "4h":
@@ -196,28 +214,29 @@ class PlotMacdHandle(object):
         else:
             self.interval, self.interval_sec, self.k_interval = None, None, None
 
-    def __add_msg_notice(self, opening_ts, last_macd_data, now_macd_data):
-        class MacdMsgCountCache(StringCache):
-            key = "macd:msg:count:{}:{}:{}".format(
-                self.symbol, self.interval, opening_ts
+    def get_k_lines_by_openapi(self):
+        try:
+            db_last_macd = (
+                MacdTable.select()
+                .where(
+                    MacdTable.symbol == self.symbol,
+                    MacdTable.interval_val == self.interval,
+                )
+                .order_by(MacdTable.id.desc())
+                .limit(1)
+                .get()
             )
-
-        if MacdMsgCountCache.get():
+        except MacdTable.DoesNotExist:
             return
-        MacdMsgCountCache.set(1, 24 * 3600)
 
-        history_macd_list = self.get_macd_change_list()
-
-        self.result[self.symbol] = template_macd_change_notice(
-            self.symbol,
+        resp_k = BinanceExchangeRequestHandle().get_k_lines(
+            self.symbol.upper(),
             self.interval,
-            last_macd_data.macd,
-            now_macd_data.macd,
-            opening_ts,
-            history_macd_list,
+            (db_last_macd.opening_ts - self.k_interval) * 1000,
         )
+        return resp_k
 
-    def __parsed_k_lines_data(self, total_count, count, data):
+    def __parsed_k_lines_data(self, data):
         opening_ts = int(data[0] / 1000)
         opening_price = Decimal(data[1])
         closing_price = Decimal(data[4])
@@ -266,9 +285,58 @@ class PlotMacdHandle(object):
                 macd=now_macd,
             )
 
-        if last_macd_data.macd * now_macd_data.macd < 0:
-            self.__add_msg_notice(opening_ts, last_macd_data, now_macd_data)
-        return count + 1
+    async def save_data(self):
+        if not self.interval:
+            return
+
+        k_data = self.get_k_lines_by_openapi()
+        if not k_data:
+            return
+
+        for _data in k_data:
+            self.__parsed_k_lines_data(_data)
+
+
+class PlotMacdHandle(object):
+    def __init__(self, symbol, interval):
+        self.result = {}
+        self.symbol = symbol
+
+        if interval == "4h":
+            self.interval = "4h"
+            self.interval_sec = 4 * 3600
+            self.k_interval = 5 * 3600
+        elif interval == "1h":
+            self.interval = "1h"
+            self.interval_sec = 3600
+            self.k_interval = 5400
+        elif interval == "1d":
+            self.interval = "1d"
+            self.interval_sec = 24 * 3600
+            self.k_interval = 27 * 3600
+        else:
+            self.interval, self.interval_sec, self.k_interval = None, None, None
+
+    def __add_msg_notice(
+        self, opening_ts, last_macd_data, now_macd_data, history_macd_list
+    ):
+        class MacdMsgCountCache(StringCache):
+            key = "macd:msg:count:{}:{}:{}".format(
+                self.symbol, self.interval, opening_ts
+            )
+
+        if MacdMsgCountCache.get():
+            return
+        MacdMsgCountCache.set(1, 24 * 3600)
+
+        self.result[self.symbol] = template_macd_cross_notice(
+            self.symbol,
+            self.interval,
+            last_macd_data.macd,
+            now_macd_data.macd,
+            opening_ts,
+            history_macd_list,
+        )
 
     def get_macd_change_list(self, limit_count=7):
         result = []
@@ -287,39 +355,9 @@ class PlotMacdHandle(object):
 
         return result[::-1]
 
-    def get_k_lines_by_openapi(self):
-        try:
-            db_last_macd = (
-                MacdTable.select()
-                .where(
-                    MacdTable.symbol == self.symbol,
-                    MacdTable.interval_val == self.interval,
-                )
-                .order_by(MacdTable.id.desc())
-                .limit(1)
-                .get()
-            )
-        except MacdTable.DoesNotExist:
-            return
-
-        resp_k = BinanceExchangeRequestHandle().get_k_lines(
-            self.symbol.upper(),
-            self.interval,
-            (db_last_macd.opening_ts - self.k_interval) * 1000,
-        )
-        return resp_k
-
-    async def get_result(self):
+    async def send_msg(self, email_title, email_content):
         if not self.interval:
             return
-
-        k_data = self.get_k_lines_by_openapi()
-        if not k_data:
-            return
-
-        total_count, count = len(k_data), 1
-        for _data in k_data:
-            count = self.__parsed_k_lines_data(total_count, count, _data)
 
         if not self.result:
             return
@@ -332,7 +370,120 @@ class PlotMacdHandle(object):
                 "receiver": [
                     "wayley@live.com",
                 ],
-                "title": f"{self.symbol} MACD changing Notice",
-                "content": "".join(self.result.values()),
+                "title": email_title,
+                "content": email_content,
             }
         )
+
+    async def check_cross(self, limit_count=7):
+        email_title = f"{self.symbol} MACD Cross changing Notice"
+
+        if not self.interval:
+            return
+
+        query = (
+            MacdTable.select(MacdTable.macd)
+            .where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == self.interval,
+            )
+            .order_by(MacdTable.id.desc())
+            .limit(limit_count)
+        )
+        macd_list = [i for i in query]
+
+        if not macd_list:
+            self.result[
+                self.symbol
+            ] = f"Error: not macd data, {self.symbol}:{self.interval}"
+            return await self.send_msg(email_title, "".join(self.result.values()))
+        elif len(macd_list) < limit_count:
+            self.result[
+                self.symbol
+            ] = f"Error: too less macd data, {self.symbol}:{self.interval}"
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        now_macd_data, last_macd_data = macd_list[0], macd_list[1]
+
+        now_ts = int(time.time())
+        if now_macd_data.opening_ts < (now_ts - self.interval_sec):
+            self.result[
+                self.symbol
+            ] = f"Error: no lastest macd data, {self.symbol}:{self.interval}, opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}"
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        if now_macd_data.macd * last_macd_data.macd > 0:
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        email_msg_md5_str = f"{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("UT8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
+            self.__add_msg_notice(
+                now_macd_data.opening_ts,
+                last_macd_data,
+                now_macd_data,
+                history_macd_list,
+            )
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        await self.send_msg(email_title, email_content)
+
+    async def check_trend(self):
+        email_title = f"{self.symbol} MACD Trend changing Notice"
+        limit_count = 11
+
+        if not self.interval:
+            return
+
+        macd_list = self.get_macd_change_list(limit_count=limit_count)
+
+        if not macd_list:
+            self.result[
+                self.symbol
+            ] = f"Error: not macd data, {self.symbol}:{self.interval}"
+            return await self.send_msg(email_title, "".join(self.result.values()))
+        elif len(macd_list) < limit_count:
+            self.result[
+                self.symbol
+            ] = f"Error: too less macd data, {self.symbol}:{self.interval}"
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        return
+        # TODO:yyq
+
+        now_macd_data, last_macd_data = macd_list[0], macd_list[1]
+
+        now_ts = int(time.time())
+        if now_macd_data.opening_ts < (now_ts - self.interval_sec):
+            self.result[
+                self.symbol
+            ] = f"Error: no lastest macd data, {self.symbol}:{self.interval}, opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}"
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        if now_macd_data.macd * last_macd_data.macd > 0:
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        email_msg_md5_str = f"{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("UT8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
+            self.__add_msg_notice(
+                now_macd_data.opening_ts,
+                last_macd_data,
+                now_macd_data,
+                history_macd_list,
+            )
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        await self.send_msg(email_title, email_content)
