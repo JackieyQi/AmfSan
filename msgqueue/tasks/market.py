@@ -382,7 +382,7 @@ class PlotMacdHandle(object):
             return
 
         query = (
-            MacdTable.select(MacdTable.macd)
+            MacdTable.select()
             .where(
                 MacdTable.symbol == self.symbol,
                 MacdTable.interval_val == self.interval,
@@ -407,16 +407,17 @@ class PlotMacdHandle(object):
 
         now_ts = int(time.time())
         if now_macd_data.opening_ts < (now_ts - self.interval_sec):
-            self.result[
-                self.symbol
-            ] = f"Error: no lastest macd data, {self.symbol}:{self.interval}, opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}"
-            return await self.send_msg(email_title, "".join(self.result.values()))
+            # self.result[
+            #     self.symbol
+            # ] = f"Error: no lastest macd data, {self.symbol}:{self.interval}, opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}"
+            # return await self.send_msg(email_title, "".join(self.result.values()))
+            return
 
         if now_macd_data.macd * last_macd_data.macd > 0:
             return await self.send_msg(email_title, "".join(self.result.values()))
 
         email_msg_md5_str = f"{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
-        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("UT8")).hexdigest()
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
             return EmailMsgHistoryTable.get(
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
@@ -470,7 +471,7 @@ class PlotMacdHandle(object):
             return await self.send_msg(email_title, "".join(self.result.values()))
 
         email_msg_md5_str = f"{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
-        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("UT8")).hexdigest()
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
             return EmailMsgHistoryTable.get(
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
