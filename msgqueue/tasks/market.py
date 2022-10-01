@@ -30,31 +30,9 @@ def parse_form_data(symbol):
 
 
 async def check_price(*args, **kwargs):
-    notice_result = {}
-
     market_price_handler = MarketPriceHandler()
     for symbol, price in market_price_handler.get_all_limit_price().items():
-        _symbol_result = PlotPriceHandle(symbol, price).get_result()
-        notice_result.update(_symbol_result)
-
-    if not notice_result:
-        return
-    market_price_handler.set_value_times4limit_price_notice()
-
-    from msgqueue.queue import push
-
-    await push(
-        {
-            "bp": "send_email_task",
-            "receiver": [
-                "wayley@live.com",
-            ],
-            "title": "{} New Market Price Notice".format(
-                ",".join(list(notice_result.keys()))
-            ),
-            "content": "".join(notice_result.values()),
-        }
-    )
+        await PlotPriceHandle(symbol, price).check_limit_price()
 
 
 async def check_macd_cross(*args, **kwargs):
@@ -81,11 +59,33 @@ async def save_macd(*args, **kwargs):
             await MacdDataSaveHandle(row.symbol, _interval).save_data()
 
 
-class PlotPriceHandle(object):
+class BasePlotHandle(object):
+    def __init__(self):
+        self.result = {}
+
+    async def send_msg(self, email_title, email_content):
+        if not self.result:
+            return
+
+        from msgqueue.queue import push
+
+        await push(
+            {
+                "bp": "send_email_task",
+                "receiver": [
+                    "wayley@live.com",
+                ],
+                "title": email_title,
+                "content": email_content,
+            }
+        )
+
+
+class PlotPriceHandle(BasePlotHandle):
     def __init__(self, symbol, price):
+        super().__init__()
         limit_low_price, limit_high_price = price
 
-        self.result = {}
         self.symbol = symbol
         self.limit_low_price = limit_low_price
         self.limit_high_price = limit_high_price
@@ -139,15 +139,11 @@ class PlotPriceHandle(object):
             ts2bjfmt(),
         )
 
-        if (
-            self.market_price_handler.get_value_times4limit_price_notice()
-            >= self.market_price_handler.get_auto_valve_times4limit_price_notice()
-        ):
-            self.market_price_handler.set_limit_price(
-                self.symbol,
-                Decimal(decimal2str(self.limit_low_price * Decimal(self.low_incr))),
-                Decimal(decimal2str(self.limit_high_price * Decimal(self.low_incr))),
-            )
+        self.market_price_handler.set_limit_price(
+            self.symbol,
+            Decimal(decimal2str(self.limit_low_price * Decimal(self.low_incr))),
+            Decimal(decimal2str(self.limit_high_price * Decimal(self.low_incr))),
+        )
 
     def __check_limit_high_price(self, current_price):
         if not self.limit_high_price:
@@ -175,24 +171,39 @@ class PlotPriceHandle(object):
             ts2bjfmt(),
         )
 
-        if (
-            self.market_price_handler.get_value_times4limit_price_notice()
-            >= self.market_price_handler.get_auto_valve_times4limit_price_notice()
-        ):
-            self.market_price_handler.set_limit_price(
-                self.symbol,
-                Decimal(decimal2str(self.limit_low_price * Decimal(self.high_incr))),
-                Decimal(decimal2str(self.limit_high_price * Decimal(self.high_incr))),
-            )
+        self.market_price_handler.set_limit_price(
+            self.symbol,
+            Decimal(decimal2str(self.limit_low_price * Decimal(self.high_incr))),
+            Decimal(decimal2str(self.limit_high_price * Decimal(self.high_incr))),
+        )
 
-    def get_result(self):
+    async def check_limit_price(self):
+        email_title = f"{self.symbol} Price Notice"
+
         current_price = self.__get_current_price()
         if not current_price:
-            return self.result
+            return await self.send_msg(email_title, "".join(self.result.values()))
 
         self.__check_limit_low_price(current_price)
         self.__check_limit_high_price(current_price)
-        return self.result
+
+        if not self.result:
+            return
+
+        email_msg_md5_str = (
+            f"{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
+        )
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            pass
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        await self.send_msg(email_title, email_content)
 
 
 class MacdDataSaveHandle(object):
@@ -297,9 +308,9 @@ class MacdDataSaveHandle(object):
             self.__parsed_k_lines_data(_data)
 
 
-class PlotMacdHandle(object):
+class PlotMacdHandle(BasePlotHandle):
     def __init__(self, symbol, interval):
-        self.result = {}
+        super().__init__()
         self.symbol = symbol
 
         if interval == "4h":
@@ -355,26 +366,6 @@ class PlotMacdHandle(object):
 
         return result[::-1]
 
-    async def send_msg(self, email_title, email_content):
-        if not self.interval:
-            return
-
-        if not self.result:
-            return
-
-        from msgqueue.queue import push
-
-        await push(
-            {
-                "bp": "send_email_task",
-                "receiver": [
-                    "wayley@live.com",
-                ],
-                "title": email_title,
-                "content": email_content,
-            }
-        )
-
     async def check_cross(self, limit_count=7):
         email_title = f"{self.symbol} MACD Cross changing Notice"
 
@@ -406,12 +397,12 @@ class PlotMacdHandle(object):
         now_macd_data, last_macd_data = macd_list[0], macd_list[1]
 
         now_ts = int(time.time())
-        if now_macd_data.opening_ts < (now_ts - self.interval_sec):
-            # self.result[
-            #     self.symbol
-            # ] = f"Error: no lastest macd data, {self.symbol}:{self.interval}, opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}"
-            # return await self.send_msg(email_title, "".join(self.result.values()))
-            return
+        if now_macd_data.opening_ts < (now_ts - self.interval_sec * 2):
+            self.result[self.symbol] = (
+                f"Error: no lastest macd data, {self.symbol}:{self.interval}, "
+                f"opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}"
+            )
+            return await self.send_msg(email_title, "".join(self.result.values()))
 
         if now_macd_data.macd * last_macd_data.macd > 0:
             return await self.send_msg(email_title, "".join(self.result.values()))
