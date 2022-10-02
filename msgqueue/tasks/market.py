@@ -12,7 +12,8 @@ from models.order import MacdTable, SymbolPlotTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import INNER_GET_PRICE_URL, INNER_GET_UPDATE_PRICE_URL
 from utils.common import decimal2str, str2decimal, ts2bjfmt
-from utils.templates import template_macd_cross_notice
+from utils.templates import (template_macd_cross_notice,
+                             template_macd_trend_notice)
 
 
 def parse_form_data(symbol):
@@ -190,9 +191,7 @@ class PlotPriceHandle(BasePlotHandle):
         if not self.result:
             return
 
-        email_msg_md5_str = (
-            f"{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
-        )
+        email_msg_md5_str = f"check_limit_price:{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
             return EmailMsgHistoryTable.get(
@@ -328,32 +327,11 @@ class PlotMacdHandle(BasePlotHandle):
         else:
             self.interval, self.interval_sec, self.k_interval = None, None, None
 
-    def __add_msg_notice(
-        self, opening_ts, last_macd_data, now_macd_data, history_macd_list
-    ):
-        class MacdMsgCountCache(StringCache):
-            key = "macd:msg:count:{}:{}:{}".format(
-                self.symbol, self.interval, opening_ts
-            )
-
-        if MacdMsgCountCache.get():
-            return
-        MacdMsgCountCache.set(1, 24 * 3600)
-
-        self.result[self.symbol] = template_macd_cross_notice(
-            self.symbol,
-            self.interval,
-            last_macd_data.macd,
-            now_macd_data.macd,
-            opening_ts,
-            history_macd_list,
-        )
-
     def get_macd_change_list(self, limit_count=7):
         result = []
 
         query = (
-            MacdTable.select(MacdTable.macd)
+            MacdTable.select()
             .where(
                 MacdTable.symbol == self.symbol,
                 MacdTable.interval_val == self.interval,
@@ -362,7 +340,7 @@ class PlotMacdHandle(BasePlotHandle):
             .limit(limit_count)
         )
         for row in query:
-            result.append(decimal2str(row.macd))
+            result.append(row)
 
         return result[::-1]
 
@@ -407,7 +385,9 @@ class PlotMacdHandle(BasePlotHandle):
         if now_macd_data.macd * last_macd_data.macd > 0:
             return await self.send_msg(email_title, "".join(self.result.values()))
 
-        email_msg_md5_str = f"{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
+        email_msg_md5_str = (
+            f"check_cross:{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
+        )
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
             return EmailMsgHistoryTable.get(
@@ -415,10 +395,12 @@ class PlotMacdHandle(BasePlotHandle):
             )
         except EmailMsgHistoryTable.DoesNotExist:
             history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
-            self.__add_msg_notice(
+            self.result[self.symbol] = template_macd_cross_notice(
+                self.symbol,
+                self.interval,
+                last_macd_data.macd,
+                now_macd_data.macd,
                 now_macd_data.opening_ts,
-                last_macd_data,
-                now_macd_data,
                 history_macd_list,
             )
 
@@ -446,22 +428,18 @@ class PlotMacdHandle(BasePlotHandle):
             ] = f"Error: too less macd data, {self.symbol}:{self.interval}"
             return await self.send_msg(email_title, "".join(self.result.values()))
 
-        return
-        # TODO:yyq
-
         now_macd_data, last_macd_data = macd_list[0], macd_list[1]
+        trend_val = last_macd_data.macd / now_macd_data.macd
+        if trend_val < 0:
+            return
 
-        now_ts = int(time.time())
-        if now_macd_data.opening_ts < (now_ts - self.interval_sec):
-            self.result[
-                self.symbol
-            ] = f"Error: no lastest macd data, {self.symbol}:{self.interval}, opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}"
-            return await self.send_msg(email_title, "".join(self.result.values()))
+        # 1h趋势零界:0.4
+        if trend_val > 0.4:
+            return
 
-        if now_macd_data.macd * last_macd_data.macd > 0:
-            return await self.send_msg(email_title, "".join(self.result.values()))
-
-        email_msg_md5_str = f"{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
+        email_msg_md5_str = (
+            f"check_trend:{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
+        )
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
             return EmailMsgHistoryTable.get(
@@ -469,10 +447,13 @@ class PlotMacdHandle(BasePlotHandle):
             )
         except EmailMsgHistoryTable.DoesNotExist:
             history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
-            self.__add_msg_notice(
+            self.result[self.symbol] = template_macd_trend_notice(
+                self.symbol,
+                self.interval,
+                last_macd_data.macd,
+                now_macd_data.macd,
+                trend_val,
                 now_macd_data.opening_ts,
-                last_macd_data,
-                now_macd_data,
                 history_macd_list,
             )
 
