@@ -428,7 +428,7 @@ class PlotMacdHandle(BasePlotHandle):
             ] = f"Error: too less macd data, {self.symbol}:{self.interval}"
             return await self.send_msg(email_title, "".join(self.result.values()))
 
-        now_macd_data, last_macd_data = macd_list[0], macd_list[1]
+        now_macd_data, last_macd_data = macd_list[-1], macd_list[-2]
         trend_val = last_macd_data.macd / now_macd_data.macd
         if trend_val < 0:
             return
@@ -446,7 +446,7 @@ class PlotMacdHandle(BasePlotHandle):
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )
         except EmailMsgHistoryTable.DoesNotExist:
-            history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
+            history_macd_list = [decimal2str(i.macd) for i in macd_list]
             self.result[self.symbol] = template_macd_trend_notice(
                 self.symbol,
                 self.interval,
