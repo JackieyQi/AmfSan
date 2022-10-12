@@ -5,15 +5,13 @@ import hashlib
 import time
 from decimal import Decimal
 
-from business.binance_exchange import BinanceExchangeRequestHandle
 from business.market import MarketPriceHandler
-from cache import StringCache
 from models.order import MacdTable, SymbolPlotTable
 from models.user import EmailMsgHistoryTable
+from models.wallet import TotalBalanceHistoryTable
 from settings.constants import INNER_GET_PRICE_URL, INNER_GET_UPDATE_PRICE_URL
 from utils.common import decimal2str, str2decimal, ts2bjfmt
-from utils.templates import (template_macd_cross_notice,
-                             template_macd_trend_notice)
+from utils.templates import template_macd_cross_notice, template_macd_trend_notice, template_asset_notice
 
 
 def parse_form_data(symbol):
@@ -28,6 +26,10 @@ def parse_form_data(symbol):
         <input value="Submit" type="submit" onclick="submitform()">
     </form>
     """
+
+
+async def check_balance(*args, **kwargs):
+    await PlotAssetHandle().check_balance()
 
 
 async def check_price(*args, **kwargs):
@@ -52,14 +54,6 @@ async def check_macd_trend(*args, **kwargs):
             await PlotMacdHandle(row.symbol, _interval).check_trend()
 
 
-async def save_macd(*args, **kwargs):
-    macd_config = ["4h", "1h", "1d"]
-    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
-    for row in query:
-        for _interval in macd_config:
-            await MacdDataSaveHandle(row.symbol, _interval).save_data()
-
-
 class BasePlotHandle(object):
     def __init__(self):
         self.result = {}
@@ -80,6 +74,65 @@ class BasePlotHandle(object):
                 "content": email_content,
             }
         )
+
+
+class PlotAssetHandle(BasePlotHandle):
+    def __init__(self):
+        super(PlotAssetHandle, self).__init__()
+        self.user_id = 2
+        self.exchange_platform = "binance"
+
+    async def check_balance(self, limit_count=9):
+        # TODO: 需要处理 当日净充值和净划入
+        self.result["check_balance"] = []
+
+        query = (
+            TotalBalanceHistoryTable.select()
+            .where(
+                TotalBalanceHistoryTable.user_id == self.user_id,
+                TotalBalanceHistoryTable.exchange_platform == self.exchange_platform,
+            )
+            .order_by(MacdTable.id.desc())
+            .limit(limit_count)
+        )
+        query_data = [row for row in query][::-1]
+        for i, row in enumerate(query_data):
+            if i == 0:
+                profit_amount, profit_ratio = "", ""
+            else:
+                profit_amount = row.usdt_val - Decimal(query_data[i-1]["usdt_val"])
+                profit_ratio = "{}%".format(
+                    decimal2str((profit_amount / Decimal(query_data[i-1]["usdt_val"])) * 100, num=2)
+                )
+                profit_amount = f"+${decimal2str(profit_amount, num=2)}" if profit_amount > 0 \
+                    else f"-${decimal2str(profit_amount, num=2)[1:]}"
+
+            self.result["check_balance"].append(
+                template_asset_notice(
+                    decimal2str(row.btcusdt_price, num=2),
+                    decimal2str(row.btc_val, num=2),
+                    decimal2str(row.usdt_val, num=2),
+                    row.create_ts,
+                    profit_amount,
+                    profit_ratio,
+                )
+            )
+
+        email_msg_md5_str = (
+            f"check_balance:{query_data[-1].create_ts}"
+        )
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            pass
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        email_title = f"check_balance"
+        await self.send_msg(email_title, email_content)
 
 
 class PlotPriceHandle(BasePlotHandle):
@@ -203,108 +256,6 @@ class PlotPriceHandle(BasePlotHandle):
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
         await self.send_msg(email_title, email_content)
-
-
-class MacdDataSaveHandle(object):
-    def __init__(self, symbol, interval):
-        self.symbol = symbol
-
-        if interval == "4h":
-            self.interval = "4h"
-            self.interval_sec = 4 * 3600
-            self.k_interval = 5 * 3600
-        elif interval == "1h":
-            self.interval = "1h"
-            self.interval_sec = 3600
-            self.k_interval = 5400
-        elif interval == "1d":
-            self.interval = "1d"
-            self.interval_sec = 24 * 3600
-            self.k_interval = 27 * 3600
-        else:
-            self.interval, self.interval_sec, self.k_interval = None, None, None
-
-    def get_k_lines_by_openapi(self):
-        try:
-            db_last_macd = (
-                MacdTable.select()
-                .where(
-                    MacdTable.symbol == self.symbol,
-                    MacdTable.interval_val == self.interval,
-                )
-                .order_by(MacdTable.id.desc())
-                .limit(1)
-                .get()
-            )
-        except MacdTable.DoesNotExist:
-            return
-
-        resp_k = BinanceExchangeRequestHandle().get_k_lines(
-            self.symbol.upper(),
-            self.interval,
-            (db_last_macd.opening_ts - self.k_interval) * 1000,
-        )
-        return resp_k
-
-    def __parsed_k_lines_data(self, data):
-        opening_ts = int(data[0] / 1000)
-        opening_price = Decimal(data[1])
-        closing_price = Decimal(data[4])
-
-        _db_rs = (
-            MacdTable.select()
-            .where(
-                MacdTable.symbol == self.symbol,
-                MacdTable.interval_val == self.interval,
-                MacdTable.opening_ts.in_([opening_ts - self.interval_sec, opening_ts]),
-            )
-            .order_by(MacdTable.id)
-        )
-        _db_rs = list(_db_rs)
-
-        last_macd_data = _db_rs[0]
-        if len(_db_rs) == 2:
-            now_macd_data = _db_rs[1]
-        else:
-            now_macd_data = None
-
-        now_ema_12 = last_macd_data.ema_12 * 11 / 13 + closing_price * 2 / 13
-        now_ema_26 = last_macd_data.ema_26 * 25 / 27 + closing_price * 2 / 27
-        now_dea = last_macd_data.dea * 8 / 10 + (now_ema_12 - now_ema_26) * 2 / 10
-        # now_dif = now_ema_12 - now_ema_26
-        now_macd = Decimal(decimal2str(now_ema_12 - now_ema_26 - now_dea, 2))
-        if now_macd_data:
-            now_macd_data.opening_ts = opening_ts
-            now_macd_data.opening_price = opening_price
-            now_macd_data.closing_price = closing_price
-            now_macd_data.ema_12 = now_ema_12
-            now_macd_data.ema_26 = now_ema_26
-            now_macd_data.dea = now_dea
-            now_macd_data.macd = now_macd
-            now_macd_data.save()
-        else:
-            now_macd_data = MacdTable.create(
-                symbol=self.symbol,
-                interval_val=self.interval,
-                opening_ts=opening_ts,
-                opening_price=opening_price,
-                closing_price=closing_price,
-                ema_12=now_ema_12,
-                ema_26=now_ema_26,
-                dea=now_dea,
-                macd=now_macd,
-            )
-
-    async def save_data(self):
-        if not self.interval:
-            return
-
-        k_data = self.get_k_lines_by_openapi()
-        if not k_data:
-            return
-
-        for _data in k_data:
-            self.__parsed_k_lines_data(_data)
 
 
 class PlotMacdHandle(BasePlotHandle):

@@ -17,7 +17,8 @@ def command_create_tables():
                 # order.OrderTradeHistoryTable,
                 # order.SymbolPlotTable,
                 # wallet.BalanceHistoryTable,
-                user.EmailMsgHistoryTable,
+                wallet.TotalBalanceHistoryTable,
+                # user.EmailMsgHistoryTable,
             ]
         )
 

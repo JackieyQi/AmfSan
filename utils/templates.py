@@ -28,3 +28,10 @@ def template_macd_trend_notice(
             <br>last change array: {history_macd_list},
             <br>opening time:{ts2bjfmt(opening_ts)}
             """
+
+
+def template_asset_notice(price, btc_val, usdt_val, create_ts, profit_amount, profit_ratio):
+    return f"""
+            <br><br> {ts2bjfmt(create_ts)}: {profit_amount}/{profit_ratio}
+            <br> PRICE:{price}, BTC:{btc_val}, USDT:{usdt_val}.
+            """

@@ -9,21 +9,22 @@ from amf import app
 from utils.common import ts2fmt
 
 from .queue import push
-from .tasks import account, market, sms
+from .tasks import dw, plot, sms
 
 logger = logging.getLogger(__name__)
 
 route_map = {
     "send_email_task": sms.send_email,
     #
-    "save_macd_job": market.save_macd,
-    "save_account_balance_job": account.save_account_balance_job,
+    "save_macd_job": dw.save_macd_job,
+    "save_account_balance_job": dw.save_account_balance_job,
+    "save_trade_history_job": dw.save_trade_history_job,
     #
-    "check_price_job": market.check_price,
-    "check_macd_cross_job": market.check_macd_cross,
-    "check_macd_trend_job": market.check_macd_trend,
+    "check_balance_job": plot.check_balance,
+    "check_price_job": plot.check_price,
+    "check_macd_cross_job": plot.check_macd_cross,
+    "check_macd_trend_job": plot.check_macd_trend,
     #
-    "update_trade_history_job": account.update_trade_history_job,
 }
 
 
