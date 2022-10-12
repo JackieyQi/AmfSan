@@ -44,7 +44,7 @@ class BinanceExchangeRequestHandle(object):
         }
 
         resp = http_post_request(
-            self.base_url + "/sapi/v3/asset/getUserAsset", payload, headers
+            self.base_url + "/sapi/v3/asset/getUserAsset", payload, add_headers=headers
         )
         return resp
 
@@ -61,5 +61,5 @@ class BinanceExchangeRequestHandle(object):
         headers = {
             "X-MBX-APIKEY": self.key,
         }
-        resp = http_get_request(self.base_url + "/api/v3/myTrades", payload, headers)
+        resp = http_get_request(self.base_url + "/api/v3/myTrades", payload, add_headers=headers)
         return resp

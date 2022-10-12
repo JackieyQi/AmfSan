@@ -14,7 +14,7 @@ from utils.hrequest import http_get_request
 
 class MarketPriceHandler(object):
     def get_current_price(self, symbol: str = "btcusdt"):
-        resp_json = http_get_request(HUOBI_TRADE_URL, params={"symbol": symbol})
+        resp_json = http_get_request(HUOBI_TRADE_URL, {"symbol": symbol})
         if resp_json and resp_json["status"] == "ok":
             price_info = resp_json["tick"]["data"][0]
             ts = int(int(price_info["ts"]) / 1000)
