@@ -100,9 +100,9 @@ class PlotAssetHandle(BasePlotHandle):
             if i == 0:
                 profit_amount, profit_ratio = "", ""
             else:
-                profit_amount = row.usdt_val - Decimal(query_data[i-1]["usdt_val"])
+                profit_amount = row.usdt_val - Decimal(query_data[i-1].usdt_val)
                 profit_ratio = "{}%".format(
-                    decimal2str((profit_amount / Decimal(query_data[i-1]["usdt_val"])) * 100, num=2)
+                    decimal2str((profit_amount / Decimal(query_data[i-1].usdt_val)) * 100, num=2)
                 )
                 profit_amount = f"+${decimal2str(profit_amount, num=2)}" if profit_amount > 0 \
                     else f"-${decimal2str(profit_amount, num=2)[1:]}"
@@ -129,7 +129,7 @@ class PlotAssetHandle(BasePlotHandle):
         except EmailMsgHistoryTable.DoesNotExist:
             pass
 
-        email_content = "".join(self.result.values())
+        email_content = "".join(self.result["check_balance"][::-1])
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
         email_title = f"check_balance"
         await self.send_msg(email_title, email_content)
