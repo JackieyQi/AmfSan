@@ -17,7 +17,8 @@ async def save_account_balance_job(*args, **kwargs):
     # account_handler = HuobiExchangeAccountHandle()
     # account_handler.save_current_balance()
 
-    account_handler = BinanceExchangeRequestHandle()
+    key, secret = cfgs["bian"]["key"], cfgs["bian"]["secret"]
+    account_handler = BinanceExchangeRequestHandle(key, secret)
     asset_data = account_handler.get_my_user_asset()
     if not asset_data:
         return
