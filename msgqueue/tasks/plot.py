@@ -92,7 +92,7 @@ class PlotAssetHandle(BasePlotHandle):
                 TotalBalanceHistoryTable.user_id == self.user_id,
                 TotalBalanceHistoryTable.exchange_platform == self.exchange_platform,
             )
-            .order_by(MacdTable.id.desc())
+            .order_by(TotalBalanceHistoryTable.id.desc())
             .limit(limit_count)
         )
         query_data = [row for row in query][::-1]
