@@ -9,7 +9,7 @@ from business.market import MarketPriceHandler
 from models.order import MacdTable, SymbolPlotTable
 from models.user import EmailMsgHistoryTable
 from models.wallet import TotalBalanceHistoryTable
-from settings.constants import INNER_GET_PRICE_URL, INNER_GET_UPDATE_PRICE_URL
+from settings.constants import INNER_GET_PRICE_URL, INNER_GET_UPDATE_PRICE_URL, INNER_GET_DELETE_LIMIT_PRICE_URL
 from utils.common import decimal2str, str2decimal, ts2bjfmt
 from utils.templates import template_macd_cross_notice, template_macd_trend_notice, template_asset_notice
 
@@ -155,13 +155,12 @@ class PlotPriceHandle(BasePlotHandle):
         if "price" not in current_price_info:
             self.result[
                 self.symbol
-            ] = """
-            <br><br><b> {}: </b><br>http get price fail.
-            <br><a href={}{}>Get current price info.</a>
-            <br>now time: {}.
-            """.format(
-                self.symbol, INNER_GET_PRICE_URL, self.symbol, ts2bjfmt()
-            )
+            ] = f"""
+            <br><br><b> {self.symbol}: </b><br>http get price fail.
+            <br><a href={INNER_GET_PRICE_URL}{self.symbol}>Get current price info.</a>
+            <br>now time: {ts2bjfmt()}.<a>
+            <br><a href={INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}>Delete price check.<a>
+            """
             return
 
         current_price = str2decimal(current_price_info["price"])
@@ -175,23 +174,14 @@ class PlotPriceHandle(BasePlotHandle):
 
         self.result[
             self.symbol
-        ] = """
-        <br><br><b> {}: </b><br>new low price:{},
-        <br>last limit low price:{} !!!
-        <br><a href={}{}>Get current price info.</a>
-        <br><a href={}{}/{}/>Update new low price.<a>
-        <br>now time: {}.
-        """.format(
-            self.symbol,
-            current_price,
-            self.limit_low_price,
-            INNER_GET_PRICE_URL,
-            self.symbol,
-            INNER_GET_UPDATE_PRICE_URL,
-            "low",
-            self.symbol,
-            ts2bjfmt(),
-        )
+        ] = f"""
+        <br><br><b> {self.symbol}: </b><br>new low price:{current_price},
+        <br>last limit low price:{self.limit_low_price} !!!
+        <br><a href={INNER_GET_PRICE_URL}{self.symbol}>Get current price info.</a>
+        <br><a href={INNER_GET_UPDATE_PRICE_URL}{"low"}/{self.symbol}/>Update new low price.<a>
+        <br>now time: {ts2bjfmt()}.<a>
+        <br><a href={INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}>Delete price check.<a>
+        """
 
         self.market_price_handler.set_limit_price(
             self.symbol,
@@ -207,23 +197,14 @@ class PlotPriceHandle(BasePlotHandle):
 
         self.result[
             self.symbol
-        ] = """
-        <br><br><b> {}: </b><br>new high price:{},
-        <br>last limit high price:{} !!!
-        <br><a href={}{}>Get current price info.</a>
-        <br><a href={}{}/{}/>Update new high price.<a>
-        <br>now time: {}.
-        """.format(
-            self.symbol,
-            current_price,
-            self.limit_high_price,
-            INNER_GET_PRICE_URL,
-            self.symbol,
-            INNER_GET_UPDATE_PRICE_URL,
-            "high",
-            self.symbol,
-            ts2bjfmt(),
-        )
+        ] = f"""
+        <br><br><b> {self.symbol}: </b><br>new high price:{current_price},
+        <br>last limit high price:{self.limit_high_price} !!!
+        <br><a href={INNER_GET_PRICE_URL}{self.symbol}>Get current price info.</a>
+        <br><a href={INNER_GET_UPDATE_PRICE_URL}{"high"}/{self.symbol}/>Update new high price.<a>
+        <br>now time: {ts2bjfmt()}.<a>
+        <br><a href={INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}>Delete price check.<a>
+        """
 
         self.market_price_handler.set_limit_price(
             self.symbol,

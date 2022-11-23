@@ -6,6 +6,7 @@ from exts import redis_client
 
 r_client = None
 
+
 class Base(object):
     @staticmethod
     def redis():
@@ -24,6 +25,10 @@ class StringCache(Base):
     def set(cls, val, ex=180):
         return cls.redis().set(cls.key, val, ex)
 
+    @classmethod
+    def delete(cls):
+        return cls.redis().delete(cls.key)
+
 
 class HashCache(Base):
     @classmethod
@@ -37,6 +42,10 @@ class HashCache(Base):
     @classmethod
     def hset(cls, key, val):
         return cls.redis().hset(cls.key, key, val)
+
+    @classmethod
+    def hdel(cls, key):
+        return cls.redis().hdel(cls.key, key)
 
     @classmethod
     def hmget(cls, map_keys):

@@ -46,6 +46,11 @@ class MarketPriceHandler(object):
         else:
             return int(notice_times)
 
+    def del_limit_price(self, symbol: str = ""):
+        if not symbol:
+            return
+        return MarketPriceLimitCache.hdel(symbol)
+
     def set_limit_price(
         self,
         symbol: str = "btcusdt",

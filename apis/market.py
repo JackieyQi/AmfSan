@@ -53,6 +53,15 @@ class MarketPriceView(HTTPMethodView):
         return result
 
 
+class MarketPriceGateView(HTTPMethodView):
+    async def get(self, request):
+        symbol = request.form.get("symbol")
+        if not symbol:
+            return "Invalid params:symbol"
+
+        return MarketPriceHandler().del_limit_price(symbol.lower())
+
+
 class MarketInnerPriceView(HTTPMethodView):
     async def get(self, request, side_str, symbol, new_price):
         if not symbol or not new_price:
