@@ -4,43 +4,13 @@
 import json
 from decimal import Decimal as D
 
-from utils.common import str2decimal, decimal2str
 from business.binance_exchange import BinanceExchangeRequestHandle
 # from business.huobi_exchange import HuobiExchangeAccountHandle
 from business.market import MarketPriceHandler
-from models.order import OrderTradeHistoryTable, SymbolPlotTable, MacdTable
+from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
-
-
-async def save_account_balance_job(*args, **kwargs):
-    # account_handler = HuobiExchangeAccountHandle()
-    # account_handler.save_current_balance()
-
-    key, secret = cfgs["bian"]["key"], cfgs["bian"]["secret"]
-    account_handler = BinanceExchangeRequestHandle(key, secret)
-    asset_data = account_handler.get_my_user_asset()
-    if not asset_data:
-        return
-
-    price_info = MarketPriceHandler().get_current_price()
-    current_price = str2decimal(price_info["price"])
-
-    total_btc_valuation = D("0")
-    for i in asset_data:
-        total_btc_valuation += D(i["btcValuation"])
-
-    total_usdt_valuation = total_btc_valuation * current_price
-    total_usdt_valuation = D(decimal2str(total_usdt_valuation))
-
-    TotalBalanceHistoryTable(
-        user_id=2,
-        btcusdt_price=current_price,
-        btc_val=total_btc_valuation,
-        usdt_val=total_usdt_valuation,
-        exchange_platform="binance",
-        exchange_data=json.dumps(asset_data),
-    ).save()
+from utils.common import decimal2str, str2decimal
 
 
 async def save_trade_history_job(*args, **kwargs):
@@ -97,6 +67,36 @@ async def save_trade_history_job(*args, **kwargs):
                     symbol=last_trade.symbol,
                     last_price=last_trade.price,
                 ).save()
+
+
+async def save_account_balance_job(*args, **kwargs):
+    # account_handler = HuobiExchangeAccountHandle()
+    # account_handler.save_current_balance()
+
+    key, secret = cfgs["bian"]["key"], cfgs["bian"]["secret"]
+    account_handler = BinanceExchangeRequestHandle(key, secret)
+    asset_data = account_handler.get_my_user_asset()
+    if not asset_data:
+        return
+
+    price_info = MarketPriceHandler().get_current_price()
+    current_price = str2decimal(price_info["price"])
+
+    total_btc_valuation = D("0")
+    for i in asset_data:
+        total_btc_valuation += D(i["btcValuation"])
+
+    total_usdt_valuation = total_btc_valuation * current_price
+    total_usdt_valuation = D(decimal2str(total_usdt_valuation))
+
+    TotalBalanceHistoryTable(
+        user_id=2,
+        btcusdt_price=current_price,
+        btc_val=total_btc_valuation,
+        usdt_val=total_usdt_valuation,
+        exchange_platform="binance",
+        exchange_data=json.dumps(asset_data),
+    ).save()
 
 
 async def save_macd_job(*args, **kwargs):

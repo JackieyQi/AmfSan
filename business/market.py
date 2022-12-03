@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from cache.order import (LimitPriceNoticeValueCache,
                          LimitPriceNoticeValveCache, MarketPriceLimitCache)
+from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache
 from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime
@@ -132,3 +133,56 @@ class MarketPriceHandler(object):
         else:
             price = Decimal("0")
         return price
+
+
+class SymbolHandle(object):
+    def __init__(self, symbol):
+        self.user_id = 2
+        self.symbol = symbol
+
+        self.macd_config = ["4h", "1h", "1d"]
+
+    def add_new_plot(self):
+        query = SymbolPlotTable.select().where(
+            SymbolPlotTable.user_id == self.user_id,
+            SymbolPlotTable.symbol == self.symbol,
+        )
+        if query:
+            return
+
+        result = SymbolPlotTable(
+            user_id=self.user_id,
+            symbol=self.symbol,
+        ).save()
+        return result
+
+    def del_plot(self):
+        query = SymbolPlotTable.select().where(
+            SymbolPlotTable.user_id == self.user_id,
+            SymbolPlotTable.symbol == self.symbol,
+        )
+        if not query:
+            return
+
+        symbol_plot = query.get()
+        symbol_plot.is_valid = False
+        symbol_plot.save()
+
+        self.del_macd_gate()
+        return 1
+
+    def add_macd_gate(self):
+        for i in self.macd_config:
+            CheckMacdCrossGateCache.hset(f"{self.symbol}:{i}", 1)
+            CheckMacdTrendGateCache.hset(f"{self.symbol}:{i}", 1)
+
+    def del_macd_gate(self):
+        for i in self.macd_config:
+            CheckMacdCrossGateCache.hdel(f"{self.symbol}:{i}")
+            CheckMacdTrendGateCache.hdel(f"{self.symbol}:{i}")
+
+    def del_macd_cross_gate(self, interval):
+        return CheckMacdCrossGateCache.hdel(f"{self.symbol}:{interval}")
+
+    def del_macd_trend_gate(self, interval):
+        return CheckMacdTrendGateCache.hdel(f"{self.symbol}:{interval}")

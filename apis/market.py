@@ -3,7 +3,7 @@
 
 from decimal import Decimal
 
-from business.market import MarketPriceHandler
+from business.market import MarketPriceHandler, SymbolHandle
 from sanic.views import HTTPMethodView
 from utils.common import str2decimal
 from utils.exception import StandardResponseExc
@@ -47,19 +47,59 @@ class MarketPriceView(HTTPMethodView):
         if not low_price and not high_price:
             raise StandardResponseExc()
 
-        result = MarketPriceHandler().set_limit_price(
+        hset_limit_price_result = MarketPriceHandler().set_limit_price(
             symbol, str2decimal(low_price), str2decimal(high_price)
         )
-        return result
+
+        db_new_plot_result = SymbolHandle(symbol).add_new_plot()
+        return {
+            "hset_limit_price_result": hset_limit_price_result,
+            "db_new_plot_result": db_new_plot_result,
+        }
 
 
 class MarketPriceGateView(HTTPMethodView):
     async def get(self, request):
-        symbol = request.form.get("symbol")
+        symbol = request.form.get("symbol").strip().lower()
         if not symbol:
             return "Invalid params:symbol"
 
-        return MarketPriceHandler().del_limit_price(symbol.lower())
+        hdel_limit_price_result = MarketPriceHandler().del_limit_price(symbol)
+
+        db_del_plot_result = SymbolHandle(symbol).del_plot()
+        return {
+            "symbol": symbol,
+            "hdel_limit_price_result": hdel_limit_price_result,
+            "db_del_plot_result": db_del_plot_result,
+        }
+
+
+class MarketMacdCrossGateView(HTTPMethodView):
+    async def get(self, request):
+        key = request.form.get("key").strip().lower()
+        if not key:
+            return "Invalid params:key"
+        symbol, interval = key.split("_")
+
+        hdel_plot_cross_result = SymbolHandle(symbol).del_macd_cross_gate(interval)
+        return {
+            "key": f"{symbol}:{interval}",
+            "hdel_plot_cross_result": hdel_plot_cross_result,
+        }
+
+
+class MarketMacdTrendGateView(HTTPMethodView):
+    async def get(self, request):
+        key = request.form.get("key").strip().lower()
+        if not key:
+            return "Invalid params:key"
+        symbol, interval = key.split("_")
+
+        hdel_plot_trend_result = SymbolHandle(symbol).del_macd_trend_gate(interval)
+        return {
+            "key": f"{symbol}:{interval}",
+            "hdel_plot_trend_result": hdel_plot_trend_result,
+        }
 
 
 class MarketInnerPriceView(HTTPMethodView):

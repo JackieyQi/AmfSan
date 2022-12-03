@@ -3,6 +3,7 @@
 
 import logging
 import time
+
 import schedule
 import ujson as json
 
@@ -51,14 +52,17 @@ def save_trade_history_job():
 
 def schedules():
     schedule.every(30).seconds.do(check_price_job)
-    schedule.every(13).minutes.do(check_macd_cross_job)
-    schedule.every(13).minutes.do(check_macd_trend_job)
-    schedule.every().day.at("15:27").do(check_balance_job)
 
     schedule.every(7).minutes.do(save_macd_job)
+
+    schedule.every(13).minutes.do(check_macd_cross_job)
+    schedule.every(13).minutes.do(check_macd_trend_job)
+
+    # user action
+    schedule.every().day.at("05:00").do(save_trade_history_job)
+    schedule.every().day.at("15:27").do(check_balance_job)
     schedule.every().day.at("03:17").do(save_account_balance_job)
     schedule.every().day.at("15:17").do(save_account_balance_job)
-    schedule.every().day.at("05:00").do(save_trade_history_job)
 
     while True:
         schedule.run_pending()

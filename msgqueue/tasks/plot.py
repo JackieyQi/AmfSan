@@ -6,30 +6,18 @@ import time
 from decimal import Decimal
 
 from business.market import MarketPriceHandler
+from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache
 from models.order import MacdTable, SymbolPlotTable
 from models.user import EmailMsgHistoryTable
 from models.wallet import TotalBalanceHistoryTable
-from settings.constants import INNER_GET_PRICE_URL, INNER_GET_UPDATE_PRICE_URL, INNER_GET_DELETE_LIMIT_PRICE_URL
+from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
+                                INNER_GET_DELETE_MACD_CROSS_URL,
+                                INNER_GET_DELETE_MACD_TREND_URL,
+                                INNER_GET_PRICE_URL,
+                                INNER_GET_UPDATE_PRICE_URL)
 from utils.common import decimal2str, str2decimal, ts2bjfmt
-from utils.templates import template_macd_cross_notice, template_macd_trend_notice, template_asset_notice
-
-
-def parse_form_data(symbol):
-    body = """
-    <form action="{url}" method="POST" name="form">
-        <p><label for="{}_price">New limit price:</label>
-        <input type="text" name="" id="fname"></p>
-
-        <p><label for="last_name">Last Name:</label>
-        <input type="text" name="last_name" id="lname"></p>
-
-        <input value="Submit" type="submit" onclick="submitform()">
-    </form>
-    """
-
-
-async def check_balance(*args, **kwargs):
-    await PlotAssetHandle().check_balance()
+from utils.templates import (template_asset_notice, template_macd_cross_notice,
+                             template_macd_trend_notice)
 
 
 async def check_price(*args, **kwargs):
@@ -38,11 +26,17 @@ async def check_price(*args, **kwargs):
         await PlotPriceHandle(symbol, price).check_limit_price()
 
 
+async def check_balance(*args, **kwargs):
+    await PlotAssetHandle().check_balance()
+
+
 async def check_macd_cross(*args, **kwargs):
     macd_config = ["4h", "1h", "1d"]
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in macd_config:
+            if not CheckMacdCrossGateCache.hget(f"{row.symbol}:{_interval}"):
+                continue
             await PlotMacdHandle(row.symbol, _interval).check_cross()
 
 
@@ -51,6 +45,8 @@ async def check_macd_trend(*args, **kwargs):
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in macd_config:
+            if not CheckMacdTrendGateCache.hget(f"{row.symbol}:{_interval}"):
+                continue
             await PlotMacdHandle(row.symbol, _interval).check_trend()
 
 
@@ -100,12 +96,18 @@ class PlotAssetHandle(BasePlotHandle):
             if i == 0:
                 profit_amount, profit_ratio = "", ""
             else:
-                profit_amount = row.usdt_val - Decimal(query_data[i-1].usdt_val)
+                profit_amount = row.usdt_val - Decimal(query_data[i - 1].usdt_val)
                 profit_ratio = "{}%".format(
-                    decimal2str((profit_amount / Decimal(query_data[i-1].usdt_val)) * 100, num=2)
+                    decimal2str(
+                        (profit_amount / Decimal(query_data[i - 1].usdt_val)) * 100,
+                        num=2,
+                    )
                 )
-                profit_amount = f"+${decimal2str(profit_amount, num=2)}" if profit_amount > 0 \
+                profit_amount = (
+                    f"+${decimal2str(profit_amount, num=2)}"
+                    if profit_amount > 0
                     else f"-${decimal2str(profit_amount, num=2)[1:]}"
+                )
 
             self.result["check_balance"].append(
                 template_asset_notice(
@@ -118,9 +120,7 @@ class PlotAssetHandle(BasePlotHandle):
                 )
             )
 
-        email_msg_md5_str = (
-            f"check_balance:{query_data[-1].create_ts}"
-        )
+        email_msg_md5_str = f"check_balance:{query_data[-1].create_ts}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
             return EmailMsgHistoryTable.get(
@@ -296,22 +296,32 @@ class PlotMacdHandle(BasePlotHandle):
         if not macd_list:
             self.result[
                 self.symbol
-            ] = f"Error: not macd data, {self.symbol}:{self.interval}"
+            ] = f"""
+            <br><a>Error: not macd data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
             return await self.send_msg(email_title, "".join(self.result.values()))
         elif len(macd_list) < limit_count:
             self.result[
                 self.symbol
-            ] = f"Error: too less macd data, {self.symbol}:{self.interval}"
+            ] = f"""
+            <br><a>Error: too less macd data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
             return await self.send_msg(email_title, "".join(self.result.values()))
 
         now_macd_data, last_macd_data = macd_list[0], macd_list[1]
 
         now_ts = int(time.time())
         if now_macd_data.opening_ts < (now_ts - self.interval_sec * 2):
-            self.result[self.symbol] = (
-                f"Error: no lastest macd data, {self.symbol}:{self.interval}, "
-                f"opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}"
-            )
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: no lastest macd data, {self.symbol}:{self.interval}</a>
+            <br><a>opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}</a>
+            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+
             return await self.send_msg(email_title, "".join(self.result.values()))
 
         if now_macd_data.macd * last_macd_data.macd > 0:
@@ -352,12 +362,18 @@ class PlotMacdHandle(BasePlotHandle):
         if not macd_list:
             self.result[
                 self.symbol
-            ] = f"Error: not macd data, {self.symbol}:{self.interval}"
+            ] = f"""
+            <br><a>Error: not macd data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_MACD_TREND_URL}{self.symbol + '_' + self.interval}>Delete trend check.</a>
+            """
             return await self.send_msg(email_title, "".join(self.result.values()))
         elif len(macd_list) < limit_count:
             self.result[
                 self.symbol
-            ] = f"Error: too less macd data, {self.symbol}:{self.interval}"
+            ] = f"""
+            <br><a>Error: too less macd data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_MACD_TREND_URL}{self.symbol + '_' + self.interval}>Delete trend check.</a>
+            """
             return await self.send_msg(email_title, "".join(self.result.values()))
 
         now_macd_data, last_macd_data = macd_list[-1], macd_list[-2]

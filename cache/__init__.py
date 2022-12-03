@@ -54,4 +54,3 @@ class HashCache(Base):
     @classmethod
     def hmset(cls, map_vals):
         return cls.redis().hmset(cls.key, map_vals)
-
