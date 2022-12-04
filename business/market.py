@@ -143,6 +143,8 @@ class SymbolHandle(object):
         self.macd_config = ["4h", "1h", "1d"]
 
     def add_new_plot(self):
+        self.add_macd_gate()
+
         query = SymbolPlotTable.select().where(
             SymbolPlotTable.user_id == self.user_id,
             SymbolPlotTable.symbol == self.symbol,
@@ -157,6 +159,8 @@ class SymbolHandle(object):
         return result
 
     def del_plot(self):
+        self.del_macd_gate()
+
         query = SymbolPlotTable.select().where(
             SymbolPlotTable.user_id == self.user_id,
             SymbolPlotTable.symbol == self.symbol,
@@ -168,7 +172,6 @@ class SymbolHandle(object):
         symbol_plot.is_valid = False
         symbol_plot.save()
 
-        self.del_macd_gate()
         return 1
 
     def add_macd_gate(self):
