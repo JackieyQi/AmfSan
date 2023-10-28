@@ -22,3 +22,12 @@ Please strictly follow the order of import to business. It's forbidden for back 
     $ rabbitmqctl add_user username password
     $ rabbitmqctl authenticate_user username password
 ----------
+
+## Initialization
+----------
+    $ pip install -r requirement.txt
+
+    $ python run.py
+    $ python runscheduler.py
+    $ python runconsumer.py
+----------
