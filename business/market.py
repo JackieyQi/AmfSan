@@ -117,10 +117,9 @@ class MarketPriceHandler(object):
         result = {}
         for k, v in all_limit_price.items():
             limit_low_price, limit_high_price = v.split(":")
-            if limit_low_price:
-                limit_low_price = Decimal(limit_low_price)
-            if limit_high_price:
-                limit_high_price = Decimal(limit_high_price)
+
+            limit_low_price = Decimal(limit_low_price) if limit_low_price else Decimal("0")
+            limit_high_price = Decimal(limit_high_price) if limit_high_price else Decimal("0")
             result[k] = (limit_low_price, limit_high_price)
         return result
 

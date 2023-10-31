@@ -17,7 +17,7 @@ INNER_GET_DELETE_LIMIT_PRICE_URL = "{}/api/market/price/gate?symbol=".format(
 INNER_GET_DELETE_MACD_CROSS_URL = "{}/api/market/macd/cross/gate?key=".format(
     cfgs["http"]["inner_url"]
 )
-INNER_GET_DELETE_MACD_TREND_URL = "{}/api/market/macd/cross/gate?key=".format(
+INNER_GET_DELETE_MACD_TREND_URL = "{}/api/market/macd/trend/gate?key=".format(
     cfgs["http"]["inner_url"]
 )
 INNER_UPDATE_PRICE_URL = "{}"
