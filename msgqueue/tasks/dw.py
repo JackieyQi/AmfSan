@@ -148,7 +148,7 @@ class MacdDataSaveHandle(object):
         )
         return resp_k
 
-    def __parsed_k_lines_data(self, data):
+    def parsed_k_lines_data(self, data):
         opening_ts = int(data[0] / 1000)
         opening_price = D(data[1])
         closing_price = D(data[4])
@@ -206,4 +206,4 @@ class MacdDataSaveHandle(object):
             return
 
         for _data in k_data:
-            self.__parsed_k_lines_data(_data)
+            self.parsed_k_lines_data(_data)

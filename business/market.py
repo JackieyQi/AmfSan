@@ -1,12 +1,13 @@
 #! /usr/bin/env python
 # coding:utf8
 
+import time
 from decimal import Decimal
 
 from cache.order import (LimitPriceNoticeValueCache,
                          LimitPriceNoticeValveCache, MarketPriceLimitCache)
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache
-from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable
+from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime
 from utils.exception import StandardResponseExc
@@ -188,3 +189,114 @@ class SymbolHandle(object):
 
     def del_macd_trend_gate(self, interval):
         return CheckMacdTrendGateCache.hdel(f"{self.symbol}:{interval}")
+
+
+class MacdInitData(object):
+    def __init__(self, macd_init_data):
+        self.macd_init_data = macd_init_data
+
+    def init_1h(self):
+        data = self.macd_init_data.get("macd_1h")
+        for i in data:
+            if MacdTable.select().where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.opening_ts == i["opening_ts"],
+                MacdTable.interval_val == i["interval"].lower(),
+            ):
+                print("already")
+            else:
+                r = MacdTable(
+                    symbol=i["symbol"].lower(),
+                    interval_val=i["interval"].lower(),
+                    opening_ts=i["opening_ts"],
+                    opening_price=i["opening_price"],
+                    closing_price=i["closing_price"],
+                    ema_12=i["ema_12"],
+                    ema_26=i["ema_26"],
+                    dea=i["dea"],
+                    macd=i["macd"] if "macd" in i else 0,
+                    create_ts=int(time.time()),
+                ).save()
+
+        db_last_macd = (
+            MacdTable.select()
+            .where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
+            )
+            .order_by(MacdTable.create_ts.desc())
+            .limit(1)
+            .get()
+        )
+        return db_last_macd.id
+
+    def init_4h(self):
+        data = self.macd_init_data.get("macd_4h")
+        for i in data:
+            if MacdTable.select().where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.opening_ts == i["opening_ts"],
+                MacdTable.interval_val == i["interval"].lower(),
+            ):
+                print("already")
+            else:
+                r = MacdTable(
+                    symbol=i["symbol"].lower(),
+                    interval_val=i["interval"].lower(),
+                    opening_ts=i["opening_ts"],
+                    opening_price=i["opening_price"],
+                    closing_price=i["closing_price"],
+                    ema_12=i["ema_12"],
+                    ema_26=i["ema_26"],
+                    dea=i["dea"],
+                    macd=i["macd"] if "macd" in i else 0,
+                    create_ts=int(time.time()),
+                ).save()
+
+        db_last_macd = (
+            MacdTable.select()
+            .where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
+            )
+            .order_by(MacdTable.create_ts.desc())
+            .limit(1)
+            .get()
+        )
+
+        return db_last_macd.id
+
+    def init_1d(self):
+        data = self.macd_init_data.get("macd_1d")
+        for i in data:
+            if MacdTable.select().where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.opening_ts == i["opening_ts"],
+                MacdTable.interval_val == i["interval"].lower(),
+            ):
+                print("already")
+            else:
+                r = MacdTable(
+                    symbol=i["symbol"].lower(),
+                    interval_val=i["interval"].lower(),
+                    opening_ts=i["opening_ts"],
+                    opening_price=i["opening_price"],
+                    closing_price=i["closing_price"],
+                    ema_12=i["ema_12"],
+                    ema_26=i["ema_26"],
+                    dea=i["dea"],
+                    macd=i["macd"] if "macd" in i else 0,
+                    create_ts=int(time.time()),
+                ).save()
+
+        db_last_macd = (
+            MacdTable.select()
+            .where(
+                MacdTable.symbol == i["symbol"].lower(),
+                MacdTable.interval_val == i["interval"].lower(),
+            )
+            .order_by(MacdTable.create_ts.desc())
+            .limit(1)
+            .get()
+        )
+        return db_last_macd.id
