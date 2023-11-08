@@ -1,17 +1,17 @@
 #! /usr/bin/env python
 # coding:utf8
 
-import sys
 import asyncio
 import logging
+import sys
 
 from exts import amf_queue, queue_conn
-from msgqueue import deal_msg 
-
+from msgqueue import deal_msg
 
 logger = logging.getLogger("amfconsumer")
 
 RESTART = False
+
 
 async def consumer():
     queue_conn.connect()
@@ -45,4 +45,3 @@ def deal_signal(*args, **kwargs):
     global RESTART
     RESTART = True
     logger.info("Consumer restart")
-

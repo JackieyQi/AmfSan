@@ -27,6 +27,29 @@ class SymbolPlotTable(Base):
         table_name = "symbol_plot_table"
 
 
+class SymbolPriceChangeHistoryTable(Base):
+    symbol = CharField(db_column="symbol", index=True)
+    current_price = DecimalField(
+        db_column="current_price", default=0, max_digits=20, decimal_places=8
+    )
+    limit_low_price = DecimalField(
+        db_column="limit_low_price", default=0, max_digits=20, decimal_places=8
+    )
+    limit_price = DecimalField(
+        db_column="low_price", default=0, max_digits=20, decimal_places=8
+    )
+    limit_high_price = DecimalField(
+        db_column="limit_high_price", default=0, max_digits=20, decimal_places=8
+    )
+    high_price = DecimalField(
+        db_column="high_price", default=0, max_digits=20, decimal_places=8
+    )
+    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+
+    class Meta:
+        table_name = "symbol_price_change_history_table"
+
+
 class OrderTable(Base):
     pass
 
@@ -57,7 +80,7 @@ class OrderTradeHistoryTable(Base):
 class MacdTable(Base):
     # id = IntegerField(primary_key=True)
     symbol = CharField(db_column="symbol", index=True)
-    interval = CharField(default="4h", db_column="interval", help_text="k线间隔")
+    interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔")
     opening_ts = IntegerField(default=0, db_column="opening_ts", help_text="开盘时间")
     opening_price = DecimalField(
         db_column="opening_price", default=0, max_digits=20, decimal_places=8

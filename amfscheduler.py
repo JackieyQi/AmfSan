@@ -8,7 +8,6 @@ import schedule
 import ujson as json
 
 from exts import amf_queue, queue_conn
-from settings.setting import cfgs
 
 logger = logging.getLogger(__name__)
 
@@ -27,19 +26,43 @@ def check_price_job():
     push2mq("check_price_job")
 
 
-def check_macd_job():
-    push2mq("check_macd_job")
+def check_macd_cross_job():
+    push2mq("check_macd_cross_job")
+
+
+def check_macd_trend_job():
+    push2mq("check_macd_trend_job")
+
+
+def check_balance_job():
+    push2mq("check_balance_job")
+
+
+def save_macd_job():
+    push2mq("save_macd_job")
 
 
 def save_account_balance_job():
     push2mq("save_account_balance_job")
 
 
+def save_trade_history_job():
+    push2mq("save_trade_history_job")
+
+
 def schedules():
     schedule.every(30).seconds.do(check_price_job)
-    schedule.every(13).minutes.do(check_macd_job)
-    schedule.every().day.at("02:00").do(save_account_balance_job)
-    schedule.every().day.at("14:00").do(save_account_balance_job)
+
+    schedule.every(7).minutes.do(save_macd_job)
+
+    schedule.every(13).minutes.do(check_macd_cross_job)
+    schedule.every(13).minutes.do(check_macd_trend_job)
+
+    # user action
+    schedule.every().day.at("05:00").do(save_trade_history_job)
+    schedule.every().day.at("15:27").do(check_balance_job)
+    schedule.every().day.at("03:17").do(save_account_balance_job)
+    schedule.every().day.at("15:17").do(save_account_balance_job)
 
     while True:
         schedule.run_pending()
