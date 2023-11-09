@@ -5,8 +5,9 @@ import time
 from decimal import Decimal
 
 from cache.order import (LimitPriceNoticeValueCache,
-                         LimitPriceNoticeValveCache, MarketPriceLimitCache)
-from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache
+                         LimitPriceNoticeValveCache, MarketPriceLimitCache, SymbolPriceChangeHistoryTableCache,
+                         MarketPriceCache)
+from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache, SymbolPlotTableCache
 from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime
@@ -20,12 +21,21 @@ class MarketPriceHandler(object):
         if resp_json and resp_json["status"] == "ok":
             price_info = resp_json["tick"]["data"][0]
             ts = int(int(price_info["ts"]) / 1000)
+
+            MarketPriceCache.hset(symbol.lower(), str(price_info["price"]))
             return {
                 "price": str(price_info["price"]),
                 "ts": price_info["ts"],
                 "dt": to_ctime(ts),
             }
         return {}
+
+    def get_current_price_by_cache(self, symbol=""):
+        if not symbol:
+            result = MarketPriceCache.hgetall()
+        else:
+            result = MarketPriceCache.hget(symbol.lower())
+        return result
 
     def set_value_times4limit_price_notice(self, count: int = 1):
         val = LimitPriceNoticeValueCache.get()
@@ -86,6 +96,19 @@ class MarketPriceHandler(object):
             ),
         )
 
+        SymbolPriceChangeHistoryTableCache.rpush(
+            f"{symbol}:"
+            f"{str(current_price)}:"
+            f"{str(limit_low_price or Decimal('0'))}:"
+            f"{str(low_price or Decimal('0'))}:"
+            f"{str(limit_high_price or Decimal('0'))}:"
+            f"{str(high_price or Decimal('0'))}:"
+            f"{int(time.time())}"
+        )
+        return result
+
+    def save_limit_price_change_history_to_db(
+            self, symbol, current_price, limit_low_price, low_price, limit_high_price, high_price):
         SymbolPriceChangeHistoryTable(
             symbol=symbol,
             current_price=current_price,
@@ -94,7 +117,6 @@ class MarketPriceHandler(object):
             limit_high_price=limit_high_price or Decimal("0"),
             high_price=high_price or Decimal("0"),
         ).save()
-        return result
 
     def get_limit_price(self, symbol: str = "btcusdt"):
         current_price = self.get_current_price(symbol).get("price")
@@ -125,6 +147,10 @@ class MarketPriceHandler(object):
         return result
 
     def get_last_trade_price(self, symbol):
+        last_trade_price = SymbolPlotTableCache.hget(f"{symbol.lower()}:last_price")
+        return Decimal(last_trade_price) or Decimal("0")
+
+    def get_last_trade_price_by_db(self, symbol):
         query = SymbolPlotTable.select(SymbolPlotTable.last_price).where(
             SymbolPlotTable.symbol == symbol
         )
@@ -145,6 +171,11 @@ class SymbolHandle(object):
     def add_new_plot(self):
         self.add_macd_gate()
 
+        return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 1)
+
+    def add_new_plot_to_db(self):
+        self.add_new_plot()
+
         query = SymbolPlotTable.select().where(
             SymbolPlotTable.user_id == self.user_id,
             SymbolPlotTable.symbol == self.symbol,
@@ -160,6 +191,11 @@ class SymbolHandle(object):
 
     def del_plot(self):
         self.del_macd_gate()
+
+        return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
+
+    def del_plot_to_db(self):
+        self.del_plot()
 
         query = SymbolPlotTable.select().where(
             SymbolPlotTable.user_id == self.user_id,

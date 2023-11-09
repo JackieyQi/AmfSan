@@ -11,6 +11,7 @@ from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
 from utils.common import decimal2str, str2decimal
+from utils.hrequest import http_get_request
 
 
 async def save_trade_history_job(*args, **kwargs):
@@ -79,7 +80,7 @@ async def save_account_balance_job(*args, **kwargs):
     if not asset_data:
         return
 
-    price_info = MarketPriceHandler().get_current_price()
+    price_info = MarketPriceHandler().get_current_price_by_cache("btcusdt")
     current_price = str2decimal(price_info["price"])
 
     total_btc_valuation = D("0")
@@ -141,12 +142,22 @@ class MacdDataSaveHandle(object):
         except MacdTable.DoesNotExist:
             return
 
-        resp_k = BinanceExchangeRequestHandle().get_k_lines(
-            self.symbol.upper(),
-            self.interval,
-            (db_last_macd.opening_ts - self.k_interval) * 1000,
+        # resp_k = BinanceExchangeRequestHandle().get_k_lines(
+        #     self.symbol.upper(),
+        #     self.interval,
+        #     (db_last_macd.opening_ts - self.k_interval) * 1000,
+        # )
+
+        resp_data = http_get_request(
+            f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
+            {
+                "key": "get_k_lines",
+                "symbol": self.symbol.upper(),
+                "interval": self.interval,
+                "start_ts": (db_last_macd.opening_ts - self.k_interval) * 1000,
+             }
         )
-        return resp_k
+        return resp_data
 
     def parsed_k_lines_data(self, data):
         opening_ts = int(data[0] / 1000)

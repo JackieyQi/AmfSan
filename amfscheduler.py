@@ -22,6 +22,10 @@ def push2mq(bp, **kwargs):
     queue_conn.release()
 
 
+def sync_cache_job():
+    push2mq("sync_cache_job")
+
+
 def check_price_job():
     push2mq("check_price_job")
 
@@ -51,6 +55,8 @@ def save_trade_history_job():
 
 
 def schedules():
+    schedule.every(17).seconds.do(sync_cache_job)
+
     schedule.every(30).seconds.do(check_price_job)
 
     schedule.every(7).minutes.do(save_macd_job)

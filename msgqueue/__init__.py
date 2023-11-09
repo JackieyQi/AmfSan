@@ -9,11 +9,14 @@ from amf import app
 from utils.common import ts2fmt
 
 from .queue import push
-from .tasks import dw, plot, sms
+from .tasks import dw, plot, sms, cache_sync
 
 logger = logging.getLogger(__name__)
 
 route_map = {
+    #
+    "sync_cache_job": cache_sync.sync_cache_job,
+    #
     "send_email_task": sms.send_email,
     #
     "save_macd_job": dw.save_macd_job,

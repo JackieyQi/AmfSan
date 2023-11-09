@@ -6,6 +6,8 @@ from .market import (MarketInnerPriceView, MarketMacdCrossGateView,
                      MarketMacdTrendGateView, MarketPriceGateView,
                      MarketPriceView)
 from .test import ServerTimeView, TestView
+from .cache_sync import CacheSyncView
+
 
 urls_bp = [
     (TestView.as_view(), "test/"),
@@ -18,5 +20,6 @@ urls_bp = [
         MarketInnerPriceView.as_view(),
         "api/market/innerprice/<side_str>/<symbol>/<new_price>/",
     ),
+    (CacheSyncView.as_view(), "api/cache/sync/"),
     (HuobiAccountInfoView.as_view(), "nmb"),
 ]

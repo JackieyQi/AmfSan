@@ -151,7 +151,7 @@ class PlotPriceHandle(BasePlotHandle):
         self.high_incr = "1.05"
 
     def __get_current_price(self):
-        current_price_info = self.market_price_handler.get_current_price(self.symbol)
+        current_price_info = self.market_price_handler.get_current_price_by_cache(self.symbol)
         if "price" not in current_price_info:
             self.result[
                 self.symbol

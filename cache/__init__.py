@@ -26,8 +26,26 @@ class StringCache(Base):
         return cls.redis().set(cls.key, val, ex)
 
     @classmethod
+    def incr(cls):
+        return cls.redis().incr(cls.key)
+
+    @classmethod
     def delete(cls):
         return cls.redis().delete(cls.key)
+
+
+class ListCache(Base):
+    @classmethod
+    def rpush(cls, val):
+        return cls.redis().rpush(cls.key, val)
+
+    @classmethod
+    def rpop(cls):
+        return cls.redis().rpop(cls.key)
+
+    @classmethod
+    def llen(cls):
+        return cls.redis().llen(cls.key)
 
 
 class HashCache(Base):
