@@ -80,8 +80,8 @@ async def save_account_balance_job(*args, **kwargs):
     if not asset_data:
         return
 
-    price_info = MarketPriceHandler().get_current_price_by_cache("btcusdt")
-    current_price = str2decimal(price_info["price"])
+    current_price = MarketPriceHandler().get_current_price_by_cache("btcusdt")
+    current_price = str2decimal(current_price or "0")
 
     total_btc_valuation = D("0")
     for i in asset_data:

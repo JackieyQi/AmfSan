@@ -151,8 +151,8 @@ class PlotPriceHandle(BasePlotHandle):
         self.high_incr = "1.05"
 
     def __get_current_price(self):
-        current_price_info = self.market_price_handler.get_current_price_by_cache(self.symbol)
-        if "price" not in current_price_info:
+        cache_result = self.market_price_handler.get_current_price_by_cache(self.symbol)
+        if not cache_result:
             self.result[
                 self.symbol
             ] = f"""
@@ -163,7 +163,7 @@ class PlotPriceHandle(BasePlotHandle):
             """
             return
 
-        current_price = str2decimal(current_price_info["price"])
+        current_price = str2decimal(cache_result)
         return current_price
 
     def __check_limit_low_price(self, current_price):

@@ -19,7 +19,7 @@ async def sync_cache_job(*args, **kwargs):
     if resp_data:
         for k, v in resp_data["data"].items():
             symbol = k.lower()
-            limit_price = MarketPriceLimitCache.hget(str)
+            limit_price = MarketPriceLimitCache.hget(symbol)
             if not limit_price:
                 limit_low_price, limit_high_price = "", ""
             else:
