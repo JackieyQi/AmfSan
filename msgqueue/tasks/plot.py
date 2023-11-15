@@ -183,11 +183,12 @@ class PlotPriceHandle(BasePlotHandle):
         <br><a href={INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}>Delete price check.<a>
         """
 
-        self.market_price_handler.set_limit_price(
-            self.symbol,
-            Decimal(decimal2str(self.limit_low_price * Decimal(self.low_incr))),
-            Decimal(decimal2str(self.limit_high_price * Decimal(self.low_incr))),
-        )
+        # TODO:脚本任务, 自动调整本地限价, 同时调用API调整server限价
+        # self.market_price_handler.set_limit_price(
+        #     self.symbol,
+        #     Decimal(decimal2str(self.limit_low_price * Decimal(self.low_incr))),
+        #     Decimal(decimal2str(self.limit_high_price * Decimal(self.low_incr))),
+        # )
 
     def __check_limit_high_price(self, current_price):
         if not self.limit_high_price:
@@ -206,11 +207,12 @@ class PlotPriceHandle(BasePlotHandle):
         <br><a href={INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}>Delete price check.<a>
         """
 
-        self.market_price_handler.set_limit_price(
-            self.symbol,
-            Decimal(decimal2str(self.limit_low_price * Decimal(self.high_incr))),
-            Decimal(decimal2str(self.limit_high_price * Decimal(self.high_incr))),
-        )
+        # TODO:脚本任务, 自动调整本地限价, 同时调用API调整server限价
+        # self.market_price_handler.set_limit_price(
+        #     self.symbol,
+        #     Decimal(decimal2str(self.limit_low_price * Decimal(self.high_incr))),
+        #     Decimal(decimal2str(self.limit_high_price * Decimal(self.high_incr))),
+        # )
 
     async def check_limit_price(self):
         email_title = f"{self.symbol} Price Notice"

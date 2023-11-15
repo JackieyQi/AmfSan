@@ -147,7 +147,7 @@ class MarketPriceHandler(object):
         return result
 
     def get_last_trade_price(self, symbol):
-        last_trade_price = SymbolPlotTableCache.hget(f"{symbol.lower()}:last_price")
+        last_trade_price = SymbolPlotTableCache.hget(f"{symbol.lower()}:last_price") or "0"
         return Decimal(last_trade_price) or Decimal("0")
 
     def get_last_trade_price_by_db(self, symbol):

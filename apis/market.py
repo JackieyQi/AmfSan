@@ -60,11 +60,11 @@ class MarketPriceView(HTTPMethodView):
             set_limit_price_result = "fail"
             set_limit_price_code = None
 
-        db_new_plot_result = SymbolHandle(symbol).add_new_plot()
+        new_plot_result = SymbolHandle(symbol).add_new_plot()
         return {
             "set_limit_price_result": set_limit_price_result,
             "set_limit_price_code": set_limit_price_code,
-            "db_new_plot_result": db_new_plot_result,
+            "new_plot_result": new_plot_result,
         }
 
 

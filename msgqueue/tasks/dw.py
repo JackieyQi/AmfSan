@@ -127,7 +127,7 @@ class MacdDataSaveHandle(object):
         else:
             self.interval, self.interval_sec, self.k_interval = None, None, None
 
-    def get_k_lines_by_openapi(self):
+    def get_k_lines_by_innerapi(self):
         try:
             db_last_macd = (
                 MacdTable.select()
@@ -157,7 +157,8 @@ class MacdDataSaveHandle(object):
                 "start_ts": (db_last_macd.opening_ts - self.k_interval) * 1000,
              }
         )
-        return resp_data
+        if resp_data:
+            return resp_data["data"]
 
     def parsed_k_lines_data(self, data):
         opening_ts = int(data[0] / 1000)
@@ -212,7 +213,7 @@ class MacdDataSaveHandle(object):
         if not self.interval:
             return
 
-        k_data = self.get_k_lines_by_openapi()
+        k_data = self.get_k_lines_by_innerapi()
         if not k_data:
             return
 
