@@ -4,7 +4,7 @@
 from settings.setting import cfgs
 from utils.hrequest import http_get_request
 from cache.order import MarketPriceCache, MarketPriceLimitCache
-from business.market import MarketPriceHandler
+from business.market import MarketPriceHandler, SymbolHandle
 
 
 async def sync_cache_job(*args, **kwargs):
@@ -31,4 +31,4 @@ async def sync_cache_job(*args, **kwargs):
                 symbol, current_price, limit_low_price, v[0], limit_high_price, v[1]
             )
 
-
+            SymbolHandle(symbol).add_new_plot_to_db()

@@ -109,14 +109,16 @@ class MarketPriceHandler(object):
 
     def save_limit_price_change_history_to_db(
             self, symbol, current_price, limit_low_price, low_price, limit_high_price, high_price):
-        SymbolPriceChangeHistoryTable(
-            symbol=symbol,
-            current_price=current_price,
-            limit_low_price=limit_low_price or Decimal("0"),
-            low_price=low_price or Decimal("0"),
-            limit_high_price=limit_high_price or Decimal("0"),
-            high_price=high_price or Decimal("0"),
-        ).save()
+        # TODO: 数据更改了才记录
+        pass
+        # SymbolPriceChangeHistoryTable(
+        #     symbol=symbol,
+        #     current_price=current_price,
+        #     limit_low_price=limit_low_price or Decimal("0"),
+        #     low_price=low_price or Decimal("0"),
+        #     limit_high_price=limit_high_price or Decimal("0"),
+        #     high_price=high_price or Decimal("0"),
+        # ).save()
 
     def get_limit_price(self, symbol: str = "btcusdt"):
         current_price = self.get_current_price(symbol).get("price")
