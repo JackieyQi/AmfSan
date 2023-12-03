@@ -230,6 +230,7 @@ class PlotPriceHandle(BasePlotHandle):
         email_msg_md5_str = f"check_limit_price:{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
+            # 当前限价检查存在时，不再推送消息
             return EmailMsgHistoryTable.get(
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )

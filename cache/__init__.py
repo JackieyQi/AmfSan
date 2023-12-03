@@ -47,6 +47,10 @@ class ListCache(Base):
     def llen(cls):
         return cls.redis().llen(cls.key)
 
+    @classmethod
+    def delete(cls):
+        return cls.redis().delete(cls.key)
+
 
 class HashCache(Base):
     @classmethod
@@ -72,3 +76,7 @@ class HashCache(Base):
     @classmethod
     def hmset(cls, map_vals):
         return cls.redis().hmset(cls.key, map_vals)
+
+    @classmethod
+    def delete(cls):
+        return cls.redis().delete(cls.key)

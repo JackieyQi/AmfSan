@@ -12,11 +12,16 @@ async def sync_cache_job(*args, **kwargs):
 
     resp_data = http_get_request(url, {"key": "market_price"})
     if resp_data:
+        MarketPriceCache.delete()
         for k, v in resp_data["data"].items():
             MarketPriceCache.hset(k.lower(), str(v))
 
     resp_data = http_get_request(url, {"key": "market_price_limit"})
     if resp_data:
+        all_symbols = MarketPriceHandler().get_all_limit_price().keys()
+        MarketPriceLimitCache.delete()
+
+        current_all_symbols = []
         for k, v in resp_data["data"].items():
             symbol = k.lower()
             limit_price = MarketPriceLimitCache.hget(symbol)
@@ -31,4 +36,12 @@ async def sync_cache_job(*args, **kwargs):
                 symbol, current_price, limit_low_price, v[0], limit_high_price, v[1]
             )
 
-            SymbolHandle(symbol).add_new_plot_to_db()
+            current_all_symbols.append(symbol)
+
+            if symbol not in all_symbols:
+                SymbolHandle(symbol).add_new_plot_to_db()
+
+        for symbol in all_symbols:
+            if symbol in current_all_symbols:
+                continue
+            SymbolHandle(symbol).del_plot_to_db()
