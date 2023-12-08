@@ -11,7 +11,21 @@ class CacheSyncView(HTTPMethodView):
     async def get(self, request):
         key = request.form.get("key", "").strip().lower()
         if not key:
-            return "Invalid params:key"
+            result = {}
+            from cache import AllCache
+            redis_client = AllCache.get_client()
+            for key in redis_client.keys() or []:
+                if redis_client.type(key) == "string":
+                    result[key] = {
+                        "redis_type": "hash",
+                        "redis_data": redis_client.get(key),
+                    }
+                elif redis_client.type(key) == "hash":
+                    result[key] = {
+                        "redis_type": "hash",
+                        "redis_data": redis_client.hgetall(key),
+                    }
+            return result
 
         if key == "market_price_limit":
             result = MarketPriceHandler().get_all_limit_price()

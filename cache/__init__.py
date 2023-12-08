@@ -16,6 +16,20 @@ class Base(object):
         return r_client
 
 
+class AllCache(Base):
+    @classmethod
+    def get_client(cls):
+        return cls.redis()
+
+    @classmethod
+    def get_all(cls):
+        return cls.redis().keys()
+
+    @classmethod
+    def get_type(cls, val):
+        return cls.redis().type(val)
+
+
 class StringCache(Base):
     @classmethod
     def get(cls):
