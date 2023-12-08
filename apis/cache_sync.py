@@ -17,7 +17,7 @@ class CacheSyncView(HTTPMethodView):
             for key in redis_client.keys() or []:
                 if redis_client.type(key) == "string":
                     result[key] = {
-                        "redis_type": "hash",
+                        "redis_type": "string",
                         "redis_data": redis_client.get(key),
                     }
                 elif redis_client.type(key) == "hash":
