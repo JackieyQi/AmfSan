@@ -22,7 +22,7 @@ async def sync_cache_job(*args, **kwargs):
 
             elif val["redis_type"] == "hash":
                 redis_client.delete(k)
-                for _k, _v in val["redis_data"]:
+                for _k, _v in val["redis_data"].items():
                     redis_client.hset(k, _k, _v)
 
     resp_data = http_get_request(url, {"key": "market_price"})
