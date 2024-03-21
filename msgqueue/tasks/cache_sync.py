@@ -27,7 +27,7 @@ async def sync_cache_job(*args, **kwargs):
             for _k, _v in val["redis_data"].items():
                 redis_client.hset(k, _k, _v)
 
-                if k == "market_price_limit":
+                if k == "market:price:limit":
                     _symbol = _k.lower()
                     SymbolHandle(_symbol).add_new_plot_to_db()
 
