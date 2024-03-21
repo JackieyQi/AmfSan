@@ -303,7 +303,8 @@ class PlotMacdHandle(BasePlotHandle):
             <br><a>Error: not macd data, {self.symbol}:{self.interval}</a>
             <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
             """
-            return await self.send_msg(email_title, "".join(self.result.values()))
+            # return await self.send_msg(email_title, "".join(self.result.values()))
+            return
         elif len(macd_list) < limit_count:
             self.result[
                 self.symbol
@@ -369,7 +370,8 @@ class PlotMacdHandle(BasePlotHandle):
             <br><a>Error: not macd data, {self.symbol}:{self.interval}</a>
             <br><a href={INNER_GET_DELETE_MACD_TREND_URL}{self.symbol + '_' + self.interval}>Delete trend check.</a>
             """
-            return await self.send_msg(email_title, "".join(self.result.values()))
+            # return await self.send_msg(email_title, "".join(self.result.values()))
+            return
         elif len(macd_list) < limit_count:
             self.result[
                 self.symbol
