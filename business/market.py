@@ -10,7 +10,7 @@ from cache.order import (LimitPriceNoticeValueCache,
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache, SymbolPlotTableCache
 from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable
 from settings.constants import *
-from utils.common import str2decimal, to_ctime
+from utils.common import str2decimal, to_ctime, decimal2str, Decimal
 from utils.exception import StandardResponseExc
 from utils.hrequest import http_get_request
 
@@ -21,10 +21,11 @@ class MarketPriceHandler(object):
         if resp_json and resp_json["status"] == "ok":
             price_info = resp_json["tick"]["data"][0]
             ts = int(int(price_info["ts"]) / 1000)
+            price_str = decimal2str(Decimal(price_info["price"]))
 
-            MarketPriceCache.hset(symbol.lower(), str(price_info["price"]))
+            MarketPriceCache.hset(symbol.lower(), price_str)
             return {
-                "price": str(price_info["price"]),
+                "price": price_str,
                 "ts": price_info["ts"],
                 "dt": to_ctime(ts),
             }

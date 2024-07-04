@@ -33,9 +33,9 @@ class MarketPriceView(HTTPMethodView):
                 result[k] = {
                     "symbol": k,
                     "current_price": current_price,
-                    "limit_low_price": decimal2str(limit_low_price, num=2),
-                    "limit_high_price": decimal2str(limit_high_price, num=2),
-                    "last_my_trade_price": decimal2str(last_my_trade_price, num=2),
+                    "limit_low_price": decimal2str(limit_low_price),
+                    "limit_high_price": decimal2str(limit_high_price),
+                    "last_my_trade_price": decimal2str(last_my_trade_price),
                 }
 
         return result
