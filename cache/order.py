@@ -39,3 +39,22 @@ class LimitPriceNoticeValveCache(StringCache):
 class LimitPriceNoticeValueCache(StringCache):
     # TODO:tmp set symbol
     key = "value:price:notice:btcusdt"
+
+
+class MarketMacdCache(StringCache):
+    """
+    cmd: get macd:btcusdt:macd_1d
+    return:
+        "{\"macd_1d\":[{\"symbol\":\"btcusdt\",\"interval\":\"1d\",
+        \"opening_ts\":1650153600,\"opening_price\":\"40378.70\",
+        \"closing_price\":\"39678.12\",\"ema_12\":\"41340.21\",
+        \"ema_26\":\"42207.85\",\"dea\":\"-330.05\"},{\"symbol\":
+        \"btcusdt\",\"interval\":\"1d\",\"opening_ts\":1650240000,
+        \"opening_price\":\"39678.11\",\"closing_price\":\"40801.13\",
+        \"ema_12\":\"41257.27\",\"ema_26\":\"42103.64\",\"dea\":\"-433.31\",\"macd\":\"-413.05\"}]}"
+    """
+    key = "MarketMacdCache"
+
+    def __init__(self, symbol, macd_type):
+        super().__init__()
+        MarketMacdCache.key = f"macd:{symbol}:{macd_type}"

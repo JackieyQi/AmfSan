@@ -8,6 +8,7 @@ r_client = None
 
 
 class Base(object):
+    key = "Base"
     @staticmethod
     def redis():
         global r_client
