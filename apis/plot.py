@@ -4,6 +4,7 @@
 import ujson as json
 from sanic.views import HTTPMethodView
 from cache.order import MarketMacdCache
+from settings.constants import MACD_INTERVAL_LIST
 
 
 class PlotMacdView(HTTPMethodView):
@@ -15,19 +16,12 @@ class PlotMacdView(HTTPMethodView):
     async def post(self, request):
         json_data = request.json
         for symbol, data in json_data.items():
-            if "macd_1h" in data:
-                MarketMacdCache(symbol.lower(), "macd_1h").set(
-                    json.dumps({"macd_1h": data["macd_1h"]})
-                )
+            for _interval in MACD_INTERVAL_LIST:
 
-            if "macd_4h" in data:
-                MarketMacdCache(symbol.lower(), "macd_4h").set(
-                    json.dumps({"macd_4h": data["macd_4h"]})
-                )
-
-            if "macd_1d" in data:
-                MarketMacdCache(symbol.lower(), "macd_1d").set(
-                    json.dumps({"macd_1d": data["macd_1d"]})
-                )
+                macd_interval = f"macd_{_interval}"
+                if macd_interval in data:
+                    MarketMacdCache(symbol.lower(), macd_interval).set(
+                        json.dumps({macd_interval: data[macd_interval]})
+                    )
 
         return "handle over!"

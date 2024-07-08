@@ -21,3 +21,6 @@ INNER_GET_DELETE_MACD_TREND_URL = "{}/api/market/macd/trend/gate?key=".format(
     cfgs["http"]["inner_url"]
 )
 INNER_UPDATE_PRICE_URL = "{}"
+
+
+MACD_INTERVAL_LIST = ["5m", "1h", "4h", "1d"]

@@ -6,12 +6,14 @@ from decimal import Decimal as D
 
 from business.binance_exchange import BinanceExchangeRequestHandle
 # from business.huobi_exchange import HuobiExchangeAccountHandle
-from business.market import MarketPriceHandler
+from business.market import MarketPriceHandler, MacdInitData
 from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
+from settings.constants import MACD_INTERVAL_LIST
 from utils.common import decimal2str, str2decimal
 from utils.hrequest import http_get_request
+from cache.order import MarketMacdCache
 
 
 async def save_trade_history_job(*args, **kwargs):
@@ -101,10 +103,9 @@ async def save_account_balance_job(*args, **kwargs):
 
 
 async def save_macd_job(*args, **kwargs):
-    macd_config = ["4h", "1h", "1d"]
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
-        for _interval in macd_config:
+        for _interval in MACD_INTERVAL_LIST:
             await MacdDataSaveHandle(row.symbol, _interval).save_data()
 
 
@@ -209,9 +210,19 @@ class MacdDataSaveHandle(object):
                 macd=now_macd,
             )
 
+    def __init_macd_cache_data(self):
+        cache_data = MarketMacdCache(self.symbol, f"macd_{self.interval}").get()
+        if not cache_data:
+            return
+
+        macd_init_data = {f"macd_{self.interval}": json.loads(cache_data)}
+        MacdInitData(macd_init_data).start(self.interval)
+
     async def save_data(self):
         if not self.interval:
             return
+
+        self.__init_macd_cache_data()
 
         k_data = self.get_k_lines_by_innerapi()
         if not k_data:
