@@ -169,8 +169,6 @@ class SymbolHandle(object):
         self.user_id = 2
         self.symbol = symbol
 
-        self.macd_config = ["4h", "1h", "1d"]
-
     def add_new_plot(self):
         self.add_macd_gate()
 
@@ -214,12 +212,14 @@ class SymbolHandle(object):
         return 1
 
     def add_macd_gate(self):
-        for i in self.macd_config:
+        # TODO
+        for i in MACD_INTERVAL_LIST:
             CheckMacdCrossGateCache.hset(f"{self.symbol}:{i}", 1)
             CheckMacdTrendGateCache.hset(f"{self.symbol}:{i}", 1)
 
     def del_macd_gate(self):
-        for i in self.macd_config:
+        # TODO
+        for i in MACD_INTERVAL_LIST:
             CheckMacdCrossGateCache.hdel(f"{self.symbol}:{i}")
             CheckMacdTrendGateCache.hdel(f"{self.symbol}:{i}")
 

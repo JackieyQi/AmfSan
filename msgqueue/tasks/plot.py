@@ -14,7 +14,9 @@ from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
                                 INNER_GET_DELETE_MACD_CROSS_URL,
                                 INNER_GET_DELETE_MACD_TREND_URL,
                                 INNER_GET_PRICE_URL,
-                                INNER_GET_UPDATE_PRICE_URL)
+                                INNER_GET_UPDATE_PRICE_URL,
+                                MACD_INTERVAL_LIST,
+                                )
 from utils.common import decimal2str, str2decimal, ts2bjfmt
 from utils.templates import (template_asset_notice, template_macd_cross_notice,
                              template_macd_trend_notice)
@@ -31,20 +33,18 @@ async def check_balance(*args, **kwargs):
 
 
 async def check_macd_cross(*args, **kwargs):
-    macd_config = ["4h", "1h", "1d"]
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
-        for _interval in macd_config:
+        for _interval in MACD_INTERVAL_LIST:
             if not CheckMacdCrossGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
             await PlotMacdHandle(row.symbol, _interval).check_cross()
 
 
 async def check_macd_trend(*args, **kwargs):
-    macd_config = ["4h", "1h", "1d"]
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
-        for _interval in macd_config:
+        for _interval in MACD_INTERVAL_LIST:
             if not CheckMacdTrendGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
             await PlotMacdHandle(row.symbol, _interval).check_trend()
@@ -259,6 +259,10 @@ class PlotMacdHandle(BasePlotHandle):
             self.interval = "1d"
             self.interval_sec = 24 * 3600
             self.k_interval = 27 * 3600
+        elif interval == "5m":
+            self.interval = "5m"
+            self.interval_sec = 5 * 60
+            self.k_interval = 7 * 60
         else:
             self.interval, self.interval_sec, self.k_interval = None, None, None
 

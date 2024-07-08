@@ -125,6 +125,10 @@ class MacdDataSaveHandle(object):
             self.interval = "1d"
             self.interval_sec = 24 * 3600
             self.k_interval = 27 * 3600
+        elif interval == "5m":
+            self.interval = "5m"
+            self.interval_sec = 5 * 60
+            self.k_interval = 7 * 60
         else:
             self.interval, self.interval_sec, self.k_interval = None, None, None
 
