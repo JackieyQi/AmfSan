@@ -59,7 +59,7 @@ def schedules():
 
     schedule.every(30).seconds.do(check_price_job)
 
-    schedule.every(7).minutes.do(save_macd_job)
+    schedule.every(3).minutes.do(save_macd_job)
 
     schedule.every(13).minutes.do(check_macd_cross_job)
     schedule.every(13).minutes.do(check_macd_trend_job)

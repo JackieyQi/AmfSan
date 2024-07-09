@@ -20,8 +20,9 @@ class PlotMacdView(HTTPMethodView):
 
                 macd_interval = f"macd_{_interval}"
                 if macd_interval in data:
-                    MarketMacdCache(symbol.lower(), macd_interval).set(
-                        json.dumps({macd_interval: data[macd_interval]})
-                    )
+                    MarketMacdCache(
+                        symbol.lower(),
+                        macd_interval
+                    ).set(json.dumps(data[macd_interval]))
 
         return "handle over!"
