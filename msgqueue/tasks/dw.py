@@ -191,7 +191,7 @@ class MacdDataSaveHandle(object):
         now_ema_26 = last_macd_data.ema_26 * 25 / 27 + closing_price * 2 / 27
         now_dea = last_macd_data.dea * 8 / 10 + (now_ema_12 - now_ema_26) * 2 / 10
         # now_dif = now_ema_12 - now_ema_26
-        now_macd = D(decimal2str(now_ema_12 - now_ema_26 - now_dea, 2))
+        now_macd = D(decimal2str(now_ema_12 - now_ema_26 - now_dea))
         if now_macd_data:
             now_macd_data.opening_ts = opening_ts
             now_macd_data.opening_price = opening_price
@@ -202,17 +202,22 @@ class MacdDataSaveHandle(object):
             now_macd_data.macd = now_macd
             now_macd_data.save()
         else:
-            _ = MacdTable.create(
-                symbol=self.symbol,
-                interval_val=self.interval,
-                opening_ts=opening_ts,
-                opening_price=opening_price,
-                closing_price=closing_price,
-                ema_12=now_ema_12,
-                ema_26=now_ema_26,
-                dea=now_dea,
-                macd=now_macd,
-            )
+            if not MacdTable.select().where(
+                    MacdTable.symbol == self.symbol,
+                    MacdTable.opening_ts == opening_ts,
+                    MacdTable.interval_val == self.interval,
+            ):
+                _ = MacdTable.create(
+                    symbol=self.symbol,
+                    interval_val=self.interval,
+                    opening_ts=opening_ts,
+                    opening_price=opening_price,
+                    closing_price=closing_price,
+                    ema_12=now_ema_12,
+                    ema_26=now_ema_26,
+                    dea=now_dea,
+                    macd=now_macd,
+                )
 
     def __init_macd_cache_data(self):
         cache_data = MarketMacdCache(self.symbol, f"macd_{self.interval}").get()

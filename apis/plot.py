@@ -5,6 +5,7 @@ import ujson as json
 from sanic.views import HTTPMethodView
 from cache.order import MarketMacdCache
 from settings.constants import MACD_INTERVAL_LIST
+from business.market import SymbolHandle
 
 
 class PlotMacdView(HTTPMethodView):
@@ -24,5 +25,7 @@ class PlotMacdView(HTTPMethodView):
                         symbol.lower(),
                         macd_interval
                     ).set(json.dumps(data[macd_interval]))
+
+                    SymbolHandle(symbol).add_macd_gate(_interval)
 
         return "handle over!"

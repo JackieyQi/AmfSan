@@ -170,12 +170,9 @@ class SymbolHandle(object):
         self.symbol = symbol
 
     def add_new_plot(self):
-        self.add_macd_gate()
-
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 1)
 
-    def add_new_plot_to_db(self):
-        self.add_new_plot()
+    def add_plot_to_db(self):
 
         query = SymbolPlotTable.select().where(
             SymbolPlotTable.user_id == self.user_id,
@@ -196,7 +193,6 @@ class SymbolHandle(object):
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
 
     def del_plot_to_db(self):
-        self.del_plot()
 
         query = SymbolPlotTable.select().where(
             SymbolPlotTable.user_id == self.user_id,
@@ -211,17 +207,23 @@ class SymbolHandle(object):
 
         return 1
 
-    def add_macd_gate(self):
-        # TODO
-        for i in MACD_INTERVAL_LIST:
-            CheckMacdCrossGateCache.hset(f"{self.symbol}:{i}", 1)
-            CheckMacdTrendGateCache.hset(f"{self.symbol}:{i}", 1)
+    def add_macd_gate(self, interval=""):
+        if interval in MACD_INTERVAL_LIST:
+            CheckMacdCrossGateCache.hset(f"{self.symbol}:{interval}", 1)
+            CheckMacdTrendGateCache.hset(f"{self.symbol}:{interval}", 1)
+        else:
+            for i in MACD_INTERVAL_LIST:
+                CheckMacdCrossGateCache.hset(f"{self.symbol}:{i}", 1)
+                CheckMacdTrendGateCache.hset(f"{self.symbol}:{i}", 1)
 
-    def del_macd_gate(self):
-        # TODO
-        for i in MACD_INTERVAL_LIST:
-            CheckMacdCrossGateCache.hdel(f"{self.symbol}:{i}")
-            CheckMacdTrendGateCache.hdel(f"{self.symbol}:{i}")
+    def del_macd_gate(self, interval=""):
+        if interval in MACD_INTERVAL_LIST:
+            CheckMacdCrossGateCache.hdel(f"{self.symbol}:{interval}")
+            CheckMacdTrendGateCache.hdel(f"{self.symbol}:{interval}")
+        else:
+            for i in MACD_INTERVAL_LIST:
+                CheckMacdCrossGateCache.hdel(f"{self.symbol}:{i}")
+                CheckMacdTrendGateCache.hdel(f"{self.symbol}:{i}")
 
     def del_macd_cross_gate(self, interval):
         return CheckMacdCrossGateCache.hdel(f"{self.symbol}:{interval}")

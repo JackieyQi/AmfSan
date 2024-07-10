@@ -4,7 +4,8 @@
 from settings.setting import cfgs
 from utils.hrequest import http_get_request
 from cache import AllCache
-from cache.order import MarketPriceCache, MarketPriceLimitCache
+from cache.order import MarketPriceCache, MarketPriceLimitCache, MarketMacdCache
+from cache.plot import SymbolPlotTableCache
 from business.market import MarketPriceHandler, SymbolHandle
 
 
@@ -20,18 +21,17 @@ async def sync_cache_job(*args, **kwargs):
     for k, val in resp_data.items():
         if val["redis_type"] == "string":
             redis_client.delete(k)
-            redis_client.set(k, val["redis_data"])
+            redis_client.set(k, val["redis_data"], ex=180)
 
         elif val["redis_type"] == "hash":
             redis_client.delete(k)
             for _k, _v in val["redis_data"].items():
                 redis_client.hset(k, _k, _v)
 
-                if k == "market:price:limit":
-                    _symbol = _k.lower()
-                    SymbolHandle(_symbol).add_new_plot_to_db()
-
-        # for symbol in all_symbols:
-        #     if symbol in current_all_symbols:
-        #         continue
-        #     SymbolHandle(symbol).del_plot_to_db()
+                if k == SymbolPlotTableCache.key:
+                    _symbol = _k.split(":")[0]
+                    is_valid = int(_v)
+                    if is_valid:
+                        SymbolHandle(_symbol).add_plot_to_db()
+                    else:
+                        SymbolHandle(_symbol).del_plot_to_db()
