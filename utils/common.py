@@ -26,7 +26,7 @@ def ts2fmt(ts=None):
 
 
 def ts2bjfmt(ts=None):
-    return (datetime.fromtimestamp(ts or time.time()) + timedelta(hours=8)).strftime(
+    return (datetime.fromtimestamp(ts or time.time()) + timedelta(hours=0)).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
 
