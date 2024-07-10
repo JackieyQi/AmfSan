@@ -325,7 +325,8 @@ class PlotMacdHandle(BasePlotHandle):
                 self.symbol
             ] = f"""
             <br><a>Error: no lastest macd data, {self.symbol}:{self.interval}</a>
-            <br><a>opening_ts:{now_macd_data.opening_ts}, now_ts:{now_ts}</a>
+            <br><a>opening_ts:{ts2bjfmt(now_macd_data.opening_ts)}</a>
+            <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
             <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
             """
 
