@@ -8,6 +8,7 @@ from cache.order import (LimitPriceNoticeValueCache,
                          LimitPriceNoticeValveCache, MarketPriceLimitCache, SymbolPriceChangeHistoryTableCache,
                          MarketPriceCache)
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache, SymbolPlotTableCache
+from models.market import KlineTable
 from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime, decimal2str, Decimal
@@ -208,20 +209,20 @@ class SymbolHandle(object):
         return 1
 
     def add_macd_gate(self, interval=""):
-        if interval in MACD_INTERVAL_LIST:
+        if interval in PLOT_INTERVAL_LIST:
             CheckMacdCrossGateCache.hset(f"{self.symbol}:{interval}", 1)
             CheckMacdTrendGateCache.hset(f"{self.symbol}:{interval}", 1)
         else:
-            for i in MACD_INTERVAL_LIST:
+            for i in PLOT_INTERVAL_LIST:
                 CheckMacdCrossGateCache.hset(f"{self.symbol}:{i}", 1)
                 CheckMacdTrendGateCache.hset(f"{self.symbol}:{i}", 1)
 
     def del_macd_gate(self, interval=""):
-        if interval in MACD_INTERVAL_LIST:
+        if interval in PLOT_INTERVAL_LIST:
             CheckMacdCrossGateCache.hdel(f"{self.symbol}:{interval}")
             CheckMacdTrendGateCache.hdel(f"{self.symbol}:{interval}")
         else:
-            for i in MACD_INTERVAL_LIST:
+            for i in PLOT_INTERVAL_LIST:
                 CheckMacdCrossGateCache.hdel(f"{self.symbol}:{i}")
                 CheckMacdTrendGateCache.hdel(f"{self.symbol}:{i}")
 
@@ -239,6 +240,8 @@ class MacdInitData(object):
     def start(self, interval):
         data = self.macd_init_data.get(f"macd_{interval}")
         for i in data:
+            KlineInitData.save(i["symbol"].lower(), i["opening_ts"], i["interval"].lower())
+
             if MacdTable.select().where(
                 MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
@@ -270,3 +273,22 @@ class MacdInitData(object):
             .get()
         )
         return db_last_macd.id
+
+
+class KlineInitData(object):
+
+    @staticmethod
+    def save(symbol, open_ts, interval):
+        if KlineTable.select().where(
+            KlineTable.symbol == symbol.lower(),
+            KlineTable.open_ts == open_ts,
+            KlineTable.interval_val == interval.lower(),
+        ):
+            print("already")
+        else:
+            KlineTable(
+                symbol=symbol.lower(),
+                interval_val=interval.lower(),
+                open_ts=open_ts,
+                create_ts=int(time.time()),
+            ).save()

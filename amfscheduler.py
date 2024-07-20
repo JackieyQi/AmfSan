@@ -42,6 +42,10 @@ def check_balance_job():
     push2mq("check_balance_job")
 
 
+def save_kline_job():
+    push2mq("save_kline_job")
+
+
 def save_macd_job():
     push2mq("save_macd_job")
 
@@ -59,7 +63,9 @@ def schedules():
 
     schedule.every(30).seconds.do(check_price_job)
 
+    schedule.every(1).minutes.do(save_kline_job)
     schedule.every(1).minutes.do(save_macd_job)
+    # schedule.every(1).minutes.do(save_kdj_job)
 
     schedule.every(3).minutes.do(check_macd_cross_job)
     # schedule.every(13).minutes.do(check_macd_trend_job)

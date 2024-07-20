@@ -15,7 +15,7 @@ from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
                                 INNER_GET_DELETE_MACD_TREND_URL,
                                 INNER_GET_PRICE_URL,
                                 INNER_GET_UPDATE_PRICE_URL,
-                                MACD_INTERVAL_LIST,
+                                PLOT_INTERVAL_LIST,
                                 )
 from utils.common import decimal2str, str2decimal, ts2bjfmt
 from utils.templates import (template_asset_notice, template_macd_cross_notice,
@@ -35,7 +35,7 @@ async def check_balance(*args, **kwargs):
 async def check_macd_cross(*args, **kwargs):
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
-        for _interval in MACD_INTERVAL_LIST:
+        for _interval in PLOT_INTERVAL_LIST:
             if not CheckMacdCrossGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
             await PlotMacdHandle(row.symbol, _interval).check_cross()
@@ -44,7 +44,7 @@ async def check_macd_cross(*args, **kwargs):
 async def check_macd_trend(*args, **kwargs):
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
-        for _interval in MACD_INTERVAL_LIST:
+        for _interval in PLOT_INTERVAL_LIST:
             if not CheckMacdTrendGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
             await PlotMacdHandle(row.symbol, _interval).check_trend()

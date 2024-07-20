@@ -19,6 +19,7 @@ route_map = {
     #
     "send_email_task": sms.send_email,
     #
+    "save_kline_job": dw.save_kline_job,
     "save_macd_job": dw.save_macd_job,
     "save_account_balance_job": dw.save_account_balance_job,
     "save_trade_history_job": dw.save_trade_history_job,

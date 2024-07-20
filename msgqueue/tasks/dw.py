@@ -7,10 +7,11 @@ from decimal import Decimal as D
 from business.binance_exchange import BinanceExchangeRequestHandle
 # from business.huobi_exchange import HuobiExchangeAccountHandle
 from business.market import MarketPriceHandler, MacdInitData
+from models.market import KlineTable
 from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
-from settings.constants import MACD_INTERVAL_LIST
+from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
 from utils.common import decimal2str, str2decimal
 from utils.hrequest import http_get_request
 from cache.order import MarketMacdCache
@@ -102,37 +103,127 @@ async def save_account_balance_job(*args, **kwargs):
     ).save()
 
 
+async def save_kline_job(*args, **kwargs):
+    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    for row in query:
+        for _interval in PLOT_INTERVAL_LIST:
+            await KlineDataSaveHandle(row.symbol, _interval).save_data()
+
+
+class KlineDataSaveHandle(object):
+    def __init__(self, symbol, interval):
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+    def get_k_lines_by_innerapi(self):
+        try:
+            db_last_k = (
+                KlineTable.select()
+                .where(
+                    KlineTable.symbol == self.symbol,
+                    KlineTable.interval_val == self.interval,
+                )
+                .order_by(KlineTable.id.desc())
+                .limit(1)
+                .get()
+            )
+        except KlineTable.DoesNotExist:
+            return
+
+        resp_data = http_get_request(
+            f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
+            {
+                "key": "get_k_lines",
+                "symbol": self.symbol.upper(),
+                "interval": self.interval,
+                "start_ts": (db_last_k.opening_ts - self.k_interval) * 1000,
+             }
+        )
+        if resp_data:
+            return resp_data["data"]
+
+    def __init_cache_data(self):
+        macd_cache_data = MarketMacdCache(self.symbol, f"macd_{self.interval}").get()
+        if macd_cache_data:
+            macd_init_data = {f"macd_{self.interval}": json.loads(macd_cache_data)}
+            MacdInitData(macd_init_data).start(self.interval)
+
+    async def save_data(self):
+        if not self.interval:
+            return
+
+        self.__init_cache_data()
+
+        k_data = self.get_k_lines_by_innerapi()
+        if not k_data:
+            return
+
+        for data in k_data:
+            open_ts = int(data[0] / 1000)
+            open_price = D(data[1])
+            high_price = D(data[2])
+            low_price = D(data[3])
+            close_price = D(data[4])
+            volume = D(data[5])
+            close_ts = int(data[6] / 1000)
+            asset_volume = D(data[7])
+            trade_number = int(data[8])
+            buy_volume = D(data[9])
+            buy_asset_volume = D(data[10])
+
+            last_db_k = KlineTable.select().where(
+                    KlineTable.symbol == self.symbol,
+                    KlineTable.open_ts == open_ts,
+                    KlineTable.interval_val == self.interval,
+            )
+            if last_db_k:
+                last_db_k.open_ts = open_ts
+                last_db_k.open_price = open_price
+                last_db_k.high_price = high_price
+                last_db_k.low_price = low_price
+                last_db_k.close_price = close_price
+                last_db_k.volume = volume
+                last_db_k.close_ts = close_ts
+                last_db_k.asset_volume = asset_volume
+                last_db_k.trade_number = trade_number
+                last_db_k.buy_volume = buy_volume
+                last_db_k.buy_asset_volume = buy_asset_volume
+                last_db_k.save()
+            else:
+                _ = KlineTable.create(
+                    symbol=self.symbol,
+                    interval_val=self.interval,
+                    open_ts=open_ts,
+                    open_price=open_price,
+                    high_price=high_price,
+                    low_price=low_price,
+                    close_price=close_price,
+                    volume=volume,
+                    close_ts=close_ts,
+                    asset_volume=asset_volume,
+                    trade_number=trade_number,
+                    buy_volume=buy_volume,
+                    buy_asset_volume=buy_asset_volume,
+                )
+
+
 async def save_macd_job(*args, **kwargs):
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
-        for _interval in MACD_INTERVAL_LIST:
+        for _interval in PLOT_INTERVAL_LIST:
             await MacdDataSaveHandle(row.symbol, _interval).save_data()
 
 
 class MacdDataSaveHandle(object):
     def __init__(self, symbol, interval):
         self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
 
-        if interval == "4h":
-            self.interval = "4h"
-            self.interval_sec = 4 * 3600
-            self.k_interval = 5 * 3600
-        elif interval == "1h":
-            self.interval = "1h"
-            self.interval_sec = 3600
-            self.k_interval = 5400
-        elif interval == "1d":
-            self.interval = "1d"
-            self.interval_sec = 24 * 3600
-            self.k_interval = 27 * 3600
-        elif interval == "5m":
-            self.interval = "5m"
-            self.interval_sec = 5 * 60
-            self.k_interval = 7 * 60
-        else:
-            self.interval, self.interval_sec, self.k_interval = None, None, None
-
-    def get_k_lines_by_innerapi(self):
+    def get_k_lines_from_db(self):
         try:
             db_last_macd = (
                 MacdTable.select()
@@ -147,28 +238,19 @@ class MacdDataSaveHandle(object):
         except MacdTable.DoesNotExist:
             return
 
-        # resp_k = BinanceExchangeRequestHandle().get_k_lines(
-        #     self.symbol.upper(),
-        #     self.interval,
-        #     (db_last_macd.opening_ts - self.k_interval) * 1000,
-        # )
+        db_kline = KlineTable.select().where(
+            KlineTable.symbol == self.symbol,
+            KlineTable.interval_val == self.interval,
+            KlineTable.open_ts >= db_last_macd.opening_ts - self.k_interval,
+        ).order_by(KlineTable.id).get()
 
-        resp_data = http_get_request(
-            f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
-            {
-                "key": "get_k_lines",
-                "symbol": self.symbol.upper(),
-                "interval": self.interval,
-                "start_ts": (db_last_macd.opening_ts - self.k_interval) * 1000,
-             }
-        )
-        if resp_data:
-            return resp_data["data"]
+        if db_kline:
+            return list(db_kline)
 
     def parsed_k_lines_data(self, data):
-        opening_ts = int(data[0] / 1000)
-        opening_price = D(data[1])
-        closing_price = D(data[4])
+        opening_ts = data.open_ts
+        opening_price = data.open_price
+        closing_price = data.close_price
 
         _db_rs = (
             MacdTable.select()
@@ -233,7 +315,7 @@ class MacdDataSaveHandle(object):
 
         self.__init_macd_cache_data()
 
-        k_data = self.get_k_lines_by_innerapi()
+        k_data = self.get_k_lines_from_db()
         if not k_data:
             return
 
