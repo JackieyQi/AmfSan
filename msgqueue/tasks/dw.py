@@ -173,12 +173,13 @@ class KlineDataSaveHandle(object):
             buy_volume = D(data[9])
             buy_asset_volume = D(data[10])
 
-            last_db_k = KlineTable.select().where(
+            query = KlineTable.select().where(
                     KlineTable.symbol == self.symbol,
                     KlineTable.open_ts == open_ts,
                     KlineTable.interval_val == self.interval,
             )
-            if last_db_k:
+            if query:
+                last_db_k = query.get()
                 last_db_k.open_ts = open_ts
                 last_db_k.open_price = open_price
                 last_db_k.high_price = high_price
