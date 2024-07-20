@@ -138,7 +138,7 @@ class KlineDataSaveHandle(object):
                 "key": "get_k_lines",
                 "symbol": self.symbol.upper(),
                 "interval": self.interval,
-                "start_ts": (db_last_k.opening_ts - self.k_interval) * 1000,
+                "start_ts": (db_last_k.open_ts - self.k_interval) * 1000,
              }
         )
         if resp_data:
