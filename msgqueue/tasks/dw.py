@@ -238,14 +238,15 @@ class MacdDataSaveHandle(object):
         except MacdTable.DoesNotExist:
             return
 
-        db_kline = KlineTable.select().where(
-            KlineTable.symbol == self.symbol,
-            KlineTable.interval_val == self.interval,
-            KlineTable.open_ts >= db_last_macd.opening_ts - self.k_interval,
-        ).order_by(KlineTable.id).get()
-
-        if db_kline:
-            return list(db_kline)
+        try:
+            db_kline = KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == self.interval,
+                KlineTable.open_ts >= db_last_macd.opening_ts - self.k_interval,
+            ).order_by(KlineTable.id)
+        except KlineTable.DoesNotExist:
+            return
+        return db_kline
 
     def parsed_k_lines_data(self, data):
         opening_ts = data.open_ts
