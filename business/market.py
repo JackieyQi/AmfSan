@@ -180,6 +180,10 @@ class SymbolHandle(object):
             SymbolPlotTable.symbol == self.symbol,
         )
         if query:
+            db_row = query.get()
+            if db_row.is_valid is False:
+                db_row.is_valid = True
+                db_row.save()
             return
 
         result = SymbolPlotTable(
