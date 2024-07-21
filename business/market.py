@@ -170,7 +170,7 @@ class SymbolHandle(object):
         self.user_id = 2
         self.symbol = symbol
 
-    def add_new_plot(self):
+    def add_plot(self):
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 1)
 
     def add_plot_to_db(self):

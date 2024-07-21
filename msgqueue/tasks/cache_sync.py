@@ -32,6 +32,8 @@ async def sync_cache_job(*args, **kwargs):
                     _symbol = _k.split(":")[0]
                     is_valid = int(_v)
                     if is_valid:
+                        SymbolHandle(_symbol).add_plot()
                         SymbolHandle(_symbol).add_plot_to_db()
                     else:
+                        SymbolHandle(_symbol).del_plot()
                         SymbolHandle(_symbol).del_plot_to_db()
