@@ -101,3 +101,29 @@ class MacdTable(Base):
 
     class Meta:
         table_name = "macd_table"
+
+
+class KdjTable(Base):
+    symbol = CharField(db_column="symbol", index=True)
+    interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔")
+    open_ts = IntegerField(default=0, db_column="open_ts", help_text="开盘时间")
+    k_val = DecimalField(
+        db_column="k_val", default=0, max_digits=20, decimal_places=8
+    )
+    d_val = DecimalField(
+        db_column="d_val", default=0, max_digits=20, decimal_places=8
+    )
+    j_val = DecimalField(
+        db_column="j_val", default=0, max_digits=20, decimal_places=8
+    )
+    cfg = CharField(
+        db_column="cfg",
+        help_text="json配置,"
+                  "通用{'period':9,'move_average_period1':3,'move_average_period2':3},"
+                  "计算周期9移动平均周期1为3移动平均周期2为3"
+    )
+
+    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+
+    class Meta:
+        table_name = "kdj_table"

@@ -2,14 +2,16 @@
 # coding:utf8
 
 import time
+import json
 from decimal import Decimal
 
 from cache.order import (LimitPriceNoticeValueCache,
                          LimitPriceNoticeValveCache, MarketPriceLimitCache, SymbolPriceChangeHistoryTableCache,
                          MarketPriceCache)
-from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache, SymbolPlotTableCache
+from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
+    SymbolPlotTableCache, CheckKdjCrossGateCache, CheckKdjCvGateCache
 from models.market import KlineTable
-from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable
+from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable, KdjTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime, decimal2str, Decimal
 from utils.exception import StandardResponseExc
@@ -236,13 +238,30 @@ class SymbolHandle(object):
     def del_macd_trend_gate(self, interval):
         return CheckMacdTrendGateCache.hdel(f"{self.symbol}:{interval}")
 
+    def add_kdj_gate(self, interval=""):
+        if interval in PLOT_INTERVAL_LIST:
+            CheckKdjCrossGateCache.hset(f"{self.symbol}:{interval}", 1)
+        else:
+            for i in PLOT_INTERVAL_LIST:
+                CheckKdjCrossGateCache.hset(f"{self.symbol}:{i}", 1)
+
+    def del_kdj_gate(self, interval=""):
+        if interval in PLOT_INTERVAL_LIST:
+            CheckKdjCrossGateCache.hdel(f"{self.symbol}:{interval}")
+        else:
+            for i in PLOT_INTERVAL_LIST:
+                CheckKdjCrossGateCache.hdel(f"{self.symbol}:{i}")
+
+    def del_kdj_cross_gate(self, interval):
+        return CheckKdjCrossGateCache.hdel(f"{self.symbol}:{interval}")
+
 
 class MacdInitData(object):
     def __init__(self, macd_init_data):
         self.macd_init_data = macd_init_data
 
     def start(self, interval):
-        data = self.macd_init_data.get(f"macd_{interval}")
+        data = self.macd_init_data.get(interval)
         for i in data:
             KlineInitData.save(i["symbol"].lower(), i["opening_ts"], i["interval"].lower())
 
@@ -277,6 +296,54 @@ class MacdInitData(object):
             .get()
         )
         return db_last_macd.id
+
+
+class KdjInitData(object):
+    def __init__(self, kdj_init_data):
+        self.kdj_init_data = kdj_init_data
+
+    def start(self, interval):
+        interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+
+        data = self.kdj_init_data.get(interval)
+        for i in data:
+            _cfg = i["cfg"]
+            _period = _cfg["period"]
+            KlineInitData.save(
+                i["symbol"].lower(),
+                i["open_ts"] - interval_sec * _period,
+                i["interval"].lower()
+            )
+
+            if KdjTable.select().where(
+                KdjTable.symbol == i["symbol"].lower(),
+                KdjTable.open_ts == i["open_ts"],
+                KdjTable.interval_val == i["interval"].lower(),
+            ):
+                print("already")
+            else:
+                _ = KdjTable(
+                    symbol=i["symbol"].lower(),
+                    interval_val=i["interval"].lower(),
+                    open_ts=i["open_ts"],
+                    k_val=Decimal(i["k"]),
+                    d_val=Decimal(i["d"]),
+                    j_val=Decimal(i["j"]),
+                    cfg=json.dumps(_cfg),
+                    create_ts=int(time.time()),
+                ).save()
+
+        db_row = (
+            KdjTable.select()
+            .where(
+                KdjTable.symbol == i["symbol"].lower(),
+                KdjTable.interval_val == i["interval"].lower(),
+            )
+            .order_by(KdjTable.create_ts.desc())
+            .limit(1)
+            .get()
+        )
+        return db_row.id
 
 
 class KlineInitData(object):

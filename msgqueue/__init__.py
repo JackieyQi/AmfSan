@@ -21,6 +21,7 @@ route_map = {
     #
     "save_kline_job": dw.save_kline_job,
     "save_macd_job": dw.save_macd_job,
+    "save_kdj_job": dw.save_kdj_job,
     "save_account_balance_job": dw.save_account_balance_job,
     "save_trade_history_job": dw.save_trade_history_job,
     #

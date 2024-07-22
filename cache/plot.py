@@ -16,6 +16,17 @@ class CheckMacdTrendGateCache(HashCache):
     key = "gate:macd:trend"
 
 
+class CheckKdjCrossGateCache(HashCache):
+    key = "gate:kdj:cross"
+
+
+class CheckKdjCvGateCache(HashCache):
+    """
+    离散系数: coefficient of variation
+    """
+    key = "gate:kdj:cv"
+
+
 class SymbolPlotTableCache(HashCache):
     """
     mapping database: models.order.SymbolPlotTable

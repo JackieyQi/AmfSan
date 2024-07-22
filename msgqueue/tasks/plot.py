@@ -6,7 +6,8 @@ import time
 from decimal import Decimal
 
 from business.market import MarketPriceHandler
-from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache
+from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
+    CheckKdjCrossGateCache, CheckKdjCvGateCache
 from models.order import MacdTable, SymbolPlotTable
 from models.user import EmailMsgHistoryTable
 from models.wallet import TotalBalanceHistoryTable
@@ -48,6 +49,20 @@ async def check_macd_trend(*args, **kwargs):
             if not CheckMacdTrendGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
             await PlotMacdHandle(row.symbol, _interval).check_trend()
+
+
+async def check_kdj_cross(*args, **kwargs):
+    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    for row in query:
+        for _interval in PLOT_INTERVAL_LIST:
+            if not CheckKdjCrossGateCache.hget(f"{row.symbol}:{_interval}"):
+                continue
+                todo
+            # await PlotMacdHandle(row.symbol, _interval).check_cross()
+
+
+async def check_kdj_cv(*args, **kwargs):
+    pass
 
 
 class BasePlotHandle(object):

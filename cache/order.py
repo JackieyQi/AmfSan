@@ -43,7 +43,7 @@ class LimitPriceNoticeValueCache(StringCache):
 
 class MarketMacdCache(StringCache):
     """
-    cmd: get macd:btcusdt:macd_1d
+    cmd: get macd:btcusdt:1d
     return:
         "{\"macd_1d\":[{\"symbol\":\"btcusdt\",\"interval\":\"1d\",
         \"opening_ts\":1650153600,\"opening_price\":\"40378.70\",
@@ -55,6 +55,18 @@ class MarketMacdCache(StringCache):
     """
     key = "MarketMacdCache"
 
-    def __init__(self, symbol, macd_type):
+    def __init__(self, symbol, interval):
         super().__init__()
-        MarketMacdCache.key = f"macd:{symbol}:{macd_type}"
+        MarketMacdCache.key = f"macd:{symbol}:{interval}"
+
+
+class MarketKdjCache(StringCache):
+    """
+    cmd: get kdj:btcusdt:1d
+    return:
+    """
+    key = "MarketKdjCache"
+
+    def __init__(self, symbol, interval):
+        super().__init__()
+        MarketKdjCache.key = f"kdj:{symbol}:{interval}"
