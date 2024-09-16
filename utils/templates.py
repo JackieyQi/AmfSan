@@ -2,7 +2,8 @@
 # coding:utf8
 
 from settings.constants import (INNER_GET_DELETE_MACD_CROSS_URL,
-                                INNER_GET_DELETE_MACD_TREND_URL)
+                                INNER_GET_DELETE_MACD_TREND_URL,
+                                INNER_GET_DELETE_KDJ_CROSS_URL,)
 
 from utils.common import decimal2str, ts2bjfmt
 
@@ -34,6 +35,21 @@ def template_macd_trend_notice(
             <br>opening time:{ts2bjfmt(opening_ts)}
             <br>
             <br><a href={INNER_GET_DELETE_MACD_TREND_URL}{symbol + '_' + interval}>Delete trend check.</a>
+            """
+
+
+def template_kdj_cross_notice(
+    symbol, interval, last_d, new_d, last_j, new_j, open_ts
+):
+    return f"""
+            <br><br><b> {symbol.upper()}: </b>
+            <br> kdj cross changing:
+            <br>interval: {interval},
+            <br>last j to new j: <b>{decimal2str(last_j)} -> {decimal2str(new_j)}</b>,
+            <br>last d to new d: <b>{decimal2str(last_d)} -> {decimal2str(new_d)}</b>,
+            <br>opening time:{ts2bjfmt(open_ts)}
+            <br>
+            <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{symbol + '_' + interval}>Delete cross check.</a>
             """
 
 

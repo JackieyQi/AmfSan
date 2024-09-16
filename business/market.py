@@ -196,6 +196,7 @@ class SymbolHandle(object):
 
     def del_plot(self):
         self.del_macd_gate()
+        self.del_kdj_gate()
 
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
 

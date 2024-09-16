@@ -8,19 +8,20 @@ from decimal import Decimal
 from business.market import MarketPriceHandler
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.order import MacdTable, SymbolPlotTable
+from models.order import MacdTable, SymbolPlotTable, KdjTable
 from models.user import EmailMsgHistoryTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
                                 INNER_GET_DELETE_MACD_CROSS_URL,
                                 INNER_GET_DELETE_MACD_TREND_URL,
+                                INNER_GET_DELETE_KDJ_CROSS_URL,
                                 INNER_GET_PRICE_URL,
                                 INNER_GET_UPDATE_PRICE_URL,
-                                PLOT_INTERVAL_LIST,
+                                PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG,
                                 )
 from utils.common import decimal2str, str2decimal, ts2bjfmt
 from utils.templates import (template_asset_notice, template_macd_cross_notice,
-                             template_macd_trend_notice)
+                             template_macd_trend_notice, template_kdj_cross_notice)
 
 
 async def check_price(*args, **kwargs):
@@ -57,8 +58,7 @@ async def check_kdj_cross(*args, **kwargs):
         for _interval in PLOT_INTERVAL_LIST:
             if not CheckKdjCrossGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
-                todo
-            # await PlotMacdHandle(row.symbol, _interval).check_cross()
+            await PlotKdjHandle(row.symbol, _interval).check_cross()
 
 
 async def check_kdj_cv(*args, **kwargs):
@@ -261,25 +261,9 @@ class PlotMacdHandle(BasePlotHandle):
     def __init__(self, symbol, interval):
         super().__init__()
         self.symbol = symbol
-
-        if interval == "4h":
-            self.interval = "4h"
-            self.interval_sec = 4 * 3600
-            self.k_interval = 5 * 3600
-        elif interval == "1h":
-            self.interval = "1h"
-            self.interval_sec = 3600
-            self.k_interval = 5400
-        elif interval == "1d":
-            self.interval = "1d"
-            self.interval_sec = 24 * 3600
-            self.k_interval = 27 * 3600
-        elif interval == "5m":
-            self.interval = "5m"
-            self.interval_sec = 5 * 60
-            self.k_interval = 7 * 60
-        else:
-            self.interval, self.interval_sec, self.k_interval = None, None, None
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
 
     def get_macd_change_list(self, limit_count=7):
         result = []
@@ -433,3 +417,109 @@ class PlotMacdHandle(BasePlotHandle):
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
         await self.send_msg(email_title, email_content)
+
+
+class PlotKdjHandle(BasePlotHandle):
+    def __init__(self, symbol, interval):
+        super().__init__()
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+    def get_macd_change_list(self, limit_count=7):
+        result = []
+
+        query = (
+            MacdTable.select()
+            .where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == self.interval,
+            )
+            .order_by(MacdTable.id.desc())
+            .limit(limit_count)
+        )
+        for row in query:
+            result.append(row)
+
+        return result[::-1]
+
+    async def check_cross(self, limit_count=7):
+        email_title = f"{self.symbol} KDJ Cross changing Notice"
+
+        if not self.interval:
+            return
+
+        query = (
+            KdjTable.select()
+            .where(
+                KdjTable.symbol == self.symbol,
+                KdjTable.interval_val == self.interval,
+            )
+            .order_by(KdjTable.id.desc())
+            .limit(limit_count)
+        )
+        query_list = [i for i in query]
+
+        if not query_list:
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: not kdj data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+            return await self.send_msg(email_title, "".join(self.result.values()))
+        elif len(query_list) < limit_count:
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: too less kdj data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        now_data, last_data = query_list[0], query_list[1]
+
+        now_ts = int(time.time())
+        if now_data.open_ts < (now_ts - self.interval_sec * 7):
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: no lastest kdj data, {self.symbol}:{self.interval}</a>
+            <br><a>open_ts:{ts2bjfmt(now_data.open_ts)}</a>
+            <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
+            <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        if (now_data.d_val <= last_data.d_val and now_data.j_val <= last_data.j_val) or (
+            now_data.d_val >= last_data.d_val and now_data.j_val >= last_data.j_val
+        ):
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        email_msg_md5_str = (
+            f"check_cross:{self.symbol}:{self.interval}:{now_data.open_ts}"
+        )
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            self.result[self.symbol] = template_kdj_cross_notice(
+                self.symbol,
+                self.interval,
+                last_data.d_val,
+                now_data.d_val,
+                last_data.j_val,
+                now_data.j_val,
+                now_data.open_ts,
+            )
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        await self.send_msg(email_title, email_content)
+
+    async def check_trend(self):
+        pass

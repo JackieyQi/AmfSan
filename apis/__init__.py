@@ -4,7 +4,7 @@
 from .huobi_exchange import AccountInfoView as HuobiAccountInfoView
 from .market import (MarketInnerPriceView, MarketMacdCrossGateView,
                      MarketMacdTrendGateView, MarketPriceGateView,
-                     MarketPriceView)
+                     MarketPriceView, MarketKdjCrossGateView)
 from .plot import PlotMacdView, PlotKdjView
 from .test import ServerTimeView, TestView
 from .cache_sync import CacheSyncView
@@ -17,6 +17,7 @@ urls_bp = [
     (MarketPriceGateView.as_view(), "api/market/price/gate/"),
     (MarketMacdCrossGateView.as_view(), "api/market/macd/cross/gate/"),
     (MarketMacdTrendGateView.as_view(), "api/market/macd/trend/gate/"),
+    (MarketKdjCrossGateView.as_view(), "api/market/kdj/cross/gate/"),
     (
         MarketInnerPriceView.as_view(),
         "api/market/innerprice/<side_str>/<symbol>/<new_price>/",

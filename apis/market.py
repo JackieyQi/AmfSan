@@ -112,6 +112,20 @@ class MarketMacdTrendGateView(HTTPMethodView):
         }
 
 
+class MarketKdjCrossGateView(HTTPMethodView):
+    async def get(self, request):
+        key = request.form.get("key").strip().lower()
+        if not key:
+            return "Invalid params:key"
+        symbol, interval = key.split("_")
+
+        hdel_plot_cross_result = SymbolHandle(symbol).del_kdj_cross_gate(interval)
+        return {
+            "key": f"{symbol}:{interval}",
+            "hdel_plot_cross_result": hdel_plot_cross_result,
+        }
+
+
 class MarketInnerPriceView(HTTPMethodView):
     async def get(self, request, side_str, symbol, new_price):
         if not symbol or not new_price:

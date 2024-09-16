@@ -38,6 +38,10 @@ def check_macd_trend_job():
     push2mq("check_macd_trend_job")
 
 
+def check_kdj_cross_job():
+    push2mq("check_kdj_cross_job")
+
+
 def check_balance_job():
     push2mq("check_balance_job")
 
@@ -73,6 +77,7 @@ def schedules():
 
     schedule.every(3).minutes.do(check_macd_cross_job)
     # schedule.every(13).minutes.do(check_macd_trend_job)
+    schedule.every(3).minutes.do(check_kdj_cross_job)
 
     # user action
     # schedule.every().day.at("05:00").do(save_trade_history_job)

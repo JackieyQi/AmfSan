@@ -29,6 +29,7 @@ route_map = {
     "check_price_job": plot.check_price,
     "check_macd_cross_job": plot.check_macd_cross,
     "check_macd_trend_job": plot.check_macd_trend,
+    "check_kdj_cross_job": plot.check_kdj_cross,
     #
 }
 
