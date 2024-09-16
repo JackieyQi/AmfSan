@@ -23,9 +23,11 @@ class BinanceExchangeRequestHandle(object):
         payload = {
             "symbol": symbol.upper(),
             "interval": interval,
-            "startTime": start_ts,
-            "limit": limit,
         }
+        if start_ts:
+            payload["startTime"] = start_ts
+        if limit:
+            payload["limit"] = limit
         resp = http_get_request(self.base_url + "/api/v3/klines", payload)
         return resp
 

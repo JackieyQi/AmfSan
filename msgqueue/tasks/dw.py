@@ -143,32 +143,32 @@ class KlineDataSaveHandle(object):
                 .limit(1)
                 .get()
             )
-        except KlineTable.DoesNotExist:
-            return
 
-        resp_data = http_get_request(
-            f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
-            {
+            request_params = {
                 "key": "get_k_lines",
                 "symbol": self.symbol.upper(),
                 "interval": self.interval,
                 "start_ts": (db_last_k.open_ts - self.k_interval) * 1000,
-             }
+                "limit": 5,
+            }
+        except KlineTable.DoesNotExist:
+            request_params = {
+                "key": "get_k_lines",
+                "symbol": self.symbol.upper(),
+                "interval": self.interval,
+                "limit": 17,
+            }
+
+        resp_data = http_get_request(
+            f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
+            request_params,
         )
         if resp_data:
             return resp_data["data"]
 
-    def __init_cache_data(self):
-        macd_cache_data = MarketMacdCache(self.symbol, self.interval).get()
-        if macd_cache_data:
-            macd_init_data = {self.interval: json.loads(macd_cache_data)}
-            MacdInitData(macd_init_data).start(self.interval)
-
     async def save_data(self):
         if not self.interval:
             return
-
-        self.__init_cache_data()
 
         k_data = self.get_k_lines_by_innerapi()
         if not k_data:
@@ -395,8 +395,6 @@ class KdjDataSaveHandle(object):
     def parsed_k_lines_data(self, data):
         open_ts = data.open_ts
         close_price = data.close_price
-        kdj_cfg = json.loads(data.cfg)
-        period = kdj_cfg["period"]
 
         db_query = (
             KdjTable.select()
@@ -410,6 +408,8 @@ class KdjDataSaveHandle(object):
         db_query_list = list(db_query)
 
         last_kdj_data = db_query_list[0]
+        kdj_cfg = json.loads(last_kdj_data.cfg)
+        period = kdj_cfg["period"]
         kdj_result = self.__calculate_kdj(last_kdj_data, open_ts, close_price, period)
         if not kdj_result:
             return
@@ -434,7 +434,7 @@ class KdjDataSaveHandle(object):
                     k_val=k_val,
                     d_val=d_val,
                     j_val=j_val,
-                    cfg=data.cfg,
+                    cfg=last_kdj_data.cfg,
                 )
 
     def __init_kdj_cache_data(self):

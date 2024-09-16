@@ -263,7 +263,6 @@ class MacdInitData(object):
     def start(self, interval):
         data = self.macd_init_data.get(interval)
         for i in data:
-            KlineInitData.save(i["symbol"].lower(), i["opening_ts"], i["interval"].lower())
 
             if MacdTable.select().where(
                 MacdTable.symbol == i["symbol"].lower(),
@@ -309,11 +308,6 @@ class KdjInitData(object):
         for i in data:
             _cfg = i["cfg"]
             _period = _cfg["period"]
-            KlineInitData.save(
-                i["symbol"].lower(),
-                i["open_ts"] - interval_sec * _period,
-                i["interval"].lower()
-            )
 
             if KdjTable.select().where(
                 KdjTable.symbol == i["symbol"].lower(),
