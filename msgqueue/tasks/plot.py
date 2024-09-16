@@ -493,8 +493,8 @@ class PlotKdjHandle(BasePlotHandle):
 
             return await self.send_msg(email_title, "".join(self.result.values()))
 
-        if (now_data.d_val <= last_data.d_val and now_data.j_val <= last_data.j_val) or (
-            now_data.d_val >= last_data.d_val and now_data.j_val >= last_data.j_val
+        if (now_data.d_val <= now_data.j_val and last_data.d_val <= last_data.j_val) or (
+            now_data.d_val >= now_data.j_val and last_data.d_val >= last_data.j_val
         ):
             return await self.send_msg(email_title, "".join(self.result.values()))
 
