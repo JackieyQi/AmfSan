@@ -272,9 +272,14 @@ class MacdDataSaveHandle(object):
         )
         _db_rs = list(_db_rs)
 
+        if not _db_rs:
+            return
+
         last_macd_data = _db_rs[0]
         if len(_db_rs) == 2:
             now_macd_data = _db_rs[1]
+        elif last_macd_data.opening_ts != opening_ts - self.interval_sec:
+            return
         else:
             now_macd_data = None
 
@@ -368,7 +373,8 @@ class KdjDataSaveHandle(object):
         db_query = KlineTable.select().where(
             KlineTable.symbol == self.symbol,
             KlineTable.interval_val == self.interval,
-            KlineTable.open_ts >= open_ts - self.interval_sec * period,
+            KlineTable.open_ts > open_ts - self.interval_sec * period,
+            KlineTable.open_ts <= open_ts,
         ).order_by(KlineTable.id)
         db_query_list = list(db_query)
         if len(db_query_list) < period:
@@ -406,8 +412,13 @@ class KdjDataSaveHandle(object):
             .order_by(KdjTable.id)
         )
         db_query_list = list(db_query)
+        if not db_query_list:
+            return
 
         last_kdj_data = db_query_list[0]
+        if last_kdj_data.open_ts != open_ts - self.interval_sec:
+            return
+
         kdj_cfg = json.loads(last_kdj_data.cfg)
         period = kdj_cfg["period"]
         kdj_result = self.__calculate_kdj(last_kdj_data, open_ts, close_price, period)
