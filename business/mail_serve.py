@@ -35,13 +35,17 @@ def send_email(recipient, subject, text, from_name="AMF"):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS)
     msg["From"] = "{} <{}>".format(Header(from_name, "utf-8"), account["user"])
     try:
-        mail_server = smtplib.SMTP("{}:{}".format(account["smtp"], account["port"]), timeout=15)
-        mail_server.ehlo()
-        mail_server.starttls(context=context)
-        mail_server.ehlo()
-        mail_server.login(account["user"], account["pwd"])
-        mail_server.sendmail(account["user"], recipient, msg.as_string())
-        mail_server.quit()
+        with smtplib.SMTP_SSL(account["smtp"], account["port"]) as server:
+            server.login(account["user"], account["pwd"])
+            server.sendmail(account["user"], recipient, msg.as_string())
+
+        # mail_server = smtplib.SMTP("{}:{}".format(account["smtp"], account["port"]), timeout=15)
+        # mail_server.ehlo()
+        # mail_server.starttls(context=context)
+        # mail_server.ehlo()
+        # mail_server.login(account["user"], account["pwd"])
+        # mail_server.sendmail(account["user"], recipient, msg.as_string())
+        # mail_server.quit()
         logger.info("Email send success")
         return True
     except BaseException as e:

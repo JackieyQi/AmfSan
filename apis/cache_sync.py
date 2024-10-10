@@ -36,8 +36,8 @@ class CacheSyncView(HTTPMethodView):
         elif key == "get_k_lines":
             symbol = request.form.get("symbol", "").strip().lower()
             interval = request.form.get("interval", "").strip().lower()
-            start_ts = request.form.get("start_ts", 0).strip().lower()
-            limit = request.form.get("limit", 5).strip().lower()
+            start_ts = request.form.get("start_ts", "0").strip().lower()
+            limit = request.form.get("limit", "5").strip().lower()
 
             result = BinanceExchangeRequestHandle().get_k_lines(
                 symbol.upper(), interval, int(start_ts), int(limit))
