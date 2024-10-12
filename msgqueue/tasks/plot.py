@@ -507,19 +507,29 @@ class PlotKdjHandle(BasePlotHandle):
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )
         except EmailMsgHistoryTable.DoesNotExist:
-            self.result[self.symbol] = template_kdj_cross_notice(
-                self.symbol,
-                self.interval,
-                last_data.d_val,
-                now_data.d_val,
-                last_data.j_val,
-                now_data.j_val,
-                now_data.open_ts,
-            )
+            self.result[self.symbol] = self.reformat_kdj_cross_notice(last_data, now_data)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
         await self.send_msg(email_title, email_content)
+
+    def reformat_kdj_cross_notice(self, last_data, now_data):
+        if now_data.d_val > now_data.j_val:
+            cross_str = "NEGATIVE"
+        else:
+            cross_str = "POSITIVE"
+
+        macd_result = []
+        query = (
+            MacdTable.select().where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == self.interval,
+            ).order_by(MacdTable.id.desc()).limit(3)
+        )
+        for row in query:
+            macd_result.append(row.macd)
+
+        return template_kdj_cross_notice(self.symbol, self.interval, cross_str, macd_result[::-1], now_data.open_ts)
 
     async def check_trend(self):
         pass

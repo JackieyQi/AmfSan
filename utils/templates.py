@@ -39,14 +39,14 @@ def template_macd_trend_notice(
 
 
 def template_kdj_cross_notice(
-    symbol, interval, last_d, new_d, last_j, new_j, open_ts
+    symbol, interval, cross_str, macd_list, open_ts
 ):
     return f"""
             <br><br><b> {symbol.upper()}: </b>
             <br> kdj cross changing:
             <br>interval: {interval},
-            <br>last j to new j: <b>{decimal2str(last_j)} -> {decimal2str(new_j)}</b>,
-            <br>last d to new d: <b>{decimal2str(last_d)} -> {decimal2str(new_d)}</b>,
+            <br>cross result: <b>{cross_str}</b>,
+            <br>macd array: <b>{macd_list}</b>,
             <br>opening time:{ts2bjfmt(open_ts)}
             <br>
             <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{symbol + '_' + interval}>Delete cross check.</a>
