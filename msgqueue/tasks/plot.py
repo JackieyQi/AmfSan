@@ -527,7 +527,7 @@ class PlotKdjHandle(BasePlotHandle):
             ).order_by(MacdTable.id.desc()).limit(3)
         )
         for row in query:
-            macd_result.append(row.macd)
+            macd_result.append(decimal2str(row.macd))
 
         return template_kdj_cross_notice(self.symbol, self.interval, cross_str, macd_result[::-1], now_data.open_ts)
 
