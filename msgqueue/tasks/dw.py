@@ -104,21 +104,24 @@ async def save_account_balance_job(*args, **kwargs):
 
 
 async def save_kline_job(*args, **kwargs):
-    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    query = SymbolPlotTable.select()
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
             await KlineDataSaveHandle(row.symbol, _interval).save_data()
 
 
 async def save_macd_job(*args, **kwargs):
-    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    query = SymbolPlotTable.select()
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
             await MacdDataSaveHandle(row.symbol, _interval).save_data()
 
 
 async def save_kdj_job(*args, **kwargs):
-    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    query = SymbolPlotTable.select()
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
             await KdjDataSaveHandle(row.symbol, _interval).save_data()
