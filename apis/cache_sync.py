@@ -15,6 +15,12 @@ class CacheSyncView(HTTPMethodView):
             from cache import AllCache
             redis_client = AllCache.get_client()
             for key in redis_client.keys() or []:
+                if key == "market:price:limit":
+                    all_limit_price = MarketPriceLimitCache.hgetall()
+                    if all_limit_price:
+                        for k, v in all_limit_price.items():
+                            MarketPriceHandler().get_current_price(k)
+
                 if redis_client.type(key) == "string":
                     result[key] = {
                         "redis_type": "string",
