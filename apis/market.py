@@ -61,6 +61,8 @@ class MarketPriceView(HTTPMethodView):
             set_limit_price_code = None
 
         new_plot_result = SymbolHandle(symbol).add_plot()
+        _ = SymbolHandle(symbol).add_macd_gate()
+        _ = SymbolHandle(symbol).add_kdj_gate()
         return {
             "set_limit_price_result": set_limit_price_result,
             "set_limit_price_code": set_limit_price_code,
