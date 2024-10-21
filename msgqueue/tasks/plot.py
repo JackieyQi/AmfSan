@@ -243,7 +243,7 @@ class PlotPriceHandle(BasePlotHandle):
 
         current_price = self.__get_current_price()
         if not current_price:
-            return await self.send_msg(email_title, "".join(self.result.values()))
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
 
         self.__check_limit_low_price(current_price)
         self.__check_limit_high_price(current_price)
