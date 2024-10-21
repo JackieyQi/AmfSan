@@ -62,7 +62,7 @@ async def deal_msg(msg):
 
         _ = await push(
             {
-                "bp": "send_email",
+                "bp": "send_email_task",
                 "title": msg_bp,
                 "receiver": app.config.administrator_email,
                 "content": "{}<br/><br/><br/>{}".format(error, json.dumps(err_info)),

@@ -7,7 +7,7 @@ import time
 import schedule
 import ujson as json
 
-from exts import amf_queue, queue_conn
+from exts import amf_queue, queue_conn, amf_queue_plot
 
 logger = logging.getLogger(__name__)
 
@@ -22,28 +22,38 @@ def push2mq(bp, **kwargs):
     queue_conn.release()
 
 
+def push2mq_plot(bp, **kwargs):
+    kwargs.update({"bp": bp, "ts": int(time.time())})
+
+    queue_conn.connect()
+    with queue_conn.SimpleQueue(amf_queue_plot) as q:
+        q.put(json.dumps(kwargs))
+        logger.info("Scheduler start job:{}, kwargs:{}".format(bp, kwargs))
+    queue_conn.release()
+
+
 def sync_cache_job():
     push2mq("sync_cache_job")
 
 
 def check_price_job():
-    push2mq("check_price_job")
+    push2mq_plot("check_price_job")
 
 
 def check_macd_cross_job():
-    push2mq("check_macd_cross_job")
+    push2mq_plot("check_macd_cross_job")
 
 
 def check_macd_trend_job():
-    push2mq("check_macd_trend_job")
+    push2mq_plot("check_macd_trend_job")
 
 
 def check_kdj_cross_job():
-    push2mq("check_kdj_cross_job")
+    push2mq_plot("check_kdj_cross_job")
 
 
 def check_balance_job():
-    push2mq("check_balance_job")
+    push2mq_plot("check_balance_job")
 
 
 def save_kline_job():

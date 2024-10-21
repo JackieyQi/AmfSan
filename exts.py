@@ -44,6 +44,10 @@ database = PooledMySQLDatabase(
 
 amf_exchange = Exchange(cfgs["rabbitmq"]["amf_exchange"], "direct", durable=True)
 amf_queue = Queue("amf", exchange=amf_exchange, routing_key="amf")
+
+amf_exchange_plot = Exchange(f"""{cfgs["rabbitmq"]["amf_exchange"]}_plot""", "direct", durable=True)
+amf_queue_plot = Queue("amf_plot", exchange=amf_exchange_plot, routing_key="amf_plot")
+
 queue_conn = Connection(
     "amqp://{}:{}@{}:{}/{}".format(
         cfgs["rabbitmq"]["user"],
