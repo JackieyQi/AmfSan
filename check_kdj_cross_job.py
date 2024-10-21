@@ -16,7 +16,7 @@ def main():
             for _interval in PLOT_INTERVAL_LIST:
                 if not CheckKdjCrossGateCache.hget(f"{row.symbol}:{_interval}"):
                     continue
-                await PlotKdjHandle(row.symbol, _interval).check_cross()
+                PlotKdjHandle(row.symbol, _interval).check_cross_unsync()
 
         time.sleep(110)
 
