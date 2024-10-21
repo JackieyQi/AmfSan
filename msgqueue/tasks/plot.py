@@ -69,6 +69,15 @@ class BasePlotHandle(object):
     def __init__(self):
         self.result = {}
 
+    def send_msg_unsync(self, email_title, email_content):
+        if not self.result:
+            return
+
+        from business.mail_serve import send_email
+        send_email([
+                    "wayley@live.com",
+                ], email_title, email_content)
+
     async def send_msg(self, email_title, email_content):
         if not self.result:
             return
@@ -229,6 +238,33 @@ class PlotPriceHandle(BasePlotHandle):
         #     Decimal(decimal2str(self.limit_high_price * Decimal(self.high_incr))),
         # )
 
+    def check_limit_price_unsync(self):
+        email_title = f"{self.symbol} Price Notice"
+
+        current_price = self.__get_current_price()
+        if not current_price:
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        self.__check_limit_low_price(current_price)
+        self.__check_limit_high_price(current_price)
+
+        if not self.result:
+            return
+
+        email_msg_md5_str = f"check_limit_price:{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            # 当前限价检查存在时，不再推送消息
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            pass
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        self.send_msg_unsync(email_title, email_content)
+
     async def check_limit_price(self):
         email_title = f"{self.symbol} Price Notice"
 
@@ -281,6 +317,81 @@ class PlotMacdHandle(BasePlotHandle):
             result.append(row)
 
         return result[::-1]
+
+    def check_cross_unsync(self, limit_count=7):
+        email_title = f"{self.symbol} MACD Cross changing Notice"
+
+        if not self.interval:
+            return
+
+        query = (
+            MacdTable.select()
+            .where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == self.interval,
+            )
+            .order_by(MacdTable.id.desc())
+            .limit(limit_count)
+        )
+        macd_list = [i for i in query]
+
+        if not macd_list:
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: not macd data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
+        elif len(macd_list) < limit_count:
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: too less macd data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
+
+        now_macd_data, last_macd_data = macd_list[0], macd_list[1]
+
+        now_ts = int(time.time())
+        if now_macd_data.opening_ts < (now_ts - self.interval_sec * 7):
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: no lastest macd data, {self.symbol}:{self.interval}</a>
+            <br><a>opening_ts:{ts2bjfmt(now_macd_data.opening_ts)}</a>
+            <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
+            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
+
+        if now_macd_data.macd * last_macd_data.macd > 0:
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
+
+        email_msg_md5_str = (
+            f"check_cross:{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
+        )
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
+            self.result[self.symbol] = template_macd_cross_notice(
+                self.symbol,
+                self.interval,
+                last_macd_data.macd,
+                now_macd_data.macd,
+                now_macd_data.opening_ts,
+                history_macd_list,
+            )
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        self.send_msg_unsync(email_title, email_content)
 
     async def check_cross(self, limit_count=7):
         email_title = f"{self.symbol} MACD Cross changing Notice"
@@ -443,6 +554,75 @@ class PlotKdjHandle(BasePlotHandle):
             result.append(row)
 
         return result[::-1]
+
+    def check_cross_unsync(self, limit_count=7):
+        email_title = f"{self.symbol} KDJ Cross changing Notice"
+
+        if not self.interval:
+            return
+
+        query = (
+            KdjTable.select()
+            .where(
+                KdjTable.symbol == self.symbol,
+                KdjTable.interval_val == self.interval,
+            )
+            .order_by(KdjTable.id.desc())
+            .limit(limit_count)
+        )
+        query_list = [i for i in query]
+
+        if not query_list:
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: not kdj data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
+        elif len(query_list) < limit_count:
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: too less kdj data, {self.symbol}:{self.interval}</a>
+            <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
+
+        now_data, last_data = query_list[0], query_list[1]
+
+        now_ts = int(time.time())
+        if now_data.open_ts < (now_ts - self.interval_sec * 7):
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: no lastest kdj data, {self.symbol}:{self.interval}</a>
+            <br><a>open_ts:{ts2bjfmt(now_data.open_ts)}</a>
+            <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
+            <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            """
+
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
+
+        if (now_data.d_val <= now_data.j_val and last_data.d_val <= last_data.j_val) or (
+            now_data.d_val >= now_data.j_val and last_data.d_val >= last_data.j_val
+        ):
+            return self.send_msg_unsync(email_title, "".join(self.result.values()))
+
+        email_msg_md5_str = (
+            f"check_cross:{self.symbol}:{self.interval}:{now_data.open_ts}"
+        )
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            self.result[self.symbol] = self.reformat_kdj_cross_notice(last_data, now_data)
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        self.send_msg_unsync(email_title, email_content)
 
     async def check_cross(self, limit_count=7):
         email_title = f"{self.symbol} KDJ Cross changing Notice"
