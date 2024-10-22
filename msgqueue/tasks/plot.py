@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 
 async def check_price(*args, **kwargs):
-    logger.info("yjl logger check_price")
     market_price_handler = MarketPriceHandler()
     for symbol, price in market_price_handler.get_all_limit_price().items():
         await PlotPriceHandle(symbol, price).check_limit_price()
@@ -39,6 +38,7 @@ async def check_balance(*args, **kwargs):
 
 
 async def check_macd_cross(*args, **kwargs):
+    logger.info("check_macd_cross")
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
@@ -57,6 +57,7 @@ async def check_macd_trend(*args, **kwargs):
 
 
 async def check_kdj_cross(*args, **kwargs):
+    logger.info("check_kdj_cross")
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
@@ -398,6 +399,8 @@ class PlotMacdHandle(BasePlotHandle):
         self.send_msg_unsync(email_title, email_content)
 
     async def check_cross(self, limit_count=7):
+        logger.info(
+            f"PlotMacdHandle.check_cross start, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
         email_title = f"{self.symbol} MACD Cross changing Notice"
 
         if not self.interval:
@@ -470,6 +473,8 @@ class PlotMacdHandle(BasePlotHandle):
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+
+        logger.info(f"PlotMacdHandle.check_cross finish, start send_msg, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
         await self.send_msg(email_title, email_content)
 
     async def check_trend(self):
@@ -629,6 +634,7 @@ class PlotKdjHandle(BasePlotHandle):
         self.send_msg_unsync(email_title, email_content)
 
     async def check_cross(self, limit_count=7):
+        logger.info(f"PlotKdjHandle.check_cross start, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
         email_title = f"{self.symbol} KDJ Cross changing Notice"
 
         if not self.interval:
@@ -695,6 +701,8 @@ class PlotKdjHandle(BasePlotHandle):
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+
+        logger.info(f"PlotKdjHandle.check_cross finish, start end_msg, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
         await self.send_msg(email_title, email_content)
 
     def reformat_kdj_cross_notice(self, last_data, now_data):

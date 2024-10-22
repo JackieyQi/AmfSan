@@ -69,15 +69,14 @@ def save_trade_history_job():
 def schedules():
     schedule.every(17).seconds.do(sync_cache_job)
 
-    # schedule.every(30).seconds.do(check_price_job)
-
     schedule.every(1).minutes.do(save_kline_job)
     schedule.every(1).minutes.do(save_macd_job)
     schedule.every(1).minutes.do(save_kdj_job)
 
-    # schedule.every(3).minutes.do(check_macd_cross_job)
+    schedule.every(30).seconds.do(check_price_job)
+    schedule.every(1).minutes.do(check_macd_cross_job)
     # schedule.every(13).minutes.do(check_macd_trend_job)
-    # schedule.every(3).minutes.do(check_kdj_cross_job)
+    schedule.every(1).minutes.do(check_kdj_cross_job)
 
     # user action
     # schedule.every().day.at("05:00").do(save_trade_history_job)

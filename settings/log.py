@@ -22,8 +22,7 @@ LOG_CONF = {
         },
         'file': {
             'level': 'INFO',
-            # 'class': 'logging.FileHandler',
-            'class': 'common.log.QueueHandler',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
 
             'filename': path + "/logs/output.log",
             'when': 'D',
@@ -59,38 +58,22 @@ LOG_CONF = {
         }
     },
     'loggers': {
-        'controllers': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-        },
         'models': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
         },
-        'backends': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-        },
-        'tasks': {
+        'msgqueue': {
             'handlers': ['console', 'tasks'],
-            'level': 'DEBUG',
+            'level': 'INFO',
         },
         'sms': {
             'handlers': ['console', 'sms'],
             'level': 'DEBUG',
         },
-        'services': {
+        'business': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
-        },
-        'idverify': {
-            'handlers': ['console', 'idverify'],
-            'level': 'DEBUG',
-        },
-        # 'peewee': {
-        #    'handlers': ['console'],
-        #    'level': 'DEBUG',
-        # }
+        }
     }
 }
 

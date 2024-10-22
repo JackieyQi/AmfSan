@@ -35,7 +35,7 @@ route_map = {
 
 
 async def deal_msg(msg):
-    logger.info("tasks deal_msg, msg:{}".format(msg))
+    logger.debug("tasks deal_msg, msg:{}".format(msg))
     msg = json.loads(msg)
     if not isinstance(msg, dict):
         return
@@ -45,7 +45,7 @@ async def deal_msg(msg):
         logger.info("tasks deal_msg, msg bp not exist:{}".format(msg))
         return
 
-    logger.info(
+    logger.debug(
         "tasks deal_msg, task:{}, start:{}, kwargs:{}".format(msg_bp, ts2fmt(), msg)
     )
     func = route_map[msg_bp]
@@ -69,6 +69,6 @@ async def deal_msg(msg):
             }
         )
         return
-    logger.info(
+    logger.debug(
         "tasks deal_msg, task:{}, end:{}, kwargs:{}".format(msg_bp, ts2fmt(), msg)
     )
