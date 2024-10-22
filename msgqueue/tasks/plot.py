@@ -87,9 +87,9 @@ class BasePlotHandle(object):
         if not self.result:
             return
 
-        from msgqueue.queue import push
+        from msgqueue.queue import push_msg
 
-        await push(
+        await push_msg(
             {
                 "bp": "send_email_task",
                 "receiver": [

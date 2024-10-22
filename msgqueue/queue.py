@@ -4,15 +4,15 @@
 import logging
 import traceback
 import ujson as json
-from exts import queue_conn, amf_queue
+from exts import queue_conn, amf_msg_queue
 
 
 logger = logging.getLogger("MQ")
 
 
-async def push(value):
+async def push_msg(value):
     try:
-        with queue_conn.SimpleQueue(amf_queue) as queue:
+        with queue_conn.SimpleQueue(amf_msg_queue) as queue:
             queue.put(json.dumps(value))
     except BaseException as e:
         logger.error("{}".format(traceback.format_exc()))

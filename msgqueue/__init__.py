@@ -8,7 +8,7 @@ import ujson as json
 from amf import app
 from utils.common import ts2fmt
 
-from .queue import push
+from .queue import push_msg
 from .tasks import dw, plot, sms, cache_sync
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ async def deal_msg(msg):
         err_info["function_module"] = "{}".format(func.__module__)
         err_info["function_name"] = "{}".format(func.__name__)
 
-        _ = await push(
+        _ = await push_msg(
             {
                 "bp": "send_email_task",
                 "title": msg_bp,
