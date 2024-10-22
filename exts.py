@@ -2,10 +2,16 @@
 # coding:utf8
 
 import redis
+import logging.config
 from kombu import Connection, Exchange, Queue
 from playhouse.pool import PooledMySQLDatabase
 
+from settings import log
 from settings.setting import cfgs
+
+
+debug = cfgs["debug"]
+
 
 redis_client = redis.Redis(
     connection_pool=redis.ConnectionPool(
@@ -44,6 +50,7 @@ database = PooledMySQLDatabase(
 
 amf_exchange = Exchange(cfgs["rabbitmq"]["amf_exchange"], "direct", durable=True)
 amf_queue = Queue("amf", exchange=amf_exchange, routing_key="amf")
+amf_msg_queue = Queue("amf_msg", exchange=amf_exchange, routing_key="amf_msg")
 
 queue_conn = Connection(
     "amqp://{}:{}@{}:{}/{}".format(
@@ -59,3 +66,8 @@ try:
     queue_conn.release()
 except BaseException as e:
     print("Error: Cant connect rabbitmq, {}".format(e))
+
+
+if not debug:
+    log.LOG_CONF["handlers"]["console"]["level"] = "WARNING"
+logging.config.dictConfig(log.LOG_CONF)

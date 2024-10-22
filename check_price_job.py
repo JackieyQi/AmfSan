@@ -8,6 +8,7 @@ from msgqueue.tasks.plot import PlotPriceHandle
 
 def main():
     print("Start plot script: check_price_job")
+
     while 1:
         market_price_handler = MarketPriceHandler()
         for symbol, price in market_price_handler.get_all_limit_price().items():

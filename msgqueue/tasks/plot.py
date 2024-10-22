@@ -2,6 +2,7 @@
 # coding:utf8
 
 import hashlib
+import logging
 import time
 from decimal import Decimal
 
@@ -23,8 +24,11 @@ from utils.common import decimal2str, str2decimal, ts2bjfmt
 from utils.templates import (template_asset_notice, template_macd_cross_notice,
                              template_macd_trend_notice, template_kdj_cross_notice)
 
+logger = logging.getLogger(__name__)
+
 
 async def check_price(*args, **kwargs):
+    logger.info("yjl logger check_price")
     market_price_handler = MarketPriceHandler()
     for symbol, price in market_price_handler.get_all_limit_price().items():
         await PlotPriceHandle(symbol, price).check_limit_price()
