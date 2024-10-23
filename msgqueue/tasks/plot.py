@@ -306,6 +306,18 @@ class PlotMacdHandle(BasePlotHandle):
         self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
         self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
 
+    def get_btc_macd(self):
+        result = []
+        for _interval in PLOT_INTERVAL_LIST:
+            current_data = MacdTable.select().where(
+                MacdTable.symbol == "btcusdt",
+                MacdTable.interval_val == _interval,
+            ).order_by(MacdTable.id.desc()).get()
+
+            macd_result = "正" if current_data.macd > 0 else "负"
+            result.append({_interval: macd_result})
+        return result
+
     def get_macd_change_list(self, limit_count=7):
         result = []
 
@@ -322,81 +334,6 @@ class PlotMacdHandle(BasePlotHandle):
             result.append(row)
 
         return result[::-1]
-
-    def check_cross_unsync(self, limit_count=7):
-        email_title = f"{self.symbol} MACD Cross changing Notice"
-
-        if not self.interval:
-            return
-
-        query = (
-            MacdTable.select()
-            .where(
-                MacdTable.symbol == self.symbol,
-                MacdTable.interval_val == self.interval,
-            )
-            .order_by(MacdTable.id.desc())
-            .limit(limit_count)
-        )
-        macd_list = [i for i in query]
-
-        if not macd_list:
-            self.result[
-                self.symbol
-            ] = f"""
-            <br><a>Error: not macd data, {self.symbol}:{self.interval}</a>
-            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
-            """
-            return self.send_msg_unsync(email_title, "".join(self.result.values()))
-        elif len(macd_list) < limit_count:
-            self.result[
-                self.symbol
-            ] = f"""
-            <br><a>Error: too less macd data, {self.symbol}:{self.interval}</a>
-            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
-            """
-            return self.send_msg_unsync(email_title, "".join(self.result.values()))
-
-        now_macd_data, last_macd_data = macd_list[0], macd_list[1]
-
-        now_ts = int(time.time())
-        if now_macd_data.opening_ts < (now_ts - self.interval_sec * 7):
-            self.result[
-                self.symbol
-            ] = f"""
-            <br><a>Error: no lastest macd data, {self.symbol}:{self.interval}</a>
-            <br><a>opening_ts:{ts2bjfmt(now_macd_data.opening_ts)}</a>
-            <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
-            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
-            """
-
-            return self.send_msg_unsync(email_title, "".join(self.result.values()))
-
-        if now_macd_data.macd * last_macd_data.macd > 0:
-            return self.send_msg_unsync(email_title, "".join(self.result.values()))
-
-        email_msg_md5_str = (
-            f"check_cross:{self.symbol}:{self.interval}:{now_macd_data.opening_ts}"
-        )
-        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
-        try:
-            return EmailMsgHistoryTable.get(
-                EmailMsgHistoryTable.msg_md5 == email_msg_md5
-            )
-        except EmailMsgHistoryTable.DoesNotExist:
-            history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
-            self.result[self.symbol] = template_macd_cross_notice(
-                self.symbol,
-                self.interval,
-                last_macd_data.macd,
-                now_macd_data.macd,
-                now_macd_data.opening_ts,
-                history_macd_list,
-            )
-
-        email_content = "".join(self.result.values())
-        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
-        self.send_msg_unsync(email_title, email_content)
 
     async def check_cross(self, limit_count=7):
         logger.info(
@@ -469,6 +406,7 @@ class PlotMacdHandle(BasePlotHandle):
                 now_macd_data.macd,
                 now_macd_data.opening_ts,
                 history_macd_list,
+                self.get_btc_macd()
             )
 
         email_content = "".join(self.result.values())
@@ -721,7 +659,10 @@ class PlotKdjHandle(BasePlotHandle):
         for row in query:
             macd_result.append(decimal2str(row.macd))
 
-        return template_kdj_cross_notice(self.symbol, self.interval, cross_str, macd_result[::-1], now_data.open_ts)
+        btc_macd_list = PlotMacdHandle(self.symbol, self.interval).get_btc_macd()
+
+        return template_kdj_cross_notice(
+            self.symbol, self.interval, cross_str, macd_result[::-1], btc_macd_list, now_data.open_ts)
 
     async def check_trend(self):
         pass
