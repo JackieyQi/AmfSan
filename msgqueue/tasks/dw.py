@@ -12,7 +12,7 @@ from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable, Kdj
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
-from utils.common import decimal2str, str2decimal
+from utils.common import decimal2str, str2decimal, locking
 from utils.hrequest import http_get_request
 from cache.order import MarketMacdCache, MarketKdjCache
 
@@ -103,6 +103,7 @@ async def save_account_balance_job(*args, **kwargs):
     ).save()
 
 
+@locking("save_kline_job")
 async def save_kline_job(*args, **kwargs):
     # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     query = SymbolPlotTable.select()
@@ -111,6 +112,7 @@ async def save_kline_job(*args, **kwargs):
             await KlineDataSaveHandle(row.symbol, _interval).save_data()
 
 
+@locking("save_macd_job")
 async def save_macd_job(*args, **kwargs):
     # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     query = SymbolPlotTable.select()
@@ -119,6 +121,7 @@ async def save_macd_job(*args, **kwargs):
             await MacdDataSaveHandle(row.symbol, _interval).save_data()
 
 
+@locking("save_kdj_job")
 async def save_kdj_job(*args, **kwargs):
     # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     query = SymbolPlotTable.select()
