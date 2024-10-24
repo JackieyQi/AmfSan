@@ -6,7 +6,7 @@ import time
 
 import schedule
 import ujson as json
-
+from cache import AllCache
 from exts import amf_queue, amf_plot_queue, queue_conn
 
 logger = logging.getLogger(__name__)
@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 
 def push2mq(bp, **kwargs):
     kwargs.update({"bp": bp, "ts": int(time.time())})
+
+    redis_client = AllCache.get_client()
+    if redis_client.get(bp):
+        return 
 
     queue_conn.connect()
     with queue_conn.SimpleQueue(amf_queue) as q:
