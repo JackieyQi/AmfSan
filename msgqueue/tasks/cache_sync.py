@@ -4,11 +4,13 @@
 from settings.setting import cfgs
 from utils.hrequest import http_get_request
 from cache import AllCache
+from utils.common import locking
 from cache.order import MarketPriceCache, MarketPriceLimitCache, MarketMacdCache
 from cache.plot import SymbolPlotTableCache
 from business.market import MarketPriceHandler, SymbolHandle
 
 
+@locking("sync_cache_job")
 async def sync_cache_job(*args, **kwargs):
     url = f"""{cfgs["http"]["inner_url"]}/api/cache/sync/"""
 

@@ -46,3 +46,19 @@ def usdt2busd(val: str):
 
 def busd2usdt(val: str):
     return val.replace("busd", "usdt").replace("BUSD", "USDT")
+
+
+def locking(key):
+    from cache import AllCache
+    redis_client = AllCache.get_client()
+
+    def decorate(func):
+        async def wrapper(*args, **kwargs):
+            if redis_client.set(key, int(time.time()), ex=60*3600, nx=True):
+                response = await func(*args, **kwargs)
+                redis_client.delete(key)
+                return response
+            else:
+                return "locking"
+        return wrapper
+    return decorate
