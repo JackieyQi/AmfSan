@@ -55,7 +55,7 @@ def locking(key):
     def decorate(func):
         async def wrapper(*args, **kwargs):
             if not redis_client.get(key):
-                redis_client.set(key, int(time.time()), ex=60*3600, nx=True)
+                redis_client.set(key, int(time.time()), ex=3600, nx=True)
                 response = await func(*args, **kwargs)
                 redis_client.delete(key)
                 return response

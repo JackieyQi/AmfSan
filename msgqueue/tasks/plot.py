@@ -355,13 +355,15 @@ class PlotMacdHandle(BasePlotHandle):
         macd_list = [i for i in query]
 
         if not macd_list:
-            self.result[
-                self.symbol
-            ] = f"""
-            <br><a>Error: not macd data, {self.symbol}:{self.interval}</a>
-            <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
-            """
-            return await self.send_msg(email_title, "".join(self.result.values()))
+            return
+            # TODO: optimize when only set part interval.
+            # self.result[
+            #     self.symbol
+            # ] = f"""
+            # <br><a>Error: not macd data, {self.symbol}:{self.interval}</a>
+            # <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            # """
+            # return await self.send_msg(email_title, "".join(self.result.values()))
         elif len(macd_list) < limit_count:
             self.result[
                 self.symbol
@@ -590,13 +592,15 @@ class PlotKdjHandle(BasePlotHandle):
         query_list = [i for i in query]
 
         if not query_list:
-            self.result[
-                self.symbol
-            ] = f"""
-            <br><a>Error: not kdj data, {self.symbol}:{self.interval}</a>
-            <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
-            """
-            return await self.send_msg(email_title, "".join(self.result.values()))
+            return
+            # TODO: optimize when only set part interval.
+            # self.result[
+            #     self.symbol
+            # ] = f"""
+            # <br><a>Error: not kdj data, {self.symbol}:{self.interval}</a>
+            # <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
+            # """
+            # return await self.send_msg(email_title, "".join(self.result.values()))
         elif len(query_list) < limit_count:
             self.result[
                 self.symbol
