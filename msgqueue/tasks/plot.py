@@ -94,18 +94,17 @@ class BasePlotHandle(object):
                     "wayley@live.com",
                 ], email_title, email_content)
 
-    async def send_msg(self, email_title, email_content):
+    async def send_msg(self, email_title, email_content, receiver_list=None):
         if not self.result:
             return
 
         from msgqueue.queue import push_msg
 
+        default_receiver_list = ["wayley@live.com", ]
         await push_msg(
             {
                 "bp": "send_email_task",
-                "receiver": [
-                    "wayley@live.com",
-                ],
+                "receiver": default_receiver_list if not receiver_list else receiver_list,
                 "title": email_title,
                 "content": email_content,
             }
@@ -702,16 +701,23 @@ class PlotEmaHandle(BasePlotHandle):
                 KlineTable.open_ts <= ema_data.open_ts,
             )
                 .order_by(KlineTable.id.desc())
-                .limit(30)
+                .limit(31)
         )
         query_list = [i for i in query]
-        if len(query_list) < 30:
+        if len(query_list) < 31:
             return
 
-        ma7 = Decimal(sum([i.close_price for i in query_list[:7]]) / 7)
-        ma20 = Decimal(sum([i.close_price for i in query_list[:20]]) / 20)
-        ma30 = Decimal(sum([i.close_price for i in query_list[:30]]) / 30)
-        return {"ma7": ma7, "ma20": ma20, "ma30": ma30}
+        now_ma7 = Decimal(sum([i.close_price for i in query_list[:7]]) / 7)
+        last_ma7 = Decimal(sum([i.close_price for i in query_list[1:8]]) / 7)
+        now_ma20 = Decimal(sum([i.close_price for i in query_list[:20]]) / 20)
+        last_ma20 = Decimal(sum([i.close_price for i in query_list[1:21]]) / 20)
+        now_ma30 = Decimal(sum([i.close_price for i in query_list[:30]]) / 30)
+        last_ma30 = Decimal(sum([i.close_price for i in query_list[1:31]]) / 30)
+        return {
+            "now_ma7": now_ma7, "last_ma7": last_ma7,
+            "now_ma20": now_ma20, "last_ma20": last_ma20,
+            "now_ma30": now_ma30, "last_ma30": last_ma30,
+        }
 
     async def check_cross(self, limit_count=2):
         logger.info(f"PlotEmaHandle.check_cross start, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
@@ -741,9 +747,9 @@ class PlotEmaHandle(BasePlotHandle):
             """
             return await self.send_msg(email_title, "".join(self.result.values()))
 
-        now_ema_data = ema_query_list[0]
-        now_ma_data_dict = self.get_ma_data(now_ema_data)
-        if not now_ma_data_dict:
+        now_ema_data, last_ema_data = ema_query_list[0], ema_query_list[1]
+        ma_data_dict = self.get_ma_data(now_ema_data)
+        if not ma_data_dict:
             self.result[
                 self.symbol
             ] = f"""
@@ -751,16 +757,28 @@ class PlotEmaHandle(BasePlotHandle):
                         """
             return await self.send_msg(email_title, "".join(self.result.values()))
 
-        if now_ema_data.ema7 > now_ema_data.ema20 \
+        last_ema_positive = last_ema_data.ema7 > last_ema_data.ema20 \
+                            and last_ema_data.ema7 > last_ema_data.ema30 \
+                            and ma_data_dict["last_ma7"] > ma_data_dict["last_ma20"] \
+                            and ma_data_dict["last_ma7"] > ma_data_dict["last_ma30"]
+
+        last_ema_negative = last_ema_data.ema7 < last_ema_data.ema20 \
+                            and last_ema_data.ema7 < last_ema_data.ema30 \
+                            and ma_data_dict["last_ma7"] < ma_data_dict["last_ma20"] \
+                            and ma_data_dict["last_ma7"] < ma_data_dict["last_ma30"]
+
+        if last_ema_positive is False \
+                and now_ema_data.ema7 > now_ema_data.ema20 \
                 and now_ema_data.ema7 > now_ema_data.ema30 \
-                and now_ma_data_dict["ma7"] > now_ma_data_dict["ma20"] \
-                and now_ma_data_dict["ma7"] > now_ma_data_dict["ma30"]:
+                and ma_data_dict["now_ma7"] > ma_data_dict["now_ma20"] \
+                and ma_data_dict["now_ma7"] > ma_data_dict["now_ma30"]:
             return await self.__send_msg(email_title, now_ema_data, cross_str="📈")
 
-        elif now_ema_data.ema7 < now_ema_data.ema20 \
+        elif last_ema_negative is False \
+                and now_ema_data.ema7 < now_ema_data.ema20 \
                 and now_ema_data.ema7 < now_ema_data.ema30 \
-                and now_ma_data_dict["ma7"] < now_ma_data_dict["ma20"] \
-                and now_ma_data_dict["ma7"] < now_ma_data_dict["ma30"]:
+                and ma_data_dict["now_ma7"] < ma_data_dict["now_ma20"] \
+                and ma_data_dict["now_ma7"] < ma_data_dict["now_ma30"]:
             return await self.__send_msg(email_title, now_ema_data, cross_str="📉")
 
     async def __send_msg(self, email_title, now_ema_data, cross_str):
@@ -780,4 +798,4 @@ class PlotEmaHandle(BasePlotHandle):
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
 
         logger.info(f"PlotEmaHandle.check_cross finish, start end_msg, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
-        await self.send_msg(email_title, email_content)
+        await self.send_msg(email_title, email_content, receiver_list=[])
