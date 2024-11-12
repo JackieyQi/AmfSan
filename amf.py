@@ -33,7 +33,7 @@ async def parse_request_params(request):
     if not api_count:
         APIRequestCountCache.set(1, ex=60)
     else:
-        if int(api_count) > 1000:
+        if int(api_count) > 100:
             return "success"
         else:
             APIRequestCountCache.incr()

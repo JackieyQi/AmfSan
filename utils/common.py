@@ -26,7 +26,7 @@ def ts2fmt(ts=None):
 
 
 def ts2bjfmt(ts=None):
-    return (datetime.fromtimestamp(ts or time.time()) + timedelta(hours=0)).strftime(
+    return (datetime.fromtimestamp(ts or time.time()) + timedelta(hours=8)).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
 
@@ -55,7 +55,7 @@ def locking(key):
     def decorate(func):
         async def wrapper(*args, **kwargs):
             if not redis_client.get(key):
-                redis_client.set(key, int(time.time()), ex=3600, nx=True)
+                redis_client.set(key, int(time.time()), ex=900, nx=True)
                 response = await func(*args, **kwargs)
                 redis_client.delete(key)
                 return response

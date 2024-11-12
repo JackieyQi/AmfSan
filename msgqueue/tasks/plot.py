@@ -9,7 +9,8 @@ from decimal import Decimal
 from business.market import MarketPriceHandler
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.order import MacdTable, SymbolPlotTable, KdjTable
+from models.order import MacdTable, SymbolPlotTable, KdjTable, EmaTable
+from models.market import KlineTable
 from models.user import EmailMsgHistoryTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
@@ -22,7 +23,7 @@ from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
                                 )
 from utils.common import decimal2str, str2decimal, ts2bjfmt
 from utils.templates import (template_asset_notice, template_macd_cross_notice,
-                             template_macd_trend_notice, template_kdj_cross_notice)
+                             template_macd_trend_notice, template_kdj_cross_notice, template_ema_cross_notice)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,16 @@ async def check_kdj_cross(*args, **kwargs):
             if not CheckKdjCrossGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
             await PlotKdjHandle(row.symbol, _interval).check_cross()
+
+
+async def check_ema_cross(*args, **kwargs):
+    logger.info("check_ema_cross")
+    symbol_list = ["wifusdt", ]
+    for symbol in symbol_list:
+        for _interval in PLOT_INTERVAL_LIST:
+            # if not CheckKdjCrossGateCache.hget(f"{row.symbol}:{_interval}"):
+            #     continue
+            await PlotEmaHandle(symbol, _interval).check_cross()
 
 
 async def check_kdj_cv(*args, **kwargs):
@@ -672,3 +683,101 @@ class PlotKdjHandle(BasePlotHandle):
 
     async def check_trend(self):
         pass
+
+
+class PlotEmaHandle(BasePlotHandle):
+    def __init__(self, symbol, interval):
+        super().__init__()
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+    def get_ma_data(self, ema_data):
+        query = (
+            KlineTable.select()
+                .where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == self.interval,
+                KlineTable.open_ts <= ema_data.open_ts,
+            )
+                .order_by(KlineTable.id.desc())
+                .limit(30)
+        )
+        query_list = [i for i in query]
+        if len(query_list) < 30:
+            return
+
+        ma7 = Decimal(sum([i.close_price for i in query_list[:7]]) / 7)
+        ma20 = Decimal(sum([i.close_price for i in query_list[:20]]) / 20)
+        ma30 = Decimal(sum([i.close_price for i in query_list[:30]]) / 30)
+        return {"ma7": ma7, "ma20": ma20, "ma30": ma30}
+
+    async def check_cross(self, limit_count=2):
+        logger.info(f"PlotEmaHandle.check_cross start, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
+        email_title = f"{self.symbol} EMA Cross changing Notice"
+
+        if not self.interval:
+            return
+
+        ema_query = (
+            EmaTable.select()
+            .where(
+                EmaTable.symbol == self.symbol,
+                EmaTable.interval_val == self.interval,
+            )
+            .order_by(EmaTable.id.desc())
+            .limit(limit_count)
+        )
+        ema_query_list = [i for i in ema_query]
+
+        if not ema_query_list:
+            return
+        elif len(ema_query_list) < limit_count:
+            self.result[
+                self.symbol
+            ] = f"""
+            <br><a>Error: too less ema data, {self.symbol}:{self.interval}</a>
+            """
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        now_ema_data = ema_query_list[0]
+        now_ma_data_dict = self.get_ma_data(now_ema_data)
+        if not now_ma_data_dict:
+            self.result[
+                self.symbol
+            ] = f"""
+                        <br><a>Error: too less ma data, {self.symbol}:{self.interval}</a>
+                        """
+            return await self.send_msg(email_title, "".join(self.result.values()))
+
+        if now_ema_data.ema7 > now_ema_data.ema20 \
+                and now_ema_data.ema7 > now_ema_data.ema30 \
+                and now_ma_data_dict["ma7"] > now_ma_data_dict["ma20"] \
+                and now_ma_data_dict["ma7"] > now_ma_data_dict["ma30"]:
+            return self.__send_msg(email_title, now_ema_data, cross_str="📈")
+
+        elif now_ema_data.ema7 < now_ema_data.ema20 \
+                and now_ema_data.ema7 < now_ema_data.ema30 \
+                and now_ma_data_dict["ma7"] < now_ma_data_dict["ma20"] \
+                and now_ma_data_dict["ma7"] < now_ma_data_dict["ma30"]:
+            return self.__send_msg(email_title, now_ema_data, cross_str="📉")
+
+    def __send_msg(self, email_title, now_ema_data, cross_str):
+        email_msg_md5_str = (
+            f"check_cross:{self.symbol}:{self.interval}:{now_ema_data.open_ts}"
+        )
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            self.result[self.symbol] = template_ema_cross_notice(
+                self.symbol, self.interval, cross_str, now_ema_data.open_ts)
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+
+        logger.info(f"PlotEmaHandle.check_cross finish, start end_msg, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
+        await self.send_msg(email_title, email_content)

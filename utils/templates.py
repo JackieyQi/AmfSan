@@ -56,6 +56,21 @@ def template_kdj_cross_notice(
             """
 
 
+def template_ema_cross_notice(
+    symbol, interval, cross_str, open_ts
+):
+    return f"""
+            <br><br><b> {symbol.upper()}: </b>
+            <br> <b>ema</b> cross:
+            <br>{interval},
+            <br><b>{cross_str}</b>,
+            <br>
+            <br>opening time:{ts2bjfmt(open_ts)}
+            <br>
+            <br><a href=>Delete cross check.</a>
+            """
+
+
 def template_asset_notice(
     price, btc_val, usdt_val, create_ts, profit_amount, profit_ratio
 ):

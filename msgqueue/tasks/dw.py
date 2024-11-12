@@ -131,10 +131,10 @@ async def save_kdj_job(*args, **kwargs):
 
 
 @locking("save_ema_job")
-async def save_ema_jbo(*args, **kwargs):
+async def save_ema_job(*args, **kwargs):
     symbol_list = ["wifusdt", ]
     for symbol in symbol_list:
-        for _interval in ["1d", ]:
+        for _interval in PLOT_INTERVAL_LIST:
             await EmaDataSaveHandle(symbol, _interval).save_data()
 
 
