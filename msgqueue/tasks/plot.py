@@ -755,15 +755,15 @@ class PlotEmaHandle(BasePlotHandle):
                 and now_ema_data.ema7 > now_ema_data.ema30 \
                 and now_ma_data_dict["ma7"] > now_ma_data_dict["ma20"] \
                 and now_ma_data_dict["ma7"] > now_ma_data_dict["ma30"]:
-            return self.__send_msg(email_title, now_ema_data, cross_str="📈")
+            return await self.__send_msg(email_title, now_ema_data, cross_str="📈")
 
         elif now_ema_data.ema7 < now_ema_data.ema20 \
                 and now_ema_data.ema7 < now_ema_data.ema30 \
                 and now_ma_data_dict["ma7"] < now_ma_data_dict["ma20"] \
                 and now_ma_data_dict["ma7"] < now_ma_data_dict["ma30"]:
-            return self.__send_msg(email_title, now_ema_data, cross_str="📉")
+            return await self.__send_msg(email_title, now_ema_data, cross_str="📉")
 
-    def __send_msg(self, email_title, now_ema_data, cross_str):
+    async def __send_msg(self, email_title, now_ema_data, cross_str):
         email_msg_md5_str = (
             f"check_cross:{self.symbol}:{self.interval}:{now_ema_data.open_ts}"
         )
