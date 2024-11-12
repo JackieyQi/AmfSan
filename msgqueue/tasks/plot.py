@@ -400,14 +400,16 @@ class PlotMacdHandle(BasePlotHandle):
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )
         except EmailMsgHistoryTable.DoesNotExist:
+            if last_macd_data.macd > now_macd_data.macd:
+                cross_str = "📉"
+            else:
+                cross_str = "📈"
             history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
             self.result[self.symbol] = template_macd_cross_notice(
                 self.symbol,
                 self.interval,
-                last_macd_data.macd,
-                now_macd_data.macd,
+                cross_str,
                 now_macd_data.opening_ts,
-                history_macd_list,
                 self.get_btc_macd()
             )
 
@@ -649,9 +651,9 @@ class PlotKdjHandle(BasePlotHandle):
 
     def reformat_kdj_cross_notice(self, last_data, now_data):
         if now_data.d_val > now_data.j_val:
-            cross_str = "NEGATIVE"
+            cross_str = "📉"
         else:
-            cross_str = "POSITIVE"
+            cross_str = "📈"
 
         macd_result = []
         query = (

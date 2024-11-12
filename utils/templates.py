@@ -9,14 +9,14 @@ from utils.common import decimal2str, ts2bjfmt
 
 
 def template_macd_cross_notice(
-    symbol, interval, last_macd, new_macd, opening_ts, history_macd_list, btc_history_macd_list
+    symbol, interval, cross_str, opening_ts, btc_history_macd_list
 ):
     return f"""
             <br><br><b> {symbol.upper()}: </b>
-            <br> <b>macd</b> cross changing:
-            <br>interval: {interval},
-            <br>last macd to new macd: <b>{decimal2str(last_macd)} -> {decimal2str(new_macd)}</b>,
-            <br>last change array: {history_macd_list},
+            <br> <b>macd</b> cross:
+            <br>{interval},
+            <br><b>{cross_str}</b>,
+            <br>
             <br>btc macd change array: {btc_history_macd_list},
             <br>opening time:{ts2bjfmt(opening_ts)}
             <br>
@@ -44,10 +44,11 @@ def template_kdj_cross_notice(
 ):
     return f"""
             <br><br><b> {symbol.upper()}: </b>
-            <br> <b>kdj</b> cross changing:
-            <br>interval: {interval},
-            <br>cross result: <b>{cross_str}</b>,
+            <br> <b>kdj</b> cross:
+            <br>{interval},
+            <br><b>{cross_str}</b>,
             <br>macd array: <b>{macd_list}</b>,
+            <br>
             <br>btc macd array: <b>{btc_macd_list}</b>,
             <br>opening time:{ts2bjfmt(open_ts)}
             <br>
