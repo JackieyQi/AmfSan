@@ -64,9 +64,71 @@ class MarketKdjCache(StringCache):
     """
     cmd: get kdj:btcusdt:1d
     return:
+        {
+        "5m": [
+            {
+                "symbol": "btcusdt",
+                "interval": "5m",
+                "open_ts": 1728535800,
+                "k": "70.16",
+                "d": "65.15",
+                "j": "80.18",
+                "cfg": {
+                    "period": 9,
+                    "move_average_period1": 3,
+                    "move_average_period2": 3
+                }
+            },
+            {
+                "symbol": "btcusdt",
+                "interval": "5m",
+                "open_ts": 1728536100,
+                "k": "58.70",
+                "d": "63.00",
+                "j": "50.11",
+                "cfg": {
+                    "period": 9,
+                    "move_average_period1": 3,
+                    "move_average_period2": 3
+                }
+            }
+            ],
+        }
     """
     key = "MarketKdjCache"
 
     def __init__(self, symbol, interval):
         super().__init__()
         MarketKdjCache.key = f"kdj:{symbol}:{interval}"
+
+
+class MarketEmaCache(StringCache):
+    """
+    cmd: get ema:btcusdt:1d
+    return:
+        {
+        "1d": [
+            {
+                "symbol": "wifusdt",
+                "interval": "1d",
+                "open_ts": 1728000000,
+                "ema7": "29.34",
+                "ema20": "40.64",
+                "ema30": "6.73"
+            },
+            {
+                "symbol": "wifusdt",
+                "interval": "1d",
+                "open_ts": 1728086400,
+                "ema7": "29.34",
+                "ema20": "40.64",
+                "ema30": "6.73"
+            }
+        ]
+        }
+    """
+    key = "MarketEmaCache"
+
+    def __init__(self, symbol, interval):
+        super().__init__()
+        MarketEmaCache.key = f"ema:{symbol}:{interval}"

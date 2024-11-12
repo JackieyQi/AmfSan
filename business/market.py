@@ -11,7 +11,7 @@ from cache.order import (LimitPriceNoticeValueCache,
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     SymbolPlotTableCache, CheckKdjCrossGateCache, CheckKdjCvGateCache
 from models.market import KlineTable
-from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable, KdjTable
+from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable, KdjTable, EmaTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime, decimal2str, Decimal
 from utils.exception import StandardResponseExc
@@ -339,6 +339,32 @@ class KdjInitData(object):
             .get()
         )
         return db_row.id
+
+
+class EmaInitData(object):
+    def __init__(self, init_data):
+        self.init_data = init_data
+
+    def start(self, interval):
+        data = self.init_data.get(interval)
+        for i in data:
+
+            if EmaTable.select().where(
+                EmaTable.symbol == i["symbol"].lower(),
+                EmaTable.open_ts == i["open_ts"],
+                EmaTable.interval_val == i["interval"].lower(),
+            ):
+                print("already")
+            else:
+                _ = EmaTable(
+                    symbol=i["symbol"].lower(),
+                    interval_val=i["interval"].lower(),
+                    open_ts=i["open_ts"],
+                    ema7=Decimal(i["ema7"]),
+                    ema20=Decimal(i["ema20"]),
+                    ema30=Decimal(i["ema30"]),
+                    create_ts=int(time.time()),
+                ).save()
 
 
 class KlineInitData(object):

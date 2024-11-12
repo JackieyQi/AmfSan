@@ -6,15 +6,15 @@ from decimal import Decimal as D
 
 from business.binance_exchange import BinanceExchangeRequestHandle
 # from business.huobi_exchange import HuobiExchangeAccountHandle
-from business.market import MarketPriceHandler, MacdInitData, KdjInitData
+from business.market import MarketPriceHandler, MacdInitData, KdjInitData, EmaInitData
 from models.market import KlineTable
-from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable, KdjTable
+from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable, KdjTable, EmaTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
 from utils.common import decimal2str, str2decimal, locking
 from utils.hrequest import http_get_request
-from cache.order import MarketMacdCache, MarketKdjCache
+from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
 
 
 async def save_trade_history_job(*args, **kwargs):
@@ -128,6 +128,14 @@ async def save_kdj_job(*args, **kwargs):
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
             await KdjDataSaveHandle(row.symbol, _interval).save_data()
+
+
+@locking("save_ema_job")
+async def save_ema_jbo(*args, **kwargs):
+    symbol_list = ["wifusdt", ]
+    for symbol in symbol_list:
+        for _interval in ["1d", ]:
+            await EmaDataSaveHandle(symbol, _interval).save_data()
 
 
 class KlineDataSaveHandle(object):
@@ -467,6 +475,124 @@ class KdjDataSaveHandle(object):
             return
 
         self.__init_kdj_cache_data()
+
+        k_data = self.get_k_lines_from_db()
+        if not k_data:
+            return
+
+        for _data in k_data:
+            self.parsed_k_lines_data(_data)
+
+
+class EmaDataSaveHandle(object):
+    def __init__(self, symbol, interval):
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+    def __init_ema_cache_data(self):
+        cache_data = MarketEmaCache(self.symbol, self.interval).get()
+        if not cache_data:
+            return
+
+        init_data = {self.interval: json.loads(cache_data)}
+        EmaInitData(init_data).start(self.interval)
+
+    def get_k_lines_from_db(self):
+        try:
+            db_last_ema = (
+                EmaTable.select()
+                .where(
+                    EmaTable.symbol == self.symbol,
+                    EmaTable.interval_val == self.interval,
+                )
+                .order_by(EmaTable.id.desc())
+                .limit(1)
+                .get()
+            )
+        except EmaTable.DoesNotExist:
+            return
+
+        try:
+            db_kline = KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == self.interval,
+                KlineTable.open_ts >= db_last_ema.open_ts - self.k_interval,
+            ).order_by(KlineTable.id)
+        except KlineTable.DoesNotExist:
+            return
+        return db_kline
+
+    def __calculate_ema(self, last_data, open_ts, close_price):
+        result = {}
+        n_list = [7, 20, 30]
+        for n in n_list:
+            if n == 7:
+                last_ema = last_data.ema7
+                ema = D(2 / (n + 1)) * close_price + D((1 - 2 / (n + 1))) * last_ema
+                result["ema7"] = ema
+            elif n == 20:
+                last_ema = last_data.ema20
+                ema = D(2 / (n + 1)) * close_price + D((1 - 2 / (n + 1))) * last_ema
+                result["ema20"] = ema
+            else:
+                last_ema = last_data.ema30
+                ema = D(2 / (n + 1)) * close_price + D((1 - 2 / (n + 1))) * last_ema
+                result["ema30"] = ema
+        return result
+
+    def parsed_k_lines_data(self, data):
+        open_ts = data.open_ts
+        close_price = data.close_price
+
+        db_query = (
+            EmaTable.select()
+            .where(
+                EmaTable.symbol == self.symbol,
+                EmaTable.interval_val == self.interval,
+                EmaTable.open_ts.in_([open_ts - self.interval_sec, open_ts]),
+            )
+            .order_by(EmaTable.id)
+        )
+        db_query_list = list(db_query)
+        if not db_query_list:
+            return
+
+        last_data = db_query_list[0]
+        if last_data.open_ts != open_ts - self.interval_sec:
+            return
+
+        ema_result = self.__calculate_ema(last_data, open_ts, close_price)
+        if not ema_result:
+            return
+
+        if len(db_query_list) == 2:
+            now_ema_data = db_query_list[1]
+            now_ema_data.ema7 = ema_result["ema7"]
+            now_ema_data.ema20 = ema_result["ema20"]
+            now_ema_data.ema30 = ema_result["ema30"]
+            now_ema_data.save()
+        else:
+            if not EmaTable.select().where(
+                    EmaTable.symbol == self.symbol,
+                    EmaTable.open_ts == open_ts,
+                    EmaTable.interval_val == self.interval,
+            ):
+                _ = EmaTable.create(
+                    symbol=self.symbol,
+                    interval_val=self.interval,
+                    open_ts=open_ts,
+                    ema7=ema_result["ema7"],
+                    ema20=ema_result["ema20"],
+                    ema30=ema_result["ema30"],
+                )
+
+    async def save_data(self):
+        if not self.interval:
+            return
+
+        self.__init_ema_cache_data()
 
         k_data = self.get_k_lines_from_db()
         if not k_data:

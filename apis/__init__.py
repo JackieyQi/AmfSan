@@ -5,7 +5,7 @@ from .huobi_exchange import AccountInfoView as HuobiAccountInfoView
 from .market import (MarketInnerPriceView, MarketMacdCrossGateView,
                      MarketMacdTrendGateView, MarketPriceGateView,
                      MarketPriceView, MarketKdjCrossGateView)
-from .plot import PlotMacdView, PlotKdjView
+from .plot import PlotMacdView, PlotKdjView, PlotEmaView
 from .test import ServerTimeView, TestView
 from .cache_sync import CacheSyncView
 
@@ -26,6 +26,7 @@ urls_bp = [
 
     (PlotMacdView.as_view(), "api/plot/macd/"),
     (PlotKdjView.as_view(), "api/plot/kdj/"),
+    (PlotEmaView.as_view(), "api/plot/ema/"),
 
     (HuobiAccountInfoView.as_view(), "nmb"),
 ]

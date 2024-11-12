@@ -3,7 +3,7 @@
 
 import ujson as json
 from sanic.views import HTTPMethodView
-from cache.order import MarketMacdCache, MarketKdjCache
+from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
 from settings.constants import PLOT_INTERVAL_LIST
 from business.market import SymbolHandle
 
@@ -81,5 +81,27 @@ class PlotKdjView(HTTPMethodView):
                     ).set(json.dumps(data[_interval]))
 
                     SymbolHandle(symbol).add_kdj_gate(_interval)
+
+        return "handle over!"
+
+
+class PlotEmaView(HTTPMethodView):
+    async def get(self, request):
+        symbol = request.form.get("symbol")
+
+        return symbol
+
+    async def post(self, request):
+        json_data = request.json
+        for symbol, data in json_data.items():
+            for _interval in PLOT_INTERVAL_LIST:
+
+                if _interval in data:
+                    MarketEmaCache(
+                        symbol.lower(),
+                        _interval
+                    ).set(json.dumps(data[_interval]))
+
+                    # SymbolHandle(symbol).add_kdj_gate(_interval)
 
         return "handle over!"

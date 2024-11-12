@@ -127,3 +127,22 @@ class KdjTable(Base):
 
     class Meta:
         table_name = "kdj_table"
+
+
+class EmaTable(Base):
+    symbol = CharField(db_column="symbol", index=True)
+    interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔")
+    open_ts = IntegerField(default=0, db_column="open_ts", help_text="开盘时间")
+    ema7 = DecimalField(
+        db_column="ema7", default=0, max_digits=20, decimal_places=8
+    )
+    ema20 = DecimalField(
+        db_column="ema20", default=0, max_digits=20, decimal_places=8
+    )
+    ema30 = DecimalField(
+        db_column="ema30", default=0, max_digits=20, decimal_places=8
+    )
+    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+
+    class Meta:
+        table_name = "ema_table"
