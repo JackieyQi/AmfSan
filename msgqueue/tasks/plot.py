@@ -317,10 +317,10 @@ class PlotMacdHandle(BasePlotHandle):
         self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
 
     def get_btc_macd(self):
-        result = []
+        result = {}
         for _interval in PLOT_INTERVAL_LIST:
             if _interval not in ["1h", "4h", "1d"]:
-                result.append({_interval: " "})
+                result[_interval] = ""
                 continue
 
             current_data = MacdTable.select().where(
@@ -329,11 +329,11 @@ class PlotMacdHandle(BasePlotHandle):
             ).order_by(MacdTable.id.desc()).get()
 
             macd_result = "正" if current_data.macd > 0 else "负"
-            result.append({_interval: macd_result})
+            result[_interval] = macd_result
         return result
 
     def get_current_macd(self):
-        result = []
+        result = {}
         for _interval in PLOT_INTERVAL_LIST:
 
             try:
@@ -345,7 +345,7 @@ class PlotMacdHandle(BasePlotHandle):
                 macd_result = "正" if current_data.macd > 0 else "负"
             except MacdTable.DoesNotExist:
                 macd_result = ""
-            result.append({_interval: macd_result})
+            result[_interval] = macd_result
         return result
 
     def get_macd_change_list(self, limit_count=7):
