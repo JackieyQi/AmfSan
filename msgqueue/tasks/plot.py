@@ -336,12 +336,15 @@ class PlotMacdHandle(BasePlotHandle):
         result = []
         for _interval in PLOT_INTERVAL_LIST:
 
-            current_data = MacdTable.select().where(
-                MacdTable.symbol == self.symbol,
-                MacdTable.interval_val == _interval,
-            ).order_by(MacdTable.id.desc()).get()
+            try:
+                current_data = MacdTable.select().where(
+                    MacdTable.symbol == self.symbol,
+                    MacdTable.interval_val == _interval,
+                ).order_by(MacdTable.id.desc()).get()
 
-            macd_result = "正" if current_data.macd > 0 else "负"
+                macd_result = "正" if current_data.macd > 0 else "负"
+            except MacdTable.DoesNotExist:
+                macd_result = ""
             result.append({_interval: macd_result})
         return result
 
