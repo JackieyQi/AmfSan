@@ -9,7 +9,7 @@ from utils.common import decimal2str, ts2bjfmt
 
 
 def template_macd_cross_notice(
-    symbol, interval, cross_str, opening_ts, btc_history_macd_list
+    symbol, interval, cross_str, opening_ts, current_history_macd_list, btc_history_macd_list
 ):
     return f"""
             <br><br><b> {symbol.upper()}: </b>
@@ -17,6 +17,7 @@ def template_macd_cross_notice(
             <br>{interval},
             <br><b>{cross_str}</b>,
             <br>
+            <br>new macd change array: {current_history_macd_list},
             <br>btc macd change array: {btc_history_macd_list},
             <br>opening time:{ts2bjfmt(opening_ts)}
             <br>
@@ -40,15 +41,15 @@ def template_macd_trend_notice(
 
 
 def template_kdj_cross_notice(
-    symbol, interval, cross_str, macd_list, btc_macd_list, open_ts
+    symbol, interval, cross_str, new_macd_list, btc_macd_list, open_ts
 ):
     return f"""
             <br><br><b> {symbol.upper()}: </b>
             <br> <b>kdj</b> cross:
             <br>{interval},
             <br><b>{cross_str}</b>,
-            <br>macd array: <b>{macd_list}</b>,
             <br>
+            <br>new macd array: <b>{new_macd_list}</b>,
             <br>btc macd array: <b>{btc_macd_list}</b>,
             <br>opening time:{ts2bjfmt(open_ts)}
             <br>

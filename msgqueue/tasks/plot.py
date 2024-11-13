@@ -319,8 +319,25 @@ class PlotMacdHandle(BasePlotHandle):
     def get_btc_macd(self):
         result = []
         for _interval in PLOT_INTERVAL_LIST:
+            if _interval not in ["4h", "1d"]:
+                result.append({_interval: " "})
+                continue
+
             current_data = MacdTable.select().where(
                 MacdTable.symbol == "btcusdt",
+                MacdTable.interval_val == _interval,
+            ).order_by(MacdTable.id.desc()).get()
+
+            macd_result = "正" if current_data.macd > 0 else "负"
+            result.append({_interval: macd_result})
+        return result
+
+    def get_current_macd(self):
+        result = []
+        for _interval in PLOT_INTERVAL_LIST:
+
+            current_data = MacdTable.select().where(
+                MacdTable.symbol == self.symbol,
                 MacdTable.interval_val == _interval,
             ).order_by(MacdTable.id.desc()).get()
 
@@ -420,6 +437,7 @@ class PlotMacdHandle(BasePlotHandle):
                 self.interval,
                 cross_str,
                 now_macd_data.opening_ts,
+                self.get_current_macd(),
                 self.get_btc_macd()
             )
 
@@ -665,20 +683,13 @@ class PlotKdjHandle(BasePlotHandle):
         else:
             cross_str = "📈"
 
-        macd_result = []
-        query = (
-            MacdTable.select().where(
-                MacdTable.symbol == self.symbol,
-                MacdTable.interval_val == self.interval,
-            ).order_by(MacdTable.id.desc()).limit(3)
-        )
-        for row in query:
-            macd_result.append(decimal2str(row.macd))
-
-        btc_macd_list = PlotMacdHandle(self.symbol, self.interval).get_btc_macd()
+        macd_handler = PlotMacdHandle(self.symbol, self.interval)
+        btc_macd_list = macd_handler.get_btc_macd()
+        new_macd_list = macd_handler.get_current_macd()
 
         return template_kdj_cross_notice(
-            self.symbol, self.interval, cross_str, macd_result[::-1], btc_macd_list, now_data.open_ts)
+            self.symbol, self.interval, cross_str,
+            new_macd_list, btc_macd_list, now_data.open_ts)
 
     async def check_trend(self):
         pass
