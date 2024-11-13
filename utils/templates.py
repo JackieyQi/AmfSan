@@ -17,9 +17,28 @@ def template_macd_cross_notice(
             <br>{interval},
             <br><b>{cross_str}</b>,
             <br>
-            <br>new macd change array: {current_history_macd_list},
-            <br>btc macd change array: {btc_history_macd_list},
             <br>opening time:{ts2bjfmt(opening_ts)}
+            <table border="1">
+            <tr>
+                <td>MACD</td><td>5m</td><td>15m</td><td>1h</td><td>4h</td><td>1d</td>
+            </tr>
+            <tr>
+                <td>{symbol.upper()}</td>
+                <td>{current_history_macd_list["5m"]}</td>
+                <td>{current_history_macd_list["15m"]}</td>
+                <td>{current_history_macd_list["1h"]}</td>
+                <td>{current_history_macd_list["4h"]}</td>
+                <td>{current_history_macd_list["1d"]}</td>
+            </tr>
+            <tr>
+                <td>BTCUSDT</td>
+                <td>{btc_history_macd_list["5m"]}</td>
+                <td>{btc_history_macd_list["15m"]}</td>
+                <td>{btc_history_macd_list["1h"]}</td>
+                <td>{btc_history_macd_list["4h"]}</td>
+                <td>{btc_history_macd_list["1d"]}</td>
+            </tr>
+            </table>™
             <br>
             <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{symbol + '_' + interval}>Delete cross check.</a>
             """
@@ -49,9 +68,28 @@ def template_kdj_cross_notice(
             <br>{interval},
             <br><b>{cross_str}</b>,
             <br>
-            <br>new macd array: <b>{new_macd_list}</b>,
-            <br>btc macd array: <b>{btc_macd_list}</b>,
             <br>opening time:{ts2bjfmt(open_ts)}
+            <table border="1">
+            <tr>
+                <td>MACD</td><td>5m</td><td>15m</td><td>1h</td><td>4h</td><td>1d</td>
+            </tr>
+            <tr>
+                <td>{symbol.upper()}</td>
+                <td>{new_macd_list["5m"]}</td>
+                <td>{new_macd_list["15m"]}</td>
+                <td>{new_macd_list["1h"]}</td>
+                <td>{new_macd_list["4h"]}</td>
+                <td>{new_macd_list["1d"]}</td>
+            </tr>
+            <tr>
+                <td>BTCUSDT</td>
+                <td>{btc_macd_list["5m"]}</td>
+                <td>{btc_macd_list["15m"]}</td>
+                <td>{btc_macd_list["1h"]}</td>
+                <td>{btc_macd_list["4h"]}</td>
+                <td>{btc_macd_list["1d"]}</td>
+            </tr>
+            </table>
             <br>
             <br><a href={INNER_GET_DELETE_KDJ_CROSS_URL}{symbol + '_' + interval}>Delete cross check.</a>
             """
