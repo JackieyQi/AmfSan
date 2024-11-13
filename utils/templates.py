@@ -38,7 +38,7 @@ def template_macd_cross_notice(
                 <td>{btc_history_macd_list["4h"]}</td>
                 <td>{btc_history_macd_list["1d"]}</td>
             </tr>
-            </table>™
+            </table>
             <br>
             <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{symbol + '_' + interval}>Delete cross check.</a>
             """
