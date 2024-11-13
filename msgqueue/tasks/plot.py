@@ -319,7 +319,7 @@ class PlotMacdHandle(BasePlotHandle):
     def get_btc_macd(self):
         result = []
         for _interval in PLOT_INTERVAL_LIST:
-            if _interval not in ["4h", "1d"]:
+            if _interval not in ["1h", "4h", "1d"]:
                 result.append({_interval: " "})
                 continue
 
