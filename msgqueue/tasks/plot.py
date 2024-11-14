@@ -434,13 +434,14 @@ class PlotMacdHandle(BasePlotHandle):
                 cross_str = "📉"
             else:
                 cross_str = "📈"
-            history_macd_list = [decimal2str(i.macd) for i in macd_list][::-1]
+            btc_kdj_list = PlotKdjHandle(self.symbol, self.interval).get_btc_kdj()
             self.result[self.symbol] = template_macd_cross_notice(
                 self.symbol,
                 self.interval,
                 cross_str,
                 now_macd_data.opening_ts,
                 self.get_current_macd(),
+                btc_kdj_list,
                 self.get_btc_macd()
             )
 
@@ -536,6 +537,22 @@ class PlotKdjHandle(BasePlotHandle):
             result.append(row)
 
         return result[::-1]
+
+    def get_btc_kdj(self):
+        result = {}
+        for _interval in PLOT_INTERVAL_LIST:
+            if _interval not in ["1h", "4h", "1d"]:
+                result[_interval] = ""
+                continue
+
+            current_data = KdjTable.select().where(
+                KdjTable.symbol == "btcusdt",
+                KdjTable.interval_val == _interval,
+            ).order_by(KdjTable.id.desc()).get()
+
+            macd_result = "+" if current_data.d_val < current_data.j_val else "-"
+            result[_interval] = macd_result
+        return result
 
     def check_cross_unsync(self, limit_count=7):
         email_title = f"{self.symbol} KDJ Cross changing Notice"
@@ -686,13 +703,14 @@ class PlotKdjHandle(BasePlotHandle):
         else:
             cross_str = "📈"
 
+        btc_kdj_list = self.get_btc_kdj()
         macd_handler = PlotMacdHandle(self.symbol, self.interval)
         btc_macd_list = macd_handler.get_btc_macd()
         new_macd_list = macd_handler.get_current_macd()
 
         return template_kdj_cross_notice(
             self.symbol, self.interval, cross_str,
-            new_macd_list, btc_macd_list, now_data.open_ts)
+            new_macd_list, btc_kdj_list, btc_macd_list, now_data.open_ts)
 
     async def check_trend(self):
         pass

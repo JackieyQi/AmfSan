@@ -9,7 +9,7 @@ from utils.common import decimal2str, ts2bjfmt
 
 
 def template_macd_cross_notice(
-    symbol, interval, cross_str, opening_ts, current_history_macd_list, btc_history_macd_list
+    symbol, interval, cross_str, opening_ts, current_history_macd_list, btc_kdj_list, btc_history_macd_list
 ):
     return f"""
             <br><br><b> {symbol.upper()}: </b>
@@ -20,10 +20,10 @@ def template_macd_cross_notice(
             <br>opening time:{ts2bjfmt(opening_ts)}
             <table border="1">
             <tr>
-                <td>MACD</td><td>5m</td><td>15m</td><td>1h</td><td>4h</td><td>1d</td>
+                <td></td><td>5m</td><td>15m</td><td>1h</td><td>4h</td><td>1d</td>
             </tr>
             <tr>
-                <td>{symbol.upper()}</td>
+                <td>MACD: {symbol.upper()}</td>
                 <td>{current_history_macd_list["5m"]}</td>
                 <td>{current_history_macd_list["15m"]}</td>
                 <td>{current_history_macd_list["1h"]}</td>
@@ -31,7 +31,15 @@ def template_macd_cross_notice(
                 <td>{current_history_macd_list["1d"]}</td>
             </tr>
             <tr>
-                <td>BTCUSDT</td>
+                <td>KDJ : BTCUSDT</td>
+                <td>{btc_kdj_list["5m"]}</td>
+                <td>{btc_kdj_list["15m"]}</td>
+                <td>{btc_kdj_list["1h"]}</td>
+                <td>{btc_kdj_list["4h"]}</td>
+                <td>{btc_kdj_list["1d"]}</td>
+            </tr>
+            <tr>
+                <td>MACD: BTCUSDT</td>
                 <td>{btc_history_macd_list["5m"]}</td>
                 <td>{btc_history_macd_list["15m"]}</td>
                 <td>{btc_history_macd_list["1h"]}</td>
@@ -60,7 +68,7 @@ def template_macd_trend_notice(
 
 
 def template_kdj_cross_notice(
-    symbol, interval, cross_str, new_macd_list, btc_macd_list, open_ts
+    symbol, interval, cross_str, new_macd_list, btc_kdj_list, btc_macd_list, open_ts
 ):
     return f"""
             <br><br><b> {symbol.upper()}: </b>
@@ -71,10 +79,10 @@ def template_kdj_cross_notice(
             <br>opening time:{ts2bjfmt(open_ts)}
             <table border="1">
             <tr>
-                <td>MACD</td><td>5m</td><td>15m</td><td>1h</td><td>4h</td><td>1d</td>
+                <td></td><td>5m</td><td>15m</td><td>1h</td><td>4h</td><td>1d</td>
             </tr>
             <tr>
-                <td>{symbol.upper()}</td>
+                <td>MACD: {symbol.upper()}</td>
                 <td>{new_macd_list["5m"]}</td>
                 <td>{new_macd_list["15m"]}</td>
                 <td>{new_macd_list["1h"]}</td>
@@ -82,7 +90,15 @@ def template_kdj_cross_notice(
                 <td>{new_macd_list["1d"]}</td>
             </tr>
             <tr>
-                <td>BTCUSDT</td>
+                <td>KDJ : BTCUSDT</td>
+                <td>{btc_kdj_list["5m"]}</td>
+                <td>{btc_kdj_list["15m"]}</td>
+                <td>{btc_kdj_list["1h"]}</td>
+                <td>{btc_kdj_list["4h"]}</td>
+                <td>{btc_kdj_list["1d"]}</td>
+            </tr>
+            <tr>
+                <td>MACD: BTCUSDT</td>
                 <td>{btc_macd_list["5m"]}</td>
                 <td>{btc_macd_list["15m"]}</td>
                 <td>{btc_macd_list["1h"]}</td>
