@@ -81,7 +81,7 @@ async def check_ema_cross(*args, **kwargs):
 
 async def check_gpt_plot(*args, **kwargs):
     logger.info("check_gpt_plot")
-    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    query = SymbolPlotTable.select()
     for row in query:
         await PlotGptHandle(row.symbol).check()
 
