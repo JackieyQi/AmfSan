@@ -24,6 +24,8 @@ from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
 from utils.common import decimal2str, str2decimal, ts2bjfmt
 from utils.templates import (template_asset_notice, template_macd_cross_notice,
                              template_macd_trend_notice, template_kdj_cross_notice, template_ema_cross_notice)
+from .base import BasePlotHandle
+from .plot_gpt import PlotGptHandle
 
 logger = logging.getLogger(__name__)
 
@@ -77,38 +79,15 @@ async def check_ema_cross(*args, **kwargs):
             await PlotEmaHandle(symbol, _interval).check_cross()
 
 
+async def check_gpt_plot(*args, **kwargs):
+    logger.info("check_gpt_plot")
+    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    for row in query:
+        await PlotGptHandle(row.symbol).check()
+
+
 async def check_kdj_cv(*args, **kwargs):
     pass
-
-
-class BasePlotHandle(object):
-    def __init__(self):
-        self.result = {}
-
-    def send_msg_unsync(self, email_title, email_content):
-        if not self.result:
-            return
-
-        from business.mail_serve import send_email
-        send_email([
-                    "wayley@live.com",
-                ], email_title, email_content)
-
-    async def send_msg(self, email_title, email_content, receiver_list=None):
-        if not self.result:
-            return
-
-        from msgqueue.queue import push_msg
-
-        default_receiver_list = ["wayley@live.com", ]
-        await push_msg(
-            {
-                "bp": "send_email_task",
-                "receiver": default_receiver_list if not receiver_list else receiver_list,
-                "title": email_title,
-                "content": email_content,
-            }
-        )
 
 
 class PlotAssetHandle(BasePlotHandle):

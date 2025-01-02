@@ -133,3 +133,13 @@ def template_asset_notice(
             <br><br> {ts2bjfmt(create_ts)}: {profit_amount}/{profit_ratio}
             <br> PRICE:{price}, BTC:{btc_val}, USDT:{usdt_val}.
             """
+
+
+def template_gpt_plot_notice(symbol, direction, open_ts):
+    return f"""
+            <br><br><b> {symbol.upper()}: </b>
+            <br> <b>kdj</b> cross:
+            <br><b>{direction}</b>,
+            <br>
+            <br>opening time:{ts2bjfmt(open_ts)}
+            """

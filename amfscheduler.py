@@ -64,6 +64,10 @@ def check_balance_job():
     push2plotmq("check_balance_job")
 
 
+def check_gpt_plot_job():
+    push2plotmq("check_gpt_plot_job")
+
+
 def save_kline_job():
     push2mq("save_kline_job")
 
@@ -101,6 +105,7 @@ def schedules():
     # schedule.every(13).minutes.do(check_macd_trend_job)
     schedule.every(1).minutes.do(check_kdj_cross_job)
     schedule.every(51).minutes.do(check_ema_cross_job)
+    schedule.every(17).minutes.do(check_gpt_plot_job)
 
     # user action
     # schedule.every().day.at("05:00").do(save_trade_history_job)
