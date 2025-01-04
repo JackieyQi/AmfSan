@@ -16,10 +16,26 @@ from settings.constants import *
 from utils.common import str2decimal, to_ctime, decimal2str, Decimal
 from utils.exception import StandardResponseExc
 from utils.hrequest import http_get_request
+from business.binance_exchange import BinanceExchangeRequestHandle
 
 
 class MarketPriceHandler(object):
     def get_current_price(self, symbol: str = "btcusdt"):
+        resp_json = BinanceExchangeRequestHandle().get_current_price(symbol)
+        if resp_json:
+            price_info = resp_json[0]
+            ts = int(int(price_info["T"]) / 1000)
+            price_str = decimal2str(Decimal(price_info["p"]))
+
+            MarketPriceCache.hset(symbol.lower(), price_str)
+            return {
+                "price": price_str,
+                "ts": price_info["T"],
+                "dt": to_ctime(ts),
+            }
+        return {}
+
+    def get_current_price_from_HUOBI(self, symbol: str = "btcusdt"):
         resp_json = http_get_request(HUOBI_TRADE_URL, {"symbol": symbol})
         if resp_json and resp_json["status"] == "ok":
             price_info = resp_json["tick"]["data"][0]
