@@ -135,11 +135,15 @@ def template_asset_notice(
             """
 
 
-def template_gpt_plot_notice(symbol, direction, open_ts):
+def template_gpt_plot_trend_following_strategy_notice(symbol, direction, open_ts):
     return f"""
-            <br><br><b> {symbol.upper()}: </b>
-            <br> <b>kdj</b> cross:
-            <br><b>{direction}</b>,
-            <br>
+            <br><br><b> 🔥 {symbol.upper()}: </b> <b>{direction}</b>
+            <br>opening time:{ts2bjfmt(open_ts)}
+            """
+
+
+def template_gpt_plot_short_term_strategy_notice(symbol, direction, open_ts):
+    return f"""
+            <br><br><b> ❓(待优化) {symbol.upper()}: </b> <b>{direction}</b>
             <br>opening time:{ts2bjfmt(open_ts)}
             """
