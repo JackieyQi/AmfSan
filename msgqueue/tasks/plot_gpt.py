@@ -84,7 +84,8 @@ class PlotGptHandle(BasePlotHandle):
                 macd_list_1h = macd_list
 
         await self.trend_following_strategy(macd_list_1d, macd_list_4h, limit_count)
-        await self.short_term_strategy(macd_list_4h, macd_list_1h, limit_count)
+        await self.short_term_strategy(macd_list_1d, macd_list_4h, macd_list_1h, limit_count)
+        await self.short_term_strategy2(macd_list_4h, macd_list_1h, limit_count)
 
     async def trend_following_strategy(self, macd_list_1d, macd_list_4h, limit_count):
         """
@@ -92,13 +93,10 @@ class PlotGptHandle(BasePlotHandle):
             主要工具：MACD（跟踪趋势） + 日线/4小时线（确认趋势） + 1小时线（寻找买卖点）
         📈 买入信号
             1. 日线、4小时线的MACD金叉：DIF向上突破DEA，说明大方向上涨。
-            # 2. 1小时线的MACD金叉：DIF向上突破DEA，确认短期买入信号。
             2. 1小时线的MACD：不考虑，滞后性太高。
             3. KDJ确认超卖位置：当1小时KDJ处于20以下，且出现金叉信号时，进一步确认买入信号。
         📉 卖出信号
-            # 1. 日线、4小时线的MACD死叉：DIF向下突破DEA，说明大方向下跌。
             1. 日线、4小时线的MACD：趋势向上，DIF向上突破DEA
-            # 2. 1小时线的MACD死叉：DIF向下突破DEA，确认短期卖出信号。
             2. 1小时线的MACD：不考虑，滞后性太高。
             3. KDJ确认超买位置：当1小时KDJ处于80以上，且出现死叉信号时，进一步确认卖出信号。
         ⚠️ 注意：当日线和4小时的趋势向上，但1小时出现反向信号时，可能是短期回调，不一定是大趋势的反转。
@@ -162,7 +160,64 @@ class PlotGptHandle(BasePlotHandle):
             f"PlotGptHandle.trend_following_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
         await self.send_msg(self.email_title, email_content)
 
-    async def short_term_strategy(self, macd_list_4h, macd_list_1h, limit_count):
+    async def short_term_strategy(self, macd_list_1d, macd_list_4h, macd_list_1h, limit_count):
+        """
+        短线快进快出策略
+            主要工具：1小时KDJ+4小时MACD/日线MACD
+        📈 买入信号
+            1. 1小时KDJ的K线上穿D线（金叉），且KDJ在20附近，表示超卖反弹。
+            2. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
+        📉 卖出信号
+            1. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
+            2. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
+        ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
+        """
+
+        query = (
+            KdjTable.select().where(
+                KdjTable.symbol == self.symbol,
+                KdjTable.interval_val == "1h",
+            ).order_by(KdjTable.id.desc()).limit(limit_count)
+        )
+        query_list = [i for i in query]
+        if not query_list:
+            return
+        elif len(query_list) < limit_count:
+            return
+
+        current_kdj_1h = query_list[0]
+        if current_kdj_1h.k_val < Decimal("20") \
+                and current_kdj_1h.d_val < Decimal("20") and current_kdj_1h.j_val < Decimal("20"):
+            direction = "⚠️短线高频交易(策略待优化): 📈 买入信号"
+        elif current_kdj_1h.j_val > Decimal("80"):
+            direction = "⚠️短线高频交易(策略待优化): 📉 卖出信号"
+        else:
+            return
+
+        if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
+            return
+
+        email_msg_md5_str = (
+            f"plotGpt:short_term_strategy:{self.symbol}:{current_kdj_1h.open_ts}"
+        )
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            self.result[self.symbol] = self.short_term_strategy_reformat_notice(direction, current_kdj_1h)
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+
+        logger.info(
+            f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
+        await self.send_msg(self.email_title, email_content)
+
+
+
+    async def short_term_strategy2(self, macd_list_4h, macd_list_1h, limit_count):
         """
         短线快进快出策略
             主要工具：4小时MACD+1小时KDJ+1小时MACD
