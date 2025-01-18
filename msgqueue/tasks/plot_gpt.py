@@ -98,7 +98,7 @@ class PlotGptHandle(BasePlotHandle):
             3. KDJ确认超卖位置：当1小时KDJ处于20以下，且出现金叉信号时，进一步确认买入信号。
         📉 卖出信号
             1. 日线、4小时线的MACD：趋势向上，DIF向上突破DEA。
-            2. KDJ确认超买位置：当1小时KDJ处于80以上，当前J值小于前一个J值。
+            2. KDJ确认超买位置：当1小时KDJ均处于80以上，当前J值小于前一个J值。
         ⚠️ 注意：当日线和4小时的趋势向上，但1小时出现反向信号时，可能是短期回调，不一定是大趋势的反转。
         """
 
@@ -164,7 +164,9 @@ class PlotGptHandle(BasePlotHandle):
 
         logger.info(
             f"PlotGptHandle.trend_following_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
-        await self.send_msg(self.email_title, email_content)
+        # TODO: receiver_list need optimized
+        await self.send_msg(self.email_title, email_content,
+                            receiver_list=["wayley@live.com", "358379803@qq.com", "bluekarl0220@gmail.com"])
 
     async def short_term_strategy(self, macd_list_1d, macd_list_4h, macd_list_1h, limit_count):
         """
@@ -175,7 +177,8 @@ class PlotGptHandle(BasePlotHandle):
             2. 1小时KDJ的K线上穿D线（金叉），且KDJ在20附近，表示超卖反弹。
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
-            1. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
+            2. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
+               -> 2-1. 当前1小时最高价，小于前面3根1小时线的最高价，表示超买回调趋势加强。
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
         if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
@@ -194,11 +197,18 @@ class PlotGptHandle(BasePlotHandle):
             return
 
         current_kdj_1h = query_list[0]
-        if current_kdj_1h.k_val < Decimal("20") \
-                and current_kdj_1h.d_val < Decimal("20") and current_kdj_1h.j_val < Decimal("20"):
+        if current_kdj_1h.k_val < Decimal("30") \
+                and current_kdj_1h.d_val < Decimal("30") and current_kdj_1h.j_val < Decimal("30"):
             direction = "⚠️短线高频交易(策略待优化): 📈 买入信号"
+
         elif current_kdj_1h.j_val > Decimal("80"):
-            # TODO:重构
+            query = KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == "1h",
+            ).order_by(KlineTable.id.desc()).limit(4)
+            high_prices_list = [i.high_price for i in query]
+            if high_prices_list[0] > max(high_prices_list[1:]):
+                return
             direction = "⚠️短线高频交易(策略待优化): 📉 卖出信号"
         else:
             return
