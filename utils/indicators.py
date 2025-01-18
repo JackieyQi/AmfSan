@@ -50,9 +50,9 @@ def analyze_list_trend(decimal_array, num=8):
     return trend, trend_stats
 
 
-def calculate_lower_bollinger(close_prices_array, ema_array, std_multiplier=2, ema_window=26):
+def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, ema_window=26):
     """
-    基于EMA的布林带下轨
+    基于EMA的布林线指标，BOLL指标
     :param close_prices_array:
     :param ema_array:
     :param std_multiplier: 标准查倍数, 通常为2
@@ -64,7 +64,12 @@ def calculate_lower_bollinger(close_prices_array, ema_array, std_multiplier=2, e
 
     df = pd.DataFrame({"ema": ema_array, "close": close_prices_array})
     rolling_std = df["close"].ewm(ema_window, adjust=False).std()
-    lower_band = df["ema"] - (rolling_std * std_multiplier)
 
+    # 布林带上轨
+    higher_band = df["ema"] + (rolling_std * std_multiplier)
+    last_higher_band = higher_band.tail(1).values[0]
+
+    # 布林带下轨
+    lower_band = df["ema"] - (rolling_std * std_multiplier)
     last_lower_band = lower_band.tail(1).values[0]
-    return str2decimal(last_lower_band)
+    return str2decimal(last_higher_band), str2decimal(last_lower_band)

@@ -19,7 +19,7 @@ from models.order import MacdTable, KdjTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG
 from utils.common import ts2bjfmt
-from utils.indicators import analyze_list_trend, calculate_lower_bollinger
+from utils.indicators import analyze_list_trend, calculate_bollinger_bands
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice
 from .base import BasePlotHandle
@@ -39,6 +39,16 @@ class PlotGptHandle(BasePlotHandle):
             raise Exception("Interval 4h miss.")
         if "1d" not in PLOT_INTERVAL_CONFIG:
             raise Exception("Interval 1d miss.")
+
+    def has_limit_price_check(self):
+        all_limit_price = MarketPriceLimitCache.hgetall()
+        if not all_limit_price:
+            return False
+
+        del all_limit_price["btcusdt"]
+        if not all_limit_price:
+            return False
+        return True
 
     def trend_following_strategy_reformat_notice(self, direction, current_data):
         return template_gpt_plot_trend_following_strategy_notice(self.symbol, direction, current_data.open_ts)
@@ -198,26 +208,30 @@ class PlotGptHandle(BasePlotHandle):
             return
 
         current_kdj_1h = query_list[0]
-        if current_kdj_1h.k_val < Decimal("30") \
-                and current_kdj_1h.d_val < Decimal("30") and current_kdj_1h.j_val < Decimal("30"):
 
-            current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
-            if current_trend_macd_1h in ["downward_spiral", ]:
-                return
+        if not self.has_limit_price_check():
+            # TODO: KDJ均值32设置过高，需要结合其他场景判断
+            if current_kdj_1h.k_val < Decimal("32") \
+                    and current_kdj_1h.d_val < Decimal("32") and current_kdj_1h.j_val < Decimal("32"):
 
-            direction = "⚠️短线高频交易(策略待优化): 📈 买入信号"
+                current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
+                if current_trend_macd_1h in ["downward_spiral", ]:
+                    return
 
-        elif current_kdj_1h.j_val > Decimal("80"):
+                direction = "⚠️短线高频交易(策略待优化): 📈 买入信号"
 
-            query = KlineTable.select().where(
-                KlineTable.symbol == self.symbol,
-                KlineTable.interval_val == "1h",
-            ).order_by(KlineTable.id.desc()).limit(4)
-            high_prices_list = [i.high_price for i in query]
-            if high_prices_list[0] > max(high_prices_list[1:]):
-                return
+        elif MarketPriceLimitCache.hget(self.symbol):
+            if current_kdj_1h.j_val > Decimal("80"):
 
-            direction = "⚠️短线高频交易(策略待优化): 📉 卖出信号"
+                query = KlineTable.select().where(
+                    KlineTable.symbol == self.symbol,
+                    KlineTable.interval_val == "1h",
+                ).order_by(KlineTable.id.desc()).limit(4)
+                high_prices_list = [i.high_price for i in query]
+                if high_prices_list[0] > max(high_prices_list[1:]):
+                    return
+
+                direction = "⚠️短线高频交易(策略待优化): 📉 卖出信号"
         else:
             return
 
@@ -330,7 +344,7 @@ class PlotGptHandle(BasePlotHandle):
             close_prices_list.append(row.closing_price)
             ema_list.append(row.ema_26)
 
-        last_lower_band = calculate_lower_bollinger(close_prices_list[::-1], ema_list[::-1])
+        _, last_lower_band = calculate_bollinger_bands(close_prices_list[::-1], ema_list[::-1])
         if current_close_price > last_lower_band:
             return
 
