@@ -137,7 +137,7 @@ def template_asset_notice(
 
 def template_gpt_plot_trend_following_strategy_notice(symbol, direction, open_ts):
     return f"""
-            <br><br><b> 🔥 {symbol.upper()}: </b> <b>{direction}</b>
+            <br><br><b> 🔥Trend following strategy: {symbol.upper()}: </b> <b>{direction}</b>
             <br>opening time:{ts2bjfmt(open_ts)}
             """
 

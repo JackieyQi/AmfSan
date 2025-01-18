@@ -13,6 +13,7 @@ import logging
 import time
 from decimal import Decimal
 
+from cache.order import MarketPriceLimitCache
 from models.market import KlineTable
 from models.order import MacdTable, KdjTable
 from models.user import EmailMsgHistoryTable
@@ -39,8 +40,8 @@ class PlotGptHandle(BasePlotHandle):
         if "1d" not in PLOT_INTERVAL_CONFIG:
             raise Exception("Interval 1d miss.")
 
-    def trend_following_strategy_reformat_notice(self, direction, now_data):
-        return template_gpt_plot_trend_following_strategy_notice(self.symbol, direction, now_data.open_ts)
+    def trend_following_strategy_reformat_notice(self, direction, current_data):
+        return template_gpt_plot_trend_following_strategy_notice(self.symbol, direction, current_data.open_ts)
 
     def short_term_strategy_reformat_notice(self, direction, current_kdj_1h):
         return template_gpt_plot_short_term_strategy_notice(self.symbol, direction, current_kdj_1h.open_ts)
@@ -96,15 +97,12 @@ class PlotGptHandle(BasePlotHandle):
             2. 1小时线的MACD：不考虑，滞后性太高。
             3. KDJ确认超卖位置：当1小时KDJ处于20以下，且出现金叉信号时，进一步确认买入信号。
         📉 卖出信号
-            1. 日线、4小时线的MACD：趋势向上，DIF向上突破DEA
-            2. 1小时线的MACD：不考虑，滞后性太高。
-            3. KDJ确认超买位置：当1小时KDJ处于80以上，且出现死叉信号时，进一步确认卖出信号。
+            1. 日线、4小时线的MACD：趋势向上，DIF向上突破DEA。
+            2. KDJ确认超买位置：当1小时KDJ处于80以上，当前J值小于前一个J值。
         ⚠️ 注意：当日线和4小时的趋势向上，但1小时出现反向信号时，可能是短期回调，不一定是大趋势的反转。
         """
 
-        if macd_list_1d[0].macd < 0:
-            return
-        if macd_list_4h[0].macd < 0:
+        if macd_list_1d[0].macd < 0 or macd_list_4h[0].macd < 0:
             return
 
         interval = "1h"
@@ -120,30 +118,38 @@ class PlotGptHandle(BasePlotHandle):
         elif len(query_list) < limit_count:
             return
 
-        now_data, last_data = query_list[0], query_list[1]
+        current_data, last_data = query_list[0], query_list[1]
 
         now_ts = int(time.time())
         interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
-        if now_data.open_ts < (now_ts - interval_sec * 7):
+        if current_data.open_ts < (now_ts - interval_sec * 7):
             self.result[
                 self.symbol
             ] = f"""
                     <br><a>Error: no lastest kdj data, {self.symbol}:{interval}</a>
-                    <br><a>open_ts:{ts2bjfmt(now_data.open_ts)}</a>
+                    <br><a>open_ts:{ts2bjfmt(current_data.open_ts)}</a>
                     <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
                     """
 
             return await self.send_msg(self.email_title, "".join(self.result.values()))
 
-        if now_data.k_val < Decimal("20") and now_data.d_val < Decimal("20") and now_data.j_val < Decimal("20"):
+        if current_data.k_val < Decimal("20") \
+                and current_data.d_val < Decimal("20") and current_data.j_val < Decimal("20"):
             direction = "📈 买入信号"
-        elif now_data.k_val > Decimal("80") and now_data.d_val > Decimal("80") and now_data.j_val > Decimal("80"):
+
+        elif current_data.k_val > Decimal("80") \
+                and current_data.d_val > Decimal("80") and current_data.j_val > Decimal("80"):
+            if current_data.j_val >= last_data.j_val:
+                return
+            if not MarketPriceLimitCache.hget(self.symbol):
+                return
             direction = "📉 卖出信号"
+
         else:
             return
 
         email_msg_md5_str = (
-            f"plotGpt:trend_following_strategy:{self.symbol}:{now_data.open_ts}"
+            f"plotGpt:trend_following_strategy:{self.symbol}:{current_data.open_ts}"
         )
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
@@ -151,7 +157,7 @@ class PlotGptHandle(BasePlotHandle):
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )
         except EmailMsgHistoryTable.DoesNotExist:
-            self.result[self.symbol] = self.trend_following_strategy_reformat_notice(direction, now_data)
+            self.result[self.symbol] = self.trend_following_strategy_reformat_notice(direction, current_data)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
@@ -165,13 +171,15 @@ class PlotGptHandle(BasePlotHandle):
         短线快进快出策略
             主要工具：1小时KDJ+4小时MACD/日线MACD
         📈 买入信号
-            1. 1小时KDJ的K线上穿D线（金叉），且KDJ在20附近，表示超卖反弹。
-            2. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
+            1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
+            2. 1小时KDJ的K线上穿D线（金叉），且KDJ在20附近，表示超卖反弹。
         📉 卖出信号
+            1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
             1. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
-            2. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
+        if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
+            return
 
         query = (
             KdjTable.select().where(
@@ -190,11 +198,9 @@ class PlotGptHandle(BasePlotHandle):
                 and current_kdj_1h.d_val < Decimal("20") and current_kdj_1h.j_val < Decimal("20"):
             direction = "⚠️短线高频交易(策略待优化): 📈 买入信号"
         elif current_kdj_1h.j_val > Decimal("80"):
+            # TODO:重构
             direction = "⚠️短线高频交易(策略待优化): 📉 卖出信号"
         else:
-            return
-
-        if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
             return
 
         email_msg_md5_str = (
