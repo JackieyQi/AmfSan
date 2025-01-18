@@ -175,6 +175,7 @@ class PlotGptHandle(BasePlotHandle):
         📈 买入信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
             2. 1小时KDJ的K线上穿D线（金叉），且KDJ在20附近，表示超卖反弹。
+            3. 1小时MACD：最近7根线MACD柱状图的下行趋势减弱，表示下跌趋势减缓。
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
             2. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
@@ -199,9 +200,15 @@ class PlotGptHandle(BasePlotHandle):
         current_kdj_1h = query_list[0]
         if current_kdj_1h.k_val < Decimal("30") \
                 and current_kdj_1h.d_val < Decimal("30") and current_kdj_1h.j_val < Decimal("30"):
+
+            current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
+            if current_trend_macd_1h in ["downward_spiral", ]:
+                return
+
             direction = "⚠️短线高频交易(策略待优化): 📈 买入信号"
 
         elif current_kdj_1h.j_val > Decimal("80"):
+
             query = KlineTable.select().where(
                 KlineTable.symbol == self.symbol,
                 KlineTable.interval_val == "1h",
@@ -209,6 +216,7 @@ class PlotGptHandle(BasePlotHandle):
             high_prices_list = [i.high_price for i in query]
             if high_prices_list[0] > max(high_prices_list[1:]):
                 return
+
             direction = "⚠️短线高频交易(策略待优化): 📉 卖出信号"
         else:
             return
@@ -258,7 +266,7 @@ class PlotGptHandle(BasePlotHandle):
             return
 
         trend_str, _ = analyze_list_trend([i.macd for i in macd_list_4h][::-1])
-        if trend_str not in ["明显放大趋势", "轻微放大趋势"]:
+        if trend_str not in ["parabolic_move", "modest_increase"]:
             return
 
         query = KlineTable.select().where(

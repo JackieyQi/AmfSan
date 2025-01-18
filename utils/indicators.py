@@ -6,7 +6,7 @@ import pandas as pd
 from utils.common import str2decimal
 
 
-def analyze_list_trend(decimal_array):
+def analyze_list_trend(decimal_array, num=8):
     """
     基于最小二乘多项式拟合，使用线性回归计算趋势
     """
@@ -17,31 +17,36 @@ def analyze_list_trend(decimal_array):
 
     # 计算基本统计量
     trend_stats = {
-        "总体变化量": float_array[-1] - float_array[0],
-        "平均变化率": np.mean(differences),
-        "增长次数": np.sum(differences > 0),
-        "下降次数": np.sum(differences < 0),
-        # "最大增长": np.max(differences),
-        # "最大下降": np.min(differences),
-        "方差": np.var(differences),
+        "total_change": float_array[-1] - float_array[0],    # 总体变化量
+        "mean_rate": np.mean(differences),    # 平均变化率
+        "up_count": np.sum(differences > 0),    # 增长次数
+        "down_count": np.sum(differences < 0),    # 下降次数
+        # "max_diff": np.max(differences),    # 最大增长
+        # "min_diff": np.min(differences),    # 最大下降
+        "variance": np.var(differences),    # 方差
     }
 
     # 使用线性回归计算趋势, 最小二乘多项式拟合
     x = np.arange(len(float_array))
     slope, *args = np.polyfit(x, float_array, 1)
+    slope = str2decimal(slope, num)
 
-    # TODO: 根据slope，调整判断值
-    # TODO: 汉字调整为英文key
-    if slope > 0 and trend_stats["增长次数"] >= trend_stats["下降次数"]:
-        trend = "明显放大趋势"
-    elif slope < 0 and trend_stats["下降次数"] >= trend_stats["增长次数"]:
-        trend = "明显缩小趋势"
-    elif trend_stats["总体变化量"] > 0:
-        trend = "轻微放大趋势"
-    elif trend_stats["总体变化量"] < 0:
-        trend = "轻微缩小趋势"
+    # TODO: 根据slope和macd小数位，调整判断值
+    if slope > 0 and trend_stats["up_count"] >= trend_stats["down_count"]:
+        # trend = "明显上升趋势"
+        trend = "parabolic_move"
+    elif slope < 0 and trend_stats["down_count"] >= trend_stats["up_count"]:
+        # trend = "明显下降趋势"
+        trend = "downward_spiral"
+    elif trend_stats["total_change"] > 0:
+        # trend = "轻微上升趋势"
+        trend = "modest_increase"
+    elif trend_stats["total_change"] < 0:
+        # trend = "轻微下降趋势"
+        trend = "modest_decline"
     else:
-        trend = "无明显趋势"
+        # trend = "无明显趋势"
+        trend = "range_bound"
     return trend, trend_stats
 
 
