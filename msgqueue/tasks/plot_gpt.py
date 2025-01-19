@@ -219,6 +219,8 @@ class PlotGptHandle(BasePlotHandle):
                     return
 
                 direction = "⚠️短线高频交易(策略待优化): 📈 买入信号"
+            else:
+                return
 
         elif MarketPriceLimitCache.hget(self.symbol):
             if current_kdj_1h.j_val > Decimal("80"):
@@ -232,6 +234,8 @@ class PlotGptHandle(BasePlotHandle):
                     return
 
                 direction = "⚠️短线高频交易(策略待优化): 📉 卖出信号"
+            else:
+                return
         else:
             return
 
