@@ -50,6 +50,28 @@ class PlotGptHandle(BasePlotHandle):
             return False
         return True
 
+    def get_support_resistance_level(self, interval):
+        """
+        支撑位: 布林带下轨
+        阻力位: 布林带上轨
+        """
+        query = (
+            MacdTable.select().where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == interval,
+            ).order_by(MacdTable.id.desc()).limit(27)
+        )
+        close_prices_list, ema_list = [], []
+        for i, row in enumerate(query):
+            if i == 0:
+                # current_close_price = row.closing_price
+                continue
+            close_prices_list.append(row.closing_price)
+            ema_list.append(row.ema_26)
+
+        last_higher_band, last_lower_band = calculate_bollinger_bands(close_prices_list[::-1], ema_list[::-1])
+        return last_higher_band, last_lower_band
+
     def trend_following_strategy_reformat_notice(self, direction, current_data):
         return template_gpt_plot_trend_following_strategy_notice(self.symbol, direction, current_data.open_ts)
 
@@ -188,8 +210,9 @@ class PlotGptHandle(BasePlotHandle):
             主要工具：1小时KDJ+4小时MACD/日线MACD
         📈 买入信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
-            2. 1小时KDJ的K线上穿D线（金叉），且KDJ在20附近，表示超卖反弹。
+            2. 1小时KDJ的K线上穿D线（金叉），且KDJ在32附近，表示超卖反弹。
             3. 1小时MACD：最近7根线MACD柱状图的下行趋势减弱，表示下跌趋势减缓。
+            4. 当前价格小于，4小时布林带下轨值，击穿支撑位，表示下跌放大，不买入。
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
             2. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
@@ -198,6 +221,7 @@ class PlotGptHandle(BasePlotHandle):
         """
         if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
             return
+        current_price = macd_list_1h[0].closing_price
 
         query = (
             KdjTable.select().where(
@@ -222,7 +246,11 @@ class PlotGptHandle(BasePlotHandle):
                 if current_trend_macd_1h in ["downward_spiral", ]:
                     return
 
-                direction = "⚠️短线高频交易(策略待优化): 📈 买入信号"
+                support_level, resistance_level = self.get_support_resistance_level("4h")
+                if current_price <= support_level:
+                    return
+
+                direction = f"⚠️短线高频交易(策略待优化): 📈 买入信号, support:{support_level}, resistance:{resistance_level}"
             else:
                 return
 
@@ -377,8 +405,12 @@ class PlotGptHandle(BasePlotHandle):
         牛市大涨策略：
             主要工具：4小时K线图
         📈 买入信号
-            1. 4小时K线：最近3条的最高价逐步递增，初步判断趋势大涨。
+            1. 4小时MACD上行，DIF突破DEA。
+            2. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
         """
+        if macd_list_4h[0].macd < 0:
+            return
+
         query = KlineTable.select().where(
             KlineTable.symbol == self.symbol,
             KlineTable.interval_val == "4h",
