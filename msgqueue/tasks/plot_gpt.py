@@ -21,7 +21,7 @@ from settings.constants import PLOT_INTERVAL_CONFIG
 from utils.common import ts2bjfmt
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
-    template_gpt_plot_short_term_strategy_notice
+    template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
 from .base import BasePlotHandle
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,9 @@ class PlotGptHandle(BasePlotHandle):
 
     def short_term_strategy_reformat_notice(self, direction, current_kdj_1h):
         return template_gpt_plot_short_term_strategy_notice(self.symbol, direction, current_kdj_1h.open_ts)
+
+    def bull_run_strategy_reformat_notice(self, current_ts):
+        return template_gpt_plot_bull_run_strategy_notice(self.symbol, current_ts)
 
     async def check(self, limit_count=7):
 
@@ -97,6 +100,7 @@ class PlotGptHandle(BasePlotHandle):
         await self.trend_following_strategy(macd_list_1d, macd_list_4h, limit_count)
         await self.short_term_strategy(macd_list_1d, macd_list_4h, macd_list_1h, limit_count)
         await self.short_term_strategy2(macd_list_4h, macd_list_1h, limit_count)
+        await self.bull_run_strategy(macd_list_4h)
 
     async def trend_following_strategy(self, macd_list_1d, macd_list_4h, limit_count):
         """
@@ -257,8 +261,6 @@ class PlotGptHandle(BasePlotHandle):
             f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
         await self.send_msg(self.email_title, email_content)
 
-
-
     async def short_term_strategy2(self, macd_list_4h, macd_list_1h, limit_count):
         """
         短线快进快出策略
@@ -328,7 +330,7 @@ class PlotGptHandle(BasePlotHandle):
         current_kdj_1h = query_list[0]
         if current_kdj_1h.k_val < Decimal("40") \
                 and current_kdj_1h.d_val < Decimal("40") and current_kdj_1h.j_val < Decimal("40"):
-            direction = "📈 买入信号"
+            direction = "short_term_strategy2: 📈 买入信号"
         # TODO: 卖出信号
         else:
             return
@@ -368,4 +370,40 @@ class PlotGptHandle(BasePlotHandle):
 
         logger.info(
             f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
+        await self.send_msg(self.email_title, email_content)
+
+    async def bull_run_strategy(self, macd_list_4h):
+        """
+        牛市大涨策略：
+            主要工具：4小时K线图
+        📈 买入信号
+            1. 4小时K线：最近3条的最高价逐步递增，初步判断趋势大涨。
+        """
+        query = KlineTable.select().where(
+            KlineTable.symbol == self.symbol,
+            KlineTable.interval_val == "4h",
+        ).order_by(KlineTable.id.desc()).limit(3)
+        last_high_price = None
+        for row in query:
+            if last_high_price and last_high_price < row.high_price:
+                return
+            last_high_price = row.high_price
+
+        current_ts = int(time.time())
+        email_msg_md5_str = (
+            f"plotGpt:bull_run_strategy:{self.symbol}:{current_ts}"
+        )
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            return EmailMsgHistoryTable.get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            self.result[self.symbol] = self.bull_run_strategy_reformat_notice(current_ts)
+
+        email_content = "".join(self.result.values())
+        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+
+        logger.info(
+            f"PlotGptHandle.bull_run_strategy finish, start end_msg, symbol:{self.symbol}, ts:{current_ts}")
         await self.send_msg(self.email_title, email_content)

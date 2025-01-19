@@ -147,3 +147,10 @@ def template_gpt_plot_short_term_strategy_notice(symbol, direction, open_ts):
             <br><br><b> ❓(待优化) {symbol.upper()}: </b> <b>{direction}</b>
             <br>opening time:{ts2bjfmt(open_ts)}
             """
+
+
+def template_gpt_plot_bull_run_strategy_notice(symbol, current_ts):
+    return f"""
+                <br><br><b> 📝4小时连续破高上涨 {symbol.upper()}</b>
+                <br>opening time:{ts2bjfmt(current_ts)}
+                """

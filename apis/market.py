@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 # coding:utf8
 
+import time
 from decimal import Decimal
 
 from business.market import MarketPriceHandler, SymbolHandle
@@ -83,6 +84,7 @@ class MarketPriceGateView(HTTPMethodView):
             "symbol": symbol,
             "hdel_limit_price_result": hdel_limit_price_result,
             "db_del_plot_result": db_del_plot_result,
+            "ts": int(time.time()),
         }
 
 
