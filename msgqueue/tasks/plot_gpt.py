@@ -406,24 +406,39 @@ class PlotGptHandle(BasePlotHandle):
             主要工具：4小时K线图
         📈 买入信号
             1. 4小时MACD上行，DIF突破DEA。
-            2. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
+            2. 4小时KDJ上行，J值大于D值。
+            3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
         """
         if macd_list_4h[0].macd < 0:
             return
+
+        query = (
+            KdjTable.select().where(
+                KdjTable.symbol == self.symbol,
+                KdjTable.interval_val == "4h",
+            ).order_by(KdjTable.id.desc()).limit(3)
+        )
+        for row in query:
+            if row.j_val < row.d_val:
+                return
 
         query = KlineTable.select().where(
             KlineTable.symbol == self.symbol,
             KlineTable.interval_val == "4h",
         ).order_by(KlineTable.id.desc()).limit(3)
         last_high_price = None
+        open_ts = None
         for row in query:
             if last_high_price and last_high_price < row.high_price:
                 return
             last_high_price = row.high_price
 
+            if not open_ts:
+                open_ts = row.open_ts
+
         current_ts = int(time.time())
         email_msg_md5_str = (
-            f"plotGpt:bull_run_strategy:{self.symbol}:{current_ts}"
+            f"plotGpt:bull_run_strategy:{self.symbol}:{open_ts}"
         )
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
@@ -431,7 +446,7 @@ class PlotGptHandle(BasePlotHandle):
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )
         except EmailMsgHistoryTable.DoesNotExist:
-            self.result[self.symbol] = self.bull_run_strategy_reformat_notice(current_ts)
+            self.result[self.symbol] = self.bull_run_strategy_reformat_notice(open_ts)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
