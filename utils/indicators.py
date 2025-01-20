@@ -52,7 +52,7 @@ def analyze_list_trend(decimal_array, num=8):
 
 def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, ema_window=26):
     """
-    基于EMA的布林线指标，BOLL指标
+    基于EMA，计算布林线指标(BOLL指标)
     :param close_prices_array:
     :param ema_array:
     :param std_multiplier: 标准查倍数, 通常为2
@@ -73,3 +73,16 @@ def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, e
     lower_band = df["ema"] - (rolling_std * std_multiplier)
     last_lower_band = lower_band.tail(1).values[0]
     return str2decimal(last_higher_band), str2decimal(last_lower_band)
+
+
+def calculate_cv(decimal_array, num=1):
+    """
+    计算离散程度，变异系数=标准差/平均值
+    """
+    standard_deviation = np.std(decimal_array)
+    mean = np.average(decimal_array)
+    if not mean or mean <= 0:
+        return
+
+    cv = standard_deviation/mean
+    return str2decimal(cv, num)

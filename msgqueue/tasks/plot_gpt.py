@@ -19,7 +19,7 @@ from models.order import MacdTable, KdjTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG
 from utils.common import ts2bjfmt
-from utils.indicators import analyze_list_trend, calculate_bollinger_bands
+from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
 from .base import BasePlotHandle
@@ -210,9 +210,10 @@ class PlotGptHandle(BasePlotHandle):
             主要工具：1小时KDJ+4小时MACD/日线MACD
         📈 买入信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
-            2. 1小时KDJ的K线上穿D线（金叉），且KDJ在32附近，表示超卖反弹。
+            2. 1小时KDJ的K线上穿D线（金叉），且KDJ在35附近，表示超卖反弹。
             3. 1小时MACD：最近7根线MACD柱状图的下行趋势减弱，表示下跌趋势减缓。
-            4. 当前价格小于，4小时布林带下轨值，击穿支撑位，表示下跌放大，不买入。
+                3.1. (或)当前价格大于4小时布林带下轨值，未击穿支撑位，增强买入信号。
+                3.2. (或)1小时KDJ的最近3条线，有接近死叉或金叉，增强信号。
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
             2. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
@@ -238,16 +239,25 @@ class PlotGptHandle(BasePlotHandle):
         current_kdj_1h = query_list[0]
 
         if not self.has_limit_price_check():
-            # TODO: KDJ均值32设置过高，需要结合其他场景判断
-            if current_kdj_1h.k_val < Decimal("32") \
-                    and current_kdj_1h.d_val < Decimal("32") and current_kdj_1h.j_val < Decimal("32"):
+            # TODO: KDJ均值35设置过高，需要结合其他场景判断
+            if current_kdj_1h.k_val < Decimal("35") \
+                    and current_kdj_1h.d_val < Decimal("35") and current_kdj_1h.j_val < Decimal("35"):
 
                 current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
                 if current_trend_macd_1h in ["downward_spiral", ]:
                     return
 
-                support_level, resistance_level = self.get_support_resistance_level("4h")
-                if current_price <= support_level:
+                resistance_level, support_level = self.get_support_resistance_level("4h")
+                check_price_fall = current_price > support_level
+
+                check_cv_cross = False
+                for _kdj in query_list[:3]:
+                    _cv = calculate_cv([_kdj.k_val, _kdj.d_val, _kdj.j_val])
+                    if _cv == 0:
+                        check_cv_cross = True
+                        break
+
+                if (check_price_fall | check_cv_cross) is False:
                     return
 
                 direction = f"⚠️短线高频交易(策略待优化): 📈 买入信号, support:{support_level}, resistance:{resistance_level}"
