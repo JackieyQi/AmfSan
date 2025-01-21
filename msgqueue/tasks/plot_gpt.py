@@ -208,12 +208,14 @@ class PlotGptHandle(BasePlotHandle):
         """
         短线快进快出策略
             主要工具：1小时KDJ+4小时MACD/日线MACD
+            触发条件：核心信号满足+任意一个辅助信号满足即可触发买入，这样可以避免因为条件过多而错失信号。
         📈 买入信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
             2. 1小时KDJ的K线上穿D线（金叉），且KDJ在35附近，表示超卖反弹。
             3. 1小时MACD：最近7根线MACD柱状图的下行趋势减弱，表示下跌趋势减缓。
                 3.1. (或)当前价格大于4小时布林带下轨值，未击穿支撑位，增强买入信号。
                 3.2. (或)1小时KDJ的最近3条线，有接近死叉或金叉，增强信号。
+                3.3. (或)4小时K线的近三条的最高价逐步下降，表示下跌压力依旧很大，1小时KDJ均值在20附近，提示买入信号。
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
             2. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
@@ -257,10 +259,25 @@ class PlotGptHandle(BasePlotHandle):
                         check_cv_cross = True
                         break
 
-                if (check_price_fall | check_cv_cross) is False:
+                check_kdj_20 = False
+                query = KlineTable.select().where(
+                    KlineTable.symbol == self.symbol,
+                    KlineTable.interval_val == "4h",
+                ).order_by(KlineTable.id.desc()).limit(3)
+                high_prices_4h_list = [i.high_price for i in query]
+                if all(x < y for x, y in zip(high_prices_4h_list, high_prices_4h_list[1:])) is True:
+                    if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
+                            and current_kdj_1h.j_val < Decimal("20"):
+                        check_kdj_20 = True
+
+                if (check_price_fall | check_cv_cross | check_kdj_20) is False:
                     return
 
-                direction = f"⚠️短线高频交易(策略待优化): 📈 买入信号, support:{support_level}, resistance:{resistance_level}"
+                direction = f"⚠️短线高频交易(策略待优化): 📈 买入信号, " \
+                            f"建议支撑位:{support_level}, 建议阻力位:{resistance_level}， " \
+                            f"辅助信号：check_price_fall: {check_price_fall}, " \
+                            f"辅助信号：check_cv_cross: {check_cv_cross}, " \
+                            f"辅助信号：check_kdj_20: {check_kdj_20}"
             else:
                 return
 
