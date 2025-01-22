@@ -218,8 +218,9 @@ class PlotGptHandle(BasePlotHandle):
                 3.3. (或)4小时K线的近三条的最高价逐步下降，表示下跌压力依旧很大，1小时KDJ均值在20附近，提示买入信号。
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA。
-            2. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买回调。
-               -> 2-1. 当前1小时最高价，小于前面3根1小时线的最高价，表示超买回调趋势加强。
+            2. 1小时KDJ的K线下穿D线（死叉），且J值在80附近，表示超买出现。
+            3. 1小时MACD：最近7根线MACD柱状图的上行趋势减弱，表示上涨趋势减缓。
+               -> 3-1. 当前1小时最高价，小于前面3根1小时线的最高价，表示价格受阻，超买回调趋势加强。
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
         if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
@@ -282,17 +283,25 @@ class PlotGptHandle(BasePlotHandle):
                 return
 
         elif MarketPriceLimitCache.hget(self.symbol):
+            # TODO: 有的时候出场太早，趋势还在上涨。
             if current_kdj_1h.j_val > Decimal("80"):
+
+                current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
+                if current_trend_macd_1h in ["parabolic_move", ]:
+                    return
 
                 query = KlineTable.select().where(
                     KlineTable.symbol == self.symbol,
                     KlineTable.interval_val == "1h",
                 ).order_by(KlineTable.id.desc()).limit(4)
                 high_prices_list = [i.high_price for i in query]
-                if high_prices_list[0] > max(high_prices_list[1:]):
+                check_price_resistance = high_prices_list[0] < max(high_prices_list[1:])
+
+                if check_price_resistance is False:
                     return
 
-                direction = "⚠️短线高频交易(策略待优化): 📉 卖出信号"
+                direction = f"⚠️短线高频交易(策略待优化): 📉 卖出信号, " \
+                            f"辅助信号：check_price_resistance: {check_price_resistance}"
             else:
                 return
         else:
