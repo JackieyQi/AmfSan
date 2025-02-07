@@ -80,10 +80,24 @@ async def check_ema_cross(*args, **kwargs):
 
 
 async def check_gpt_plot(*args, **kwargs):
+    from amfscheduler import push2plotmq
+
     logger.info("check_gpt_plot")
     query = SymbolPlotTable.select()
     for row in query:
-        await PlotGptHandle(row.symbol).check()
+        await push2plotmq({
+            "bp": "check_single_gpt_plot_job",
+            "symbol": row.symbol,
+        })
+        # await PlotGptHandle(row.symbol).check()
+
+
+async def check_single_gpt_plot(val):
+    symbol = val.get("symbol")
+    if not symbol:
+        logger.error(f"check_single_gpt_plot, {val}")
+        return
+    await PlotGptHandle(symbol).check()
 
 
 async def check_kdj_cv(*args, **kwargs):

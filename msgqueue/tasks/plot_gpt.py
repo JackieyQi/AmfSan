@@ -45,7 +45,9 @@ class PlotGptHandle(BasePlotHandle):
         if not all_limit_price:
             return False
 
-        del all_limit_price["btcusdt"]
+        if "btcusdt" in all_limit_price:
+            del all_limit_price["btcusdt"]
+
         if not all_limit_price:
             return False
         return True
