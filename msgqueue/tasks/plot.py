@@ -41,7 +41,7 @@ async def check_balance(*args, **kwargs):
 
 
 async def check_macd_cross(*args, **kwargs):
-    logger.info("check_macd_cross")
+    logger.debug("check_macd_cross")
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
@@ -60,7 +60,7 @@ async def check_macd_trend(*args, **kwargs):
 
 
 async def check_kdj_cross(*args, **kwargs):
-    logger.info("check_kdj_cross")
+    logger.debug("check_kdj_cross")
     query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
@@ -70,7 +70,7 @@ async def check_kdj_cross(*args, **kwargs):
 
 
 async def check_ema_cross(*args, **kwargs):
-    logger.info("check_ema_cross")
+    logger.debug("check_ema_cross")
     symbol_list = ["wifusdt", ]
     for symbol in symbol_list:
         for _interval in PLOT_INTERVAL_LIST:
@@ -82,7 +82,7 @@ async def check_ema_cross(*args, **kwargs):
 async def check_gpt_plot(*args, **kwargs):
     from msgqueue.queue import push_plotmq
 
-    logger.info("check_gpt_plot")
+    logger.debug("check_gpt_plot")
     query = SymbolPlotTable.select()
     for row in query:
         await push_plotmq({

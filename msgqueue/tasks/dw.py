@@ -2,6 +2,7 @@
 # coding:utf8
 
 import json
+import logging
 from decimal import Decimal as D
 
 from business.binance_exchange import BinanceExchangeRequestHandle
@@ -15,6 +16,9 @@ from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
 from utils.common import decimal2str, str2decimal, locking
 from utils.hrequest import http_get_request
 from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
+
+
+logger = logging.getLogger(__name__)
 
 
 async def save_trade_history_job(*args, **kwargs):
@@ -427,6 +431,7 @@ class KdjDataSaveHandle(object):
         )
         db_query_list = list(db_query)
         if not db_query_list:
+            logger.error(f"KdjDataSaveHandle, no db_query_list, {self.symbol}, {self.interval}, {open_ts}")
             return
 
         last_kdj_data = db_query_list[0]
@@ -437,6 +442,7 @@ class KdjDataSaveHandle(object):
         period = kdj_cfg["period"]
         kdj_result = self.__calculate_kdj(last_kdj_data, open_ts, close_price, period)
         if not kdj_result:
+            logger.error(f"KdjDataSaveHandle, no kdj_result, {self.symbol}, {self.interval}, {open_ts}")
             return
         k_val, d_val, j_val = kdj_result
 
@@ -478,6 +484,7 @@ class KdjDataSaveHandle(object):
 
         k_data = self.get_k_lines_from_db()
         if not k_data:
+            logger.error(f"KdjDataSaveHandle, no k_data, {self.symbol}, {self.interval}")
             return
 
         for _data in k_data:
