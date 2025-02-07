@@ -80,12 +80,12 @@ async def check_ema_cross(*args, **kwargs):
 
 
 async def check_gpt_plot(*args, **kwargs):
-    from amfscheduler import push2plotmq
+    from msgqueue.queue import push_plotmq
 
     logger.info("check_gpt_plot")
     query = SymbolPlotTable.select()
     for row in query:
-        await push2plotmq({
+        await push_plotmq({
             "bp": "check_single_gpt_plot_job",
             "symbol": row.symbol,
         })
