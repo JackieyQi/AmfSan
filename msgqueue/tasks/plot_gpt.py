@@ -124,7 +124,7 @@ class PlotGptHandle(BasePlotHandle):
         await self.trend_following_strategy(macd_list_1d, macd_list_4h, limit_count)
         await self.short_term_strategy(macd_list_1d, macd_list_4h, macd_list_1h, limit_count)
         await self.short_term_strategy2(macd_list_4h, macd_list_1h, limit_count)
-        await self.bull_run_strategy(macd_list_4h)
+        await self.bull_run_strategy(macd_list_4h, macd_list_1h)
 
     async def trend_following_strategy(self, macd_list_1d, macd_list_4h, limit_count):
         """
@@ -438,16 +438,17 @@ class PlotGptHandle(BasePlotHandle):
             f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
         await self.send_msg(self.email_title, email_content)
 
-    async def bull_run_strategy(self, macd_list_4h):
+    async def bull_run_strategy(self, macd_list_4h, macd_list_1h):
         """
         牛市大涨策略：
             主要工具：4小时K线图
         📈 买入信号
-            1. 4小时MACD上行，DIF突破DEA。
+            # 1. 4小时MACD上行，DIF突破DEA。
+            1. 1小时MACD上行，DIF突破DEA。
             2. 4小时KDJ上行，J值大于D值。
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
         """
-        if macd_list_4h[0].macd < 0:
+        if macd_list_1h[0].macd < 0:
             return
 
         query = (
