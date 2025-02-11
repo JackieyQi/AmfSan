@@ -21,7 +21,7 @@ from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
                                 INNER_GET_UPDATE_PRICE_URL,
                                 PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG,
                                 )
-from utils.common import decimal2str, str2decimal, ts2bjfmt
+from utils.common import decimal2str, str2decimal, ts2bjfmt, check_lock_latest
 from utils.templates import (template_asset_notice, template_macd_cross_notice,
                              template_macd_trend_notice, template_kdj_cross_notice, template_ema_cross_notice)
 from .base import BasePlotHandle
@@ -47,7 +47,7 @@ async def check_macd_cross(*args, **kwargs):
         for _interval in PLOT_INTERVAL_LIST:
             if not CheckMacdCrossGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
-            await PlotMacdHandle(row.symbol, _interval).check_cross()
+            await PlotMacdHandle(row.symbol, _interval).check_cross(row.symbol, _interval)
 
 
 async def check_macd_trend(*args, **kwargs):
@@ -66,7 +66,7 @@ async def check_kdj_cross(*args, **kwargs):
         for _interval in PLOT_INTERVAL_LIST:
             if not CheckKdjCrossGateCache.hget(f"{row.symbol}:{_interval}"):
                 continue
-            await PlotKdjHandle(row.symbol, _interval).check_cross()
+            await PlotKdjHandle(row.symbol, _interval).check_cross(row.symbol, _interval)
 
 
 async def check_ema_cross(*args, **kwargs):
@@ -358,7 +358,8 @@ class PlotMacdHandle(BasePlotHandle):
 
         return result[::-1]
 
-    async def check_cross(self, limit_count=7):
+    @check_lock_latest("lock_macd_latest")
+    async def check_cross(self, symbol, interval, limit_count=7):
         logger.info(
             f"PlotMacdHandle.check_cross start, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
         email_title = f"{self.symbol} MACD Cross changing Notice"
@@ -403,7 +404,7 @@ class PlotMacdHandle(BasePlotHandle):
             self.result[
                 self.symbol
             ] = f"""
-            <br><a>Error: no lastest macd data, {self.symbol}:{self.interval}</a>
+            <br><a>Error: no latest macd data, {self.symbol}:{self.interval}</a>
             <br><a>opening_ts:{ts2bjfmt(now_macd_data.opening_ts)}</a>
             <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
             <br><a href={INNER_GET_DELETE_MACD_CROSS_URL}{self.symbol + '_' + self.interval}>Delete cross check.</a>
@@ -616,7 +617,8 @@ class PlotKdjHandle(BasePlotHandle):
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
         self.send_msg_unsync(email_title, email_content)
 
-    async def check_cross(self, limit_count=7):
+    @check_lock_latest("lock_kdj_latest")
+    async def check_cross(self, symbol, interval, limit_count=7):
         logger.info(f"PlotKdjHandle.check_cross start, symbol:{self.symbol}, interval:{self.interval}, ts:{int(time.time())}")
         email_title = f"{self.symbol} KDJ Cross changing Notice"
 

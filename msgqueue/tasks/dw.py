@@ -13,7 +13,7 @@ from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable, Kdj
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
-from utils.common import decimal2str, str2decimal, locking
+from utils.common import decimal2str, str2decimal, locking, set_lock_latest
 from utils.hrequest import http_get_request
 from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
 
@@ -113,7 +113,7 @@ async def save_kline_job(*args, **kwargs):
     query = SymbolPlotTable.select()
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
-            await KlineDataSaveHandle(row.symbol, _interval).save_data()
+            KlineDataSaveHandle(row.symbol, _interval).save_data()
 
 
 @locking("save_macd_job")
@@ -122,7 +122,7 @@ async def save_macd_job(*args, **kwargs):
     query = SymbolPlotTable.select()
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
-            await MacdDataSaveHandle(row.symbol, _interval).save_data()
+            MacdDataSaveHandle(row.symbol, _interval).save_data(row.symbol, _interval)
 
 
 @locking("save_kdj_job")
@@ -131,7 +131,7 @@ async def save_kdj_job(*args, **kwargs):
     query = SymbolPlotTable.select()
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
-            await KdjDataSaveHandle(row.symbol, _interval).save_data()
+            KdjDataSaveHandle(row.symbol, _interval).save_data(row.symbol, _interval)
 
 
 @locking("save_ema_job")
@@ -184,7 +184,7 @@ class KlineDataSaveHandle(object):
         if resp_data:
             return resp_data["data"]
 
-    async def save_data(self):
+    def save_data(self):
         if not self.interval:
             return
 
@@ -332,6 +332,7 @@ class MacdDataSaveHandle(object):
                     dea=now_dea,
                     macd=now_macd,
                 )
+        return opening_ts
 
     def __init_macd_cache_data(self):
         cache_data = MarketMacdCache(self.symbol, self.interval).get()
@@ -341,7 +342,8 @@ class MacdDataSaveHandle(object):
         macd_init_data = {self.interval: json.loads(cache_data)}
         MacdInitData(macd_init_data).start(self.interval)
 
-    async def save_data(self):
+    @set_lock_latest("lock_macd_latest")
+    def save_data(self, symbol, interval):
         if not self.interval:
             return
 
@@ -351,8 +353,10 @@ class MacdDataSaveHandle(object):
         if not k_data:
             return
 
+        open_ts = None
         for _data in k_data:
-            self.parsed_k_lines_data(_data)
+            open_ts = self.parsed_k_lines_data(_data)
+        return open_ts
 
 
 class KdjDataSaveHandle(object):
@@ -467,6 +471,7 @@ class KdjDataSaveHandle(object):
                     j_val=j_val,
                     cfg=last_kdj_data.cfg,
                 )
+        return open_ts
 
     def __init_kdj_cache_data(self):
         cache_data = MarketKdjCache(self.symbol, self.interval).get()
@@ -476,7 +481,8 @@ class KdjDataSaveHandle(object):
         kdj_init_data = {self.interval: json.loads(cache_data)}
         KdjInitData(kdj_init_data).start(self.interval)
 
-    async def save_data(self):
+    @set_lock_latest("lock_kdj_latest")
+    def save_data(self, symbol, interval):
         if not self.interval:
             return
 
@@ -487,8 +493,10 @@ class KdjDataSaveHandle(object):
             logger.error(f"KdjDataSaveHandle, no k_data, {self.symbol}, {self.interval}")
             return
 
+        open_ts = None
         for _data in k_data:
-            self.parsed_k_lines_data(_data)
+            open_ts = self.parsed_k_lines_data(_data)
+        return open_ts
 
 
 class EmaDataSaveHandle(object):
