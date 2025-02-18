@@ -257,7 +257,7 @@ class PlotGptHandle(BasePlotHandle):
                 ).order_by(KdjTable.id.desc()).limit(limit_count)
             )
             query_list = [i for i in query]
-            if (query_list[0].j_val < query_list[0].d_val) and (query_list[0].j_val > query_list[1].d_val):
+            if (query_list[0].j_val < query_list[0].d_val) and (query_list[1].j_val > query_list[1].d_val):
                 return
 
             # TODO: KDJ均值35设置过高，需要结合其他场景判断
