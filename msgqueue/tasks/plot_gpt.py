@@ -121,7 +121,7 @@ class PlotGptHandle(BasePlotHandle):
             elif interval == "1h":
                 macd_list_1h = macd_list
 
-        await self.trend_following_strategy(macd_list_1d, macd_list_4h, limit_count)
+        # await self.trend_following_strategy(macd_list_1d, macd_list_4h, limit_count)
         await self.short_term_strategy(macd_list_1d, macd_list_4h, macd_list_1h, limit_count)
         await self.short_term_strategy2(macd_list_4h, macd_list_1h, limit_count)
         await self.bull_run_strategy(macd_list_4h, macd_list_1h)
@@ -206,19 +206,32 @@ class PlotGptHandle(BasePlotHandle):
         await self.send_msg(self.email_title, email_content,
                             receiver_list=["wayley@live.com", "358379803@qq.com", "bluekarl0220@gmail.com"])
 
+    def get_signal_count_status(self, *args):
+        true_count = sum([*args])
+        false_count = len([*args]) - true_count
+
+        if true_count > false_count:
+            return "增强"
+        elif true_count < false_count:
+            return "减弱"
+        else:
+            return "持衡"
+
     async def short_term_strategy(self, macd_list_1d, macd_list_4h, macd_list_1h, limit_count):
         """
         短线快进快出策略
             主要工具：1小时KDJ+4小时MACD/日线MACD
             触发条件：核心信号满足+任意一个辅助信号满足即可触发买入，这样可以避免因为条件过多而错失信号。
         📈 买入信号
-            1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA，接着考虑买入。
-            2. 日线KDJ刚形成死叉，说明趋势向下，不要考虑买入。
-            3. 1小时KDJ的K线上穿D线（金叉），且KDJ均大于35，表示超卖反弹，接着考虑买入。
+            1. 4小时MACD：DIF上穿DEA；或者 日线MACD：DIF上穿DEA。确认趋势反转后，再考虑买入。
+            2. 日线KDJ刚形成死叉，说明趋势向下，不要向下考虑买入。
+            3. 1小时KDJ的值均大于35，表示超卖反弹，增强买入信号，接着考虑第4点。
             4. 1小时MACD：最近7根线MACD柱状图的下行趋势减弱，表示下跌趋势减缓，接着考虑买入的辅助信号。
-                4.1. (或)当前价格大于4小时布林带下轨值，未击穿支撑位，增强买入信号。
-                4.2. (或)1小时KDJ的最近3条线，有接近死叉或金叉，增强信号。
-                4.3. (或)4小时K线的近三条的最高价逐步下降，表示下跌压力依旧很大，1小时KDJ均值在20附近，提示买入信号。
+            5. 1小时级别击穿前低价：当前1小时的最低价，小于前10根1小时线的最低价，下跌趋势延续，不要向下考虑。
+                5.1. (或)当前价格 **大于 4小时布林带下轨值**，未击穿支撑位，增强买入信号。
+                5.2. (或)1小时KDJ **最近3条线，有接近死叉或金叉**，增强买入信号。
+                5.3. (或)4小时K线的 **近三条的最高价逐步下降**，表示下跌压力依旧很大，1小时KDJ均值小于20附近，增强买入信号。
+                5.4. (或)1小时成交量 **高于过去10根均值**，且 4小时成交量 **高于过去3根均值**，资金流入，增强买入信号。
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
             2. 1小时KDJ的J值小于80时，判断是否趋势向下。
@@ -260,45 +273,73 @@ class PlotGptHandle(BasePlotHandle):
             if (query_list[0].j_val < query_list[0].d_val) and (query_list[1].j_val > query_list[1].d_val):
                 return
 
-            # TODO: KDJ均值35设置过高，需要结合其他场景判断
-            if current_kdj_1h.k_val < Decimal("35") \
-                    and current_kdj_1h.d_val < Decimal("35") and current_kdj_1h.j_val < Decimal("35"):
-
-                current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
-                if current_trend_macd_1h in ["downward_spiral", ]:
-                    return
-
-                resistance_level, support_level = self.get_support_resistance_level("4h")
-                check_price_fall = current_price > support_level
-
-                check_cv_cross = False
-                for _kdj in query_list[:3]:
-                    _cv = calculate_cv([_kdj.k_val, _kdj.d_val, _kdj.j_val])
-                    if _cv == 0:
-                        check_cv_cross = True
-                        break
-
-                check_kdj_20 = False
-                query = KlineTable.select().where(
-                    KlineTable.symbol == self.symbol,
-                    KlineTable.interval_val == "4h",
-                ).order_by(KlineTable.id.desc()).limit(3)
-                high_prices_4h_list = [i.high_price for i in query]
-                if all(x < y for x, y in zip(high_prices_4h_list, high_prices_4h_list[1:])) is True:
-                    if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
-                            and current_kdj_1h.j_val < Decimal("20"):
-                        check_kdj_20 = True
-
-                if (check_price_fall | check_cv_cross | check_kdj_20) is False:
-                    return
-
-                direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
-                            f"建议支撑位:{support_level}, 建议阻力位:{resistance_level}， " \
-                            f"辅助信号：check_price_fall: {check_price_fall}, " \
-                            f"辅助信号：check_cv_cross: {check_cv_cross}, " \
-                            f"辅助信号：check_kdj_20: {check_kdj_20}"
-            else:
+            if current_kdj_1h.k_val > Decimal("35") \
+                    or current_kdj_1h.d_val > Decimal("35") or current_kdj_1h.j_val > Decimal("35"):
                 return
+
+            current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
+            if current_trend_macd_1h in ["downward_spiral", ]:
+                return
+
+            kline_1h_query = KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == "1h",
+            ).order_by(KlineTable.id.desc()).limit(11)
+            kline_1h_query_list = [i for i in kline_1h_query]
+            current_1h_low_price = kline_1h_query_list[0].low_price
+            last_1h_low_price = min([i.low_price for i in kline_1h_query_list[1:]])
+            if current_1h_low_price < last_1h_low_price:
+                return
+
+            resistance_level, support_level = self.get_support_resistance_level("4h")
+            check_price_fall_signal = current_price > support_level
+
+            check_cv_cross_signal = False
+            for _kdj in query_list[:3]:
+                _cv = calculate_cv([_kdj.k_val, _kdj.d_val, _kdj.j_val])
+                if _cv == 0:
+                    check_cv_cross_signal = True
+                    break
+
+            query = KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == "4h",
+            ).order_by(KlineTable.id.desc()).limit(4)
+            kline_4h_query_list = [i for i in query]
+
+            check_kdj_20_signal = False
+            high_prices_4h_list = [i.high_price for i in kline_4h_query_list[:3]]
+            if all(x < y for x, y in zip(high_prices_4h_list, high_prices_4h_list[1:])) is True:
+                if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
+                        and current_kdj_1h.j_val < Decimal("20"):
+                    check_kdj_20_signal = True
+
+            volume_4h_list = [i.volume for i in kline_4h_query_list[1:]]
+            last_mean_4h_volume = sum(volume_4h_list) / Decimal(len(kline_4h_query_list[1:]))
+            current_4h_volume = kline_4h_query_list[0].volume
+            volume_1h_list = [i.volume for i in kline_1h_query_list[1:]]
+            last_mean_1h_volume = sum(volume_1h_list) / Decimal(len(kline_1h_query_list[1:]))
+            current_1h_volume = kline_1h_query_list[0].volume
+            if (current_4h_volume > last_mean_4h_volume) and (current_1h_volume > last_mean_1h_volume):
+                check_volume_up_signal = True
+            else:
+                check_volume_up_signal = False
+
+            if (check_price_fall_signal | check_cv_cross_signal | check_kdj_20_signal | check_volume_up_signal) \
+                    is False:
+                return
+
+            signal_status = self.get_signal_count_status(
+                check_price_fall_signal, check_cv_cross_signal, check_kdj_20_signal, check_volume_up_signal
+            )
+
+            direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
+                        f"<br>总体信号 {signal_status}" \
+                        f"<br>建议支撑位:{support_level}, 建议阻力位:{resistance_level}， " \
+                        f"<br>辅助信号：价格未击穿支撑位: {check_price_fall_signal}, " \
+                        f"<br>辅助信号：1小时KDJ有交叉: {check_cv_cross_signal}, " \
+                        f"<br>辅助信号：1小时KDJ超卖: {check_kdj_20_signal}, " \
+                        f"<br>辅助信号：交易量流入增加：{check_volume_up_signal},"
 
         elif MarketPriceLimitCache.hget(self.symbol):
             # TODO: 有的时候出场太早，趋势还在上涨。
