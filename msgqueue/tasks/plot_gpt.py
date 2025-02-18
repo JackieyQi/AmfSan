@@ -231,7 +231,8 @@ class PlotGptHandle(BasePlotHandle):
                 5.1. (或)当前价格 **大于 4小时布林带下轨值**，未击穿支撑位，增强买入信号。
                 5.2. (或)1小时KDJ **最近3条线，有接近死叉或金叉**，增强买入信号。
                 5.3. (或)4小时K线的 **近三条的最高价逐步下降**，表示下跌压力依旧很大，1小时KDJ均值小于20附近，增强买入信号。
-                5.4. (或)1小时成交量 **高于过去10根均值**，且 4小时成交量 **高于过去3根均值**，资金流入，增强买入信号。
+                5.4. (或)1小时成交量 **高于过去10根均值**，资金流入，增强买入信号。
+                5.5. (或)4小时成交量 **高于过去3根均值**，资金持续流入，增强买入信号。
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
             2. 1小时KDJ的J值小于80时，判断是否趋势向下。
@@ -320,26 +321,34 @@ class PlotGptHandle(BasePlotHandle):
             volume_1h_list = [i.volume for i in kline_1h_query_list[1:]]
             last_mean_1h_volume = sum(volume_1h_list) / Decimal(len(kline_1h_query_list[1:]))
             current_1h_volume = kline_1h_query_list[0].volume
-            if (current_4h_volume > last_mean_4h_volume) and (current_1h_volume > last_mean_1h_volume):
-                check_volume_up_signal = True
+            if current_4h_volume > last_mean_4h_volume:
+                check_4h_volume_up_signal = True
             else:
-                check_volume_up_signal = False
+                check_4h_volume_up_signal = False
 
-            if (check_price_fall_signal | check_cv_cross_signal | check_kdj_20_signal | check_volume_up_signal) \
+            if current_1h_volume > last_mean_1h_volume:
+                check_1h_volume_up_signal = True
+            else:
+                check_1h_volume_up_signal = False
+
+            if (check_price_fall_signal | check_cv_cross_signal | check_kdj_20_signal
+                | check_4h_volume_up_signal | check_1h_volume_up_signal) \
                     is False:
                 return
 
             signal_status = self.get_signal_count_status(
-                check_price_fall_signal, check_cv_cross_signal, check_kdj_20_signal, check_volume_up_signal
+                check_price_fall_signal, check_cv_cross_signal, check_kdj_20_signal,
+                check_4h_volume_up_signal, check_1h_volume_up_signal
             )
 
             direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
-                        f"<br>总体信号 {signal_status}" \
+                        f"<br>总体信号-<b>{signal_status}</b>" \
                         f"<br>建议支撑位:{support_level}, 建议阻力位:{resistance_level}， " \
                         f"<br>辅助信号：价格未击穿支撑位: {check_price_fall_signal}, " \
                         f"<br>辅助信号：1小时KDJ有交叉: {check_cv_cross_signal}, " \
                         f"<br>辅助信号：1小时KDJ超卖: {check_kdj_20_signal}, " \
-                        f"<br>辅助信号：交易量流入增加：{check_volume_up_signal},"
+                        f"<br>辅助信号：1小时交易量流入增加：{check_1h_volume_up_signal}, " \
+                        f"<br>辅助信号：4小时交易量流入增加：{check_4h_volume_up_signal},"
 
         elif MarketPriceLimitCache.hget(self.symbol):
             # TODO: 有的时候出场太早，趋势还在上涨。
