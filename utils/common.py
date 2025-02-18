@@ -78,8 +78,8 @@ def set_lock_latest(key):
 
     def decorate(func):
         @functools.wraps(func)
-        def wrapper(symbol, interval):
-            latest_open_ts = func(symbol, interval)
+        def wrapper(self, symbol, interval):
+            latest_open_ts = func(self, symbol, interval)
             new_key = f"{key}:{symbol}:{interval}"
 
             if not redis_client.get(new_key):
@@ -100,18 +100,18 @@ def check_lock_latest(key):
 
     def decorate(func):
         @functools.wraps(func)
-        async def wrapper(symbol, interval):
+        async def wrapper(self, symbol, interval):
             interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
             new_key = f"{key}:{symbol}:{interval}"
             latest_open_ts = redis_client.get(new_key)
 
             if not latest_open_ts:
-                return await func(symbol, interval)
+                return await func(self, symbol, interval)
             else:
                 if int(latest_open_ts) < (int(time.time()) - interval_sec * 7):
                     return
                 else:
                     redis_client.delete(new_key)
-                    return await func(symbol, interval)
+                    return await func(self, symbol, interval)
         return wrapper
     return decorate
