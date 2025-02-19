@@ -242,8 +242,9 @@ class PlotGptHandle(BasePlotHandle):
 
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
                 3.1. 1小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
-                   -> 3.1.1. (或)1小时MACD：最近7根线MACD柱状图的上行趋势减弱，表示上涨趋势减缓，表示出场信号加强。
-                   -> 3.1.2. (或)当前1小时最高价，小于前面3根1小时线的最高价，表示价格受阻，超买回调趋势加强，表示出场信号加强。
+                3.2. 4小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
+                   -> 3.2.1. (或)1小时MACD：最近7根线MACD柱状图的上行趋势减弱，表示上涨趋势减缓，表示出场信号加强。
+                   -> 3.2.2. (或)当前1小时最高价，小于前面3根1小时线的最高价，表示价格受阻，超买回调趋势加强，表示出场信号加强。
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
         if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
@@ -369,6 +370,8 @@ class PlotGptHandle(BasePlotHandle):
 
             else:
                 if macd_list_1h[1].macd < 0 and macd_list_1h[0].macd >= 0:
+                    return
+                if macd_list_4h[1].macd < 0 and macd_list_4h[0].macd >= 0:
                     return
 
                 current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
