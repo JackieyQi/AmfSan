@@ -88,6 +88,39 @@ class MarketPriceGateView(HTTPMethodView):
         }
 
 
+class SubmitMarketLimitPriceView(HTTPMethodView):
+    async def get(self, request):
+        symbol = request.form.get("symbol").strip().lower()
+        if not symbol:
+            return "Invalid params:symbol"
+        low_price = request.form.get("low_price", 0)
+        high_price = request.form.get("high_price", 0)
+        if not low_price and not high_price:
+            raise StandardResponseExc()
+
+        hset_limit_price_result = MarketPriceHandler().set_limit_price(
+            symbol, str2decimal(low_price), str2decimal(high_price)
+        )
+        if hset_limit_price_result == 1:
+            set_limit_price_result = "success"
+            set_limit_price_code = 1
+        elif hset_limit_price_result == 0:
+            set_limit_price_result = "success"
+            set_limit_price_code = 0
+        else:
+            set_limit_price_result = "fail"
+            set_limit_price_code = None
+
+        new_plot_result = SymbolHandle(symbol).add_plot()
+        _ = SymbolHandle(symbol).add_macd_gate()
+        _ = SymbolHandle(symbol).add_kdj_gate()
+        return {
+            "set_limit_price_result": set_limit_price_result,
+            "set_limit_price_code": set_limit_price_code,
+            "new_plot_result": new_plot_result,
+        }
+
+
 class MarketMacdCrossGateView(HTTPMethodView):
     async def get(self, request):
         key = request.form.get("key").strip().lower()

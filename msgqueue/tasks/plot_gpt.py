@@ -17,7 +17,7 @@ from cache.order import MarketPriceLimitCache
 from models.market import KlineTable
 from models.order import MacdTable, KdjTable
 from models.user import EmailMsgHistoryTable
-from settings.constants import PLOT_INTERVAL_CONFIG
+from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
@@ -77,8 +77,9 @@ class PlotGptHandle(BasePlotHandle):
     def trend_following_strategy_reformat_notice(self, direction, current_data):
         return template_gpt_plot_trend_following_strategy_notice(self.symbol, direction, current_data.open_ts)
 
-    def short_term_strategy_reformat_notice(self, direction, current_kdj_1h):
-        return template_gpt_plot_short_term_strategy_notice(self.symbol, direction, current_kdj_1h.open_ts)
+    def short_term_strategy_reformat_notice(self, direction, current_kdj_1h, close_monitor_url, set_limit_price_url):
+        return template_gpt_plot_short_term_strategy_notice(
+            self.symbol, direction, current_kdj_1h.open_ts, close_monitor_url, set_limit_price_url)
 
     def bull_run_strategy_reformat_notice(self, current_ts):
         return template_gpt_plot_bull_run_strategy_notice(self.symbol, current_ts)
@@ -123,7 +124,7 @@ class PlotGptHandle(BasePlotHandle):
 
         # await self.trend_following_strategy(macd_list_1d, macd_list_4h, limit_count)
         await self.short_term_strategy(macd_list_1d, macd_list_4h, macd_list_1h, limit_count)
-        await self.short_term_strategy2(macd_list_4h, macd_list_1h, limit_count)
+        # await self.short_term_strategy2(macd_list_4h, macd_list_1h, limit_count)
         await self.bull_run_strategy(macd_list_4h, macd_list_1h)
 
     async def trend_following_strategy(self, macd_list_1d, macd_list_4h, limit_count):
@@ -263,6 +264,9 @@ class PlotGptHandle(BasePlotHandle):
         current_kdj_1h = query_list[0]
         latest_kdj_1h_list = query_list[:3]
 
+        close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
+        set_limit_price_url = ""
+
         if not self.has_limit_price_check():
             query = (
                 KdjTable.select().where(
@@ -350,6 +354,9 @@ class PlotGptHandle(BasePlotHandle):
                         f"<br>辅助信号：1小时交易量流入增加：{check_1h_volume_up_signal}, " \
                         f"<br>辅助信号：4小时交易量流入增加：{check_4h_volume_up_signal},"
 
+            set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+                                  f"symbol={self.symbol}&low_price={support_level}&high_price={resistance_level}"
+
         elif MarketPriceLimitCache.hget(self.symbol):
             # TODO: 有的时候出场太早，趋势还在上涨。
             if current_kdj_1h.j_val <= Decimal("80"):
@@ -392,7 +399,8 @@ class PlotGptHandle(BasePlotHandle):
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )
         except EmailMsgHistoryTable.DoesNotExist:
-            self.result[self.symbol] = self.short_term_strategy_reformat_notice(direction, current_kdj_1h)
+            self.result[self.symbol] = self.short_term_strategy_reformat_notice(
+                direction, current_kdj_1h, close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)

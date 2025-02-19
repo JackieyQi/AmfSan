@@ -11,6 +11,9 @@ INNER_GET_PRICE_URL = "{}/api/market/price?symbol=".format(cfgs["http"]["inner_u
 INNER_GET_UPDATE_PRICE_URL = "{}/api/market/innerprice/".format(
     cfgs["http"]["inner_url"]
 )
+INNER_GET_SUBMIT_LIMIT_PRICE_URL = "{}/api/market/price/submit/".format(
+    cfgs["http"]["inner_url"]
+)
 INNER_GET_DELETE_LIMIT_PRICE_URL = "{}/api/market/price/gate?symbol=".format(
     cfgs["http"]["inner_url"]
 )
@@ -23,7 +26,6 @@ INNER_GET_DELETE_MACD_TREND_URL = "{}/api/market/macd/trend/gate?key=".format(
 INNER_GET_DELETE_KDJ_CROSS_URL = "{}/api/market/kdj/cross/gate?key=".format(
     cfgs["http"]["inner_url"]
 )
-INNER_UPDATE_PRICE_URL = "{}"
 
 
 PLOT_INTERVAL_LIST = ["5m", "15m", "1h", "4h", "1d"]

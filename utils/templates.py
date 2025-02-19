@@ -142,10 +142,29 @@ def template_gpt_plot_trend_following_strategy_notice(symbol, direction, open_ts
             """
 
 
-def template_gpt_plot_short_term_strategy_notice(symbol, direction, open_ts):
+def template_gpt_plot_short_term_strategy_notice(symbol, direction, open_ts, close_url, set_url):
+    # 避免邮件客户端的安全限制可能会阻止JavaScript的执行，全部使用直接链接
     return f"""
-            <br><br><b> ❓(待优化) {symbol.upper()}: </b> <b>{direction}</b>
+            <div>
+            <br><br>❓(待优化) <b>{symbol.upper()}</b>: {direction}
             <br>opening time:{ts2bjfmt(open_ts)}
+            </div>
+            
+            <div style='margin-top: 20px;'>
+            <a href='{close_url}'
+               style='display: inline-block; padding: 10px 20px; margin-right: 10px; 
+                      background-color: #4CAF50; color: white; text-decoration: none; 
+                      border-radius: 4px;'>
+                删除监控
+            </a>
+            
+            <a href='{set_url}' 
+               style='display: inline-block; padding: 10px 20px; 
+                      background-color: #008CBA; color: white; text-decoration: none; 
+                      border-radius: 4px;'>
+                设置限价
+            </a>
+        </div>
             """
 
 
