@@ -77,12 +77,13 @@ class PlotGptHandle(BasePlotHandle):
     def trend_following_strategy_reformat_notice(self, direction, current_data):
         return template_gpt_plot_trend_following_strategy_notice(self.symbol, direction, current_data.open_ts)
 
-    def short_term_strategy_reformat_notice(self, direction, current_kdj_1h, close_monitor_url, set_limit_price_url):
+    def short_term_strategy_reformat_notice(self, direction, current_kdj_1h, current_price, send_ts, close_monitor_url, set_limit_price_url):
         return template_gpt_plot_short_term_strategy_notice(
-            self.symbol, direction, current_kdj_1h.open_ts, close_monitor_url, set_limit_price_url)
+            self.symbol, direction, current_kdj_1h.open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
-    def bull_run_strategy_reformat_notice(self, current_ts):
-        return template_gpt_plot_bull_run_strategy_notice(self.symbol, current_ts)
+    def bull_run_strategy_reformat_notice(self, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url):
+        return template_gpt_plot_bull_run_strategy_notice(
+            self.symbol, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
     async def check(self, limit_count=7):
 
@@ -400,7 +401,7 @@ class PlotGptHandle(BasePlotHandle):
             )
         except EmailMsgHistoryTable.DoesNotExist:
             self.result[self.symbol] = self.short_term_strategy_reformat_notice(
-                direction, current_kdj_1h, close_monitor_url, set_limit_price_url)
+                direction, current_kdj_1h, current_price, int(time.time()), close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
@@ -532,6 +533,7 @@ class PlotGptHandle(BasePlotHandle):
         """
         if macd_list_1h[0].macd < 0:
             return
+        current_price = macd_list_1h[0].closing_price
 
         query = (
             KdjTable.select().where(
@@ -567,7 +569,14 @@ class PlotGptHandle(BasePlotHandle):
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )
         except EmailMsgHistoryTable.DoesNotExist:
-            self.result[self.symbol] = self.bull_run_strategy_reformat_notice(open_ts)
+            close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
+            set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+                                  f"symbol={self.symbol}&low_price={current_price*Decimal('0.988')}" \
+                                  f"&high_price={current_price*Decimal('1.012')}"
+            send_ts = int(time.time())
+
+            self.result[self.symbol] = self.bull_run_strategy_reformat_notice(
+                open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
