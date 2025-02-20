@@ -85,6 +85,8 @@ async def check_gpt_plot(*args, **kwargs):
     logger.debug("check_gpt_plot")
     query = SymbolPlotTable.select()
     for row in query:
+        if row.symbol.lower() == "btcusdt":
+            continue
         await push_plotmq({
             "bp": "check_single_gpt_plot_job",
             "symbol": row.symbol,
