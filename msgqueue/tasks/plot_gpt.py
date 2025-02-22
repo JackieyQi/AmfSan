@@ -125,7 +125,6 @@ class PlotGptHandle(BasePlotHandle):
 
         # await self.trend_following_strategy(macd_list_1d, macd_list_4h, limit_count)
         await self.short_term_strategy(macd_list_1d, macd_list_4h, macd_list_1h, limit_count)
-        # await self.short_term_strategy2(macd_list_4h, macd_list_1h, limit_count)
         await self.bull_run_strategy(macd_list_4h, macd_list_1h)
 
     async def trend_following_strategy(self, macd_list_1d, macd_list_4h, limit_count):
@@ -243,8 +242,10 @@ class PlotGptHandle(BasePlotHandle):
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
                 3.1. 1小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
                 3.2. 4小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
-                   -> 3.2.1. (或)1小时MACD：最近7根线MACD柱状图的上行趋势减弱，表示上涨趋势减缓，表示出场信号加强。
-                   -> 3.2.2. (或)当前1小时最高价，小于前面3根1小时线的最高价，表示价格受阻，超买回调趋势加强，表示出场信号加强。
+                    3.2.1. (或)1小时MACD：最近7根线MACD柱状图的上行趋势减弱，表示上涨趋势减缓，表示出场信号加强。
+                    3.2.2. (或)当前1小时最高价，小于前面3根1小时线的最高价，表示价格受阻，超买回调趋势加强，表示出场信号加强。
+                    3.2.3. (或)当前价格，在1小时布林带上轨且回落0.5%，表示出场信号加强。
+
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
         if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
@@ -386,21 +387,34 @@ class PlotGptHandle(BasePlotHandle):
                     return
 
                 current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
-                check_trend_stalled = current_trend_macd_1h not in ["parabolic_move", ]
+                check_trend_stalled_signal = current_trend_macd_1h not in ["parabolic_move", ]
 
                 query = KlineTable.select().where(
                     KlineTable.symbol == self.symbol,
                     KlineTable.interval_val == "1h",
                 ).order_by(KlineTable.id.desc()).limit(4)
                 high_prices_list = [i.high_price for i in query]
-                check_price_resistance = high_prices_list[0] < max(high_prices_list[1:])
+                check_price_resistance_signal = high_prices_list[0] < max(high_prices_list[1:])
 
-                if (check_trend_stalled | check_price_resistance) is False:
+                resistance_level_1h, support_level_1h = self.get_support_resistance_level("1h")
+                if current_price > resistance_level_1h \
+                        and (high_prices_list[0] - current_price)/high_prices_list[0] >= Decimal("0.005"):
+                    check_boll_resistance_signal = True
+                else:
+                    check_boll_resistance_signal = False
+
+                if (check_trend_stalled_signal | check_price_resistance_signal | check_boll_resistance_signal) is False:
                     return
 
+                signal_status = self.get_signal_count_status(
+                    check_trend_stalled_signal, check_price_resistance_signal, check_boll_resistance_signal
+                )
+
                 direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
-                            f"\n辅助信号-MACD趋势止升: {check_trend_stalled}" \
-                            f"\n辅助信号-前最高价受阻: {check_price_resistance}"
+                            f"<br>总体信号-<b>{signal_status}</b>" \
+                            f"<br>辅助信号-MACD趋势止升: {check_trend_stalled_signal}" \
+                            f"<br>辅助信号-前最高价受阻: {check_price_resistance_signal}" \
+                            f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}"
 
         else:
             return
@@ -416,117 +430,6 @@ class PlotGptHandle(BasePlotHandle):
         except EmailMsgHistoryTable.DoesNotExist:
             self.result[self.symbol] = self.short_term_strategy_reformat_notice(
                 direction, current_kdj_1h, current_price, int(time.time()), close_monitor_url, set_limit_price_url)
-
-        email_content = "".join(self.result.values())
-        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
-
-        logger.info(
-            f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
-        await self.send_msg(self.email_title, email_content)
-
-    async def short_term_strategy2(self, macd_list_4h, macd_list_1h, limit_count):
-        """
-        短线快进快出策略
-            主要工具：4小时MACD+1小时KDJ+1小时MACD
-        📈 买入信号
-            1. 4小时MACD：零轴下方DIF上穿DEA，MACD柱状图逐步放大，趋势上行。
-            2. 4小时交易量：当前4小时线的交易量 > 上一条4小时线的交易量的1.5~2倍。
-            3. 1小时交易量：当前1小时交易量 > 上一条1小时交易量的1.5~2倍; 3根1小时线的平均交易量 > 前3根1小时线的平均交易量的1.5~2倍。
-            4. 1小时线KDJ值均小于40，J值持续走平或向上；结合4小时布林带下轨支撑位，避免低位钝化。
-
-
-
-        📉 卖出信号
-        #     1. 1小时KDJ的K线下穿D线（死叉），且KDJ在80附近，表示超买回调。
-        #     2. 1小时MACD死叉：DIF下穿DEA，短期下跌信号确认。
-        ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
-        """
-
-        current_dea_4h = macd_list_4h[0].dea
-        current_macd_4h = macd_list_4h[0].macd
-        current_dif_4h = current_dea_4h + current_macd_4h
-        if current_dif_4h > 0 or current_dea_4h > 0 or current_macd_4h < 0:
-            return
-
-        trend_str, _ = analyze_list_trend([i.macd for i in macd_list_4h][::-1])
-        if trend_str not in ["parabolic_move", "modest_increase"]:
-            return
-
-        query = KlineTable.select().where(
-            KlineTable.symbol == self.symbol,
-            KlineTable.interval_val == "4h",
-            # KlineTable.open_ts <= macd_list_4h[0].opening_ts,
-        ).order_by(KlineTable.id.desc()).limit(2)
-        current_kline_4h, last_kline_4h = query[0], query[1]
-
-        if current_kline_4h.volume < Decimal("1.5") * last_kline_4h.volume:
-            return
-
-        query = KlineTable.select().where(
-            KlineTable.symbol == self.symbol,
-            KlineTable.interval_val == "1h",
-            # KlineTable.open_ts <= macd_list_1h[0].opening_ts,
-        ).order_by(KlineTable.id.desc()).limit(limit_count)
-        volume_list = [i.volume for i in query]
-
-        current_volume_1h = volume_list[0]
-        last_volume_1h = volume_list[1]
-        if current_volume_1h < Decimal("1.5") * last_volume_1h:
-            return
-
-        if sum(volume_list[:3]) / Decimal(len(volume_list[:3])) < \
-                Decimal("1.5") * (sum(volume_list[3:]) / Decimal(len(volume_list[3:]))):
-            return
-
-        query = (
-            KdjTable.select().where(
-                KdjTable.symbol == self.symbol,
-                KdjTable.interval_val == "1h",
-            ).order_by(KdjTable.id.desc()).limit(limit_count)
-        )
-        query_list = [i for i in query]
-        if not query_list:
-            return
-        elif len(query_list) < limit_count:
-            return
-
-        current_kdj_1h = query_list[0]
-        if current_kdj_1h.k_val < Decimal("40") \
-                and current_kdj_1h.d_val < Decimal("40") and current_kdj_1h.j_val < Decimal("40"):
-            direction = "short_term_strategy2: 📈 买入信号"
-        # TODO: 卖出信号
-        else:
-            return
-
-        query = (
-            MacdTable.select().where(
-                MacdTable.symbol == self.symbol,
-                MacdTable.interval_val == "4h",
-            ).order_by(MacdTable.id.desc()).limit(27)
-        )
-        close_prices_list, ema_list = [], []
-        current_close_price = Decimal("0")
-        for i, row in enumerate(query):
-            if i == 0:
-                current_close_price = row.closing_price
-                continue
-            close_prices_list.append(row.closing_price)
-            ema_list.append(row.ema_26)
-
-        _, last_lower_band = calculate_bollinger_bands(close_prices_list[::-1], ema_list[::-1])
-        if current_close_price > last_lower_band:
-            return
-
-        email_msg_md5_str = (
-            f"plotGpt:short_term_strategy:{self.symbol}:{current_kdj_1h.open_ts}"
-        )
-        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
-        try:
-            return EmailMsgHistoryTable.get(
-                EmailMsgHistoryTable.msg_md5 == email_msg_md5
-            )
-        except EmailMsgHistoryTable.DoesNotExist:
-            self.result[self.symbol] = self.short_term_strategy_reformat_notice(direction, current_kdj_1h)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
