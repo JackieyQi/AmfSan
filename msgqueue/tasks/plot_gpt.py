@@ -238,7 +238,7 @@ class PlotGptHandle(BasePlotHandle):
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
             2. 1小时KDJ的J值小于80时，判断是否趋势向下。
-                2.1. 1小时的最新3条线的J值均小于50，表示市场没有上涨动能，考虑挂买入价卖出。
+                2.1. 1小时的最新3条线的J值均小于50，并且K线价格没有上涨，表示市场没有上涨动能，考虑挂买入价卖出。
 
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
                 3.1. 1小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
@@ -364,6 +364,17 @@ class PlotGptHandle(BasePlotHandle):
             if current_kdj_1h.j_val <= Decimal("80"):
                 for _kdj in latest_kdj_1h_list:
                     if _kdj.j_val >= Decimal("50"):
+                        return
+
+                query = KlineTable.select().where(
+                    KlineTable.symbol == self.symbol,
+                    KlineTable.interval_val == "1h",
+                ).order_by(KlineTable.id.desc()).limit(2)
+                query_list = [i for i in query]
+                for i in range(len(query_list) - 1):
+                    if query_list[i].open_price > query_list[i+1].open_price:
+                        return
+                    if query_list[i].close_price > query_list[i+1].close_price:
                         return
 
                 direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！"
