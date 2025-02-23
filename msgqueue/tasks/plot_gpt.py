@@ -237,7 +237,9 @@ class PlotGptHandle(BasePlotHandle):
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
             2. 1小时KDJ的J值小于80时，判断是否趋势向下。
-                2.1. 1小时的最新3条线的J值均小于50，并且K线价格没有上涨，表示市场没有上涨动能，考虑挂买入价卖出。
+                2.1. 1小时的最新3条线的J值均小于50，表示市场没有上涨动能，考虑挂买入价卖出。
+                2.2. 1小时的最新2根线的J值向上，表示可能存在反弹，不考虑挂单卖出。
+                2.3. 1小时的K线的最新2根线，价格区间没有上涨，表示下跌信号增强，考虑挂单卖出。
 
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
                 3.1. 1小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
@@ -245,6 +247,8 @@ class PlotGptHandle(BasePlotHandle):
                     3.2.1. (或)1小时MACD：最近7根线MACD柱状图的上行趋势减弱，表示上涨趋势减缓，表示出场信号加强。
                     3.2.2. (或)当前1小时最高价，小于前面3根1小时线的最高价，表示价格受阻，超买回调趋势加强，表示出场信号加强。
                     3.2.3. (或)当前价格，在1小时布林带上轨且回落0.5%，表示出场信号加强。
+                    3.2.4. (或)4小时MACD的最近2根柱状图，向下扩大，表示出场信号加强。
+                    3.2.5. (或)4小时KDJ的最近2个时间段，K线和J线均下跌，表示出场信号加强。
 
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
@@ -367,6 +371,9 @@ class PlotGptHandle(BasePlotHandle):
                     if _kdj.j_val >= Decimal("50"):
                         return
 
+                if current_kdj_1h.j_val > latest_kdj_1h_list[1].j_val:
+                    return
+
                 query = KlineTable.select().where(
                     KlineTable.symbol == self.symbol,
                     KlineTable.interval_val == "1h",
@@ -403,18 +410,39 @@ class PlotGptHandle(BasePlotHandle):
                 else:
                     check_boll_resistance_signal = False
 
-                if (check_trend_stalled_signal | check_price_resistance_signal | check_boll_resistance_signal) is False:
+                if macd_list_4h[0].macd <= macd_list_4h[1].macd:
+                    check_macd_4h_signal = True
+                else:
+                    check_macd_4h_signal = False
+
+                query = (
+                    KdjTable.select().where(
+                        KdjTable.symbol == self.symbol,
+                        KdjTable.interval_val == "4h",
+                    ).order_by(KdjTable.id.desc()).limit(limit_count)
+                )
+                query_list = [i for i in query]
+                if (query_list[0].k_val < query_list[1].k_val) and (query_list[0].j_val < query_list[1].j_val):
+                    check_kdj_4h_signal = True
+                else:
+                    check_kdj_4h_signal = False
+
+                if (check_trend_stalled_signal | check_price_resistance_signal | check_boll_resistance_signal
+                    | check_macd_4h_signal | check_kdj_4h_signal) is False:
                     return
 
                 signal_status = self.get_signal_count_status(
-                    check_trend_stalled_signal, check_price_resistance_signal, check_boll_resistance_signal
+                    check_trend_stalled_signal, check_price_resistance_signal, check_boll_resistance_signal,
+                    check_macd_4h_signal, check_kdj_4h_signal
                 )
 
                 direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
                             f"<br>总体信号-<b>{signal_status}</b>" \
                             f"<br>辅助信号-MACD趋势止升: {check_trend_stalled_signal}" \
                             f"<br>辅助信号-前最高价受阻: {check_price_resistance_signal}" \
-                            f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}"
+                            f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}" \
+                            f"<br>辅助信号-4小时MACD下降：{check_macd_4h_signal}" \
+                            f"<br>辅助信号-4小时KDJ下降：{check_kdj_4h_signal}"
 
         else:
             return
@@ -470,7 +498,7 @@ class PlotGptHandle(BasePlotHandle):
             kdj_4h_cross_signal = True
         else:
             kdj_4h_cross_signal = False
-            
+
         if (kdj_4h_up_signal | kdj_4h_cross_signal) is False:
             return
 
