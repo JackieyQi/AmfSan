@@ -19,7 +19,7 @@ from models.order import MacdTable, KdjTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt
-from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv
+from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
 from .base import BasePlotHandle
@@ -443,9 +443,8 @@ class PlotGptHandle(BasePlotHandle):
         牛市大涨策略：
             主要工具：4小时K线图
         📈 买入信号
-            # 1. 4小时MACD上行，DIF突破DEA。
             1. 1小时MACD上行，DIF突破DEA。
-            2. 4小时KDJ上行，J值大于D值。
+            2. 4小时KDJ最近3根线持续上行，J值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
         """
         if macd_list_1h[0].macd < 0:
@@ -458,9 +457,22 @@ class PlotGptHandle(BasePlotHandle):
                 KdjTable.interval_val == "4h",
             ).order_by(KdjTable.id.desc()).limit(3)
         )
-        for row in query:
+        query_list = [i for i in query]
+
+        kdj_4h_up_signal = False
+        for row in query_list:
             if row.j_val < row.d_val:
-                return
+                break
+            kdj_4h_up_signal = True
+
+        crossovers_data = analyze_crossovers(query_list)
+        if crossovers_data["golden_cross"] > 0:
+            kdj_4h_cross_signal = True
+        else:
+            kdj_4h_cross_signal = False
+            
+        if (kdj_4h_up_signal | kdj_4h_cross_signal) is False:
+            return
 
         query = KlineTable.select().where(
             KlineTable.symbol == self.symbol,

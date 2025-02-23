@@ -86,3 +86,38 @@ def calculate_cv(decimal_array, num=1):
 
     cv = standard_deviation/mean
     return str2decimal(cv, num)
+
+
+def analyze_crossovers(data_array):
+    """
+    计算数组的交叉比例
+    :param data_array: 时间倒序排列的指标数组
+    :return:
+    """
+    if len(data_array) < 2:
+        return
+
+    golden_cross = 0  # 金叉计数
+    death_cross = 0  # 死叉计数
+
+    for i in range(len(data_array) - 1):
+        current = data_array[i]
+        next_point = data_array[i + 1]
+
+        if current.k_val <= current.d_val and next_point.k_val > next_point.d_val:
+            death_cross += 1
+        elif current.k_val >= current.d_val and next_point.k_val < next_point.d_val:
+            golden_cross += 1
+
+    total_crosses = golden_cross + death_cross
+    if total_crosses > 0:
+        golden_ratio = (golden_cross / total_crosses) * 100
+        death_ratio = (death_cross / total_crosses) * 100
+        golden_ratio_str = f"{golden_ratio:.1f}%"
+        death_ratio_str = f"{death_ratio:.1f}%"
+
+    return {
+        "total_crosses": total_crosses,
+        "golden_cross": golden_cross,
+        "death_cross": death_cross,
+    }
