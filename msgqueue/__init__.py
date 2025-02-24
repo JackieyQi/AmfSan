@@ -8,15 +8,21 @@ import ujson as json
 from amf import app
 from utils.common import ts2fmt
 
-from .queue import push
-from .tasks import dw, plot, sms
+from .queue import push_msg
+from .tasks import dw, plot, sms, cache_sync
 
 logger = logging.getLogger(__name__)
 
 route_map = {
+    #
+    "sync_cache_job": cache_sync.sync_cache_job,
+    #
     "send_email_task": sms.send_email,
     #
+    "save_kline_job": dw.save_kline_job,
     "save_macd_job": dw.save_macd_job,
+    "save_kdj_job": dw.save_kdj_job,
+    "save_ema_job": dw.save_ema_job,
     "save_account_balance_job": dw.save_account_balance_job,
     "save_trade_history_job": dw.save_trade_history_job,
     #
@@ -24,12 +30,16 @@ route_map = {
     "check_price_job": plot.check_price,
     "check_macd_cross_job": plot.check_macd_cross,
     "check_macd_trend_job": plot.check_macd_trend,
+    "check_kdj_cross_job": plot.check_kdj_cross,
+    "check_ema_cross_job": plot.check_ema_cross,
+    "check_gpt_plot_job": plot.check_gpt_plot,
+    "check_single_gpt_plot_job": plot.check_single_gpt_plot,
     #
 }
 
 
 async def deal_msg(msg):
-    logger.info("tasks deal_msg, msg:{}".format(msg))
+    logger.debug("tasks deal_msg, msg:{}".format(msg))
     msg = json.loads(msg)
     if not isinstance(msg, dict):
         return
@@ -39,7 +49,7 @@ async def deal_msg(msg):
         logger.info("tasks deal_msg, msg bp not exist:{}".format(msg))
         return
 
-    logger.info(
+    logger.debug(
         "tasks deal_msg, task:{}, start:{}, kwargs:{}".format(msg_bp, ts2fmt(), msg)
     )
     func = route_map[msg_bp]
@@ -54,15 +64,15 @@ async def deal_msg(msg):
         err_info["function_module"] = "{}".format(func.__module__)
         err_info["function_name"] = "{}".format(func.__name__)
 
-        _ = await push(
+        _ = await push_msg(
             {
-                "bp": "send_email",
+                "bp": "send_email_task",
                 "title": msg_bp,
                 "receiver": app.config.administrator_email,
                 "content": "{}<br/><br/><br/>{}".format(error, json.dumps(err_info)),
             }
         )
         return
-    logger.info(
+    logger.debug(
         "tasks deal_msg, task:{}, end:{}, kwargs:{}".format(msg_bp, ts2fmt(), msg)
     )

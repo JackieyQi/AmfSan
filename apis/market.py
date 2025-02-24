@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 # coding:utf8
 
+import time
 from decimal import Decimal
 
 from business.market import MarketPriceHandler, SymbolHandle
@@ -33,9 +34,9 @@ class MarketPriceView(HTTPMethodView):
                 result[k] = {
                     "symbol": k,
                     "current_price": current_price,
-                    "limit_low_price": decimal2str(limit_low_price, num=2),
-                    "limit_high_price": decimal2str(limit_high_price, num=2),
-                    "last_my_trade_price": decimal2str(last_my_trade_price, num=2),
+                    "limit_low_price": decimal2str(limit_low_price),
+                    "limit_high_price": decimal2str(limit_high_price),
+                    "last_my_trade_price": decimal2str(last_my_trade_price),
                 }
 
         return result
@@ -60,11 +61,13 @@ class MarketPriceView(HTTPMethodView):
             set_limit_price_result = "fail"
             set_limit_price_code = None
 
-        db_new_plot_result = SymbolHandle(symbol).add_new_plot()
+        new_plot_result = SymbolHandle(symbol).add_plot()
+        _ = SymbolHandle(symbol).add_macd_gate()
+        _ = SymbolHandle(symbol).add_kdj_gate()
         return {
             "set_limit_price_result": set_limit_price_result,
             "set_limit_price_code": set_limit_price_code,
-            "db_new_plot_result": db_new_plot_result,
+            "new_plot_result": new_plot_result,
         }
 
 
@@ -81,6 +84,40 @@ class MarketPriceGateView(HTTPMethodView):
             "symbol": symbol,
             "hdel_limit_price_result": hdel_limit_price_result,
             "db_del_plot_result": db_del_plot_result,
+            "ts": int(time.time()),
+        }
+
+
+class SubmitMarketLimitPriceView(HTTPMethodView):
+    async def get(self, request):
+        symbol = request.form.get("symbol").strip().lower()
+        if not symbol:
+            return "Invalid params:symbol"
+        low_price = request.form.get("low_price", 0)
+        high_price = request.form.get("high_price", 0)
+        if not low_price and not high_price:
+            raise StandardResponseExc()
+
+        hset_limit_price_result = MarketPriceHandler().set_limit_price(
+            symbol, str2decimal(low_price), str2decimal(high_price)
+        )
+        if hset_limit_price_result == 1:
+            set_limit_price_result = "success"
+            set_limit_price_code = 1
+        elif hset_limit_price_result == 0:
+            set_limit_price_result = "success"
+            set_limit_price_code = 0
+        else:
+            set_limit_price_result = "fail"
+            set_limit_price_code = None
+
+        new_plot_result = SymbolHandle(symbol).add_plot()
+        _ = SymbolHandle(symbol).add_macd_gate()
+        _ = SymbolHandle(symbol).add_kdj_gate()
+        return {
+            "set_limit_price_result": set_limit_price_result,
+            "set_limit_price_code": set_limit_price_code,
+            "new_plot_result": new_plot_result,
         }
 
 
@@ -109,6 +146,20 @@ class MarketMacdTrendGateView(HTTPMethodView):
         return {
             "key": f"{symbol}:{interval}",
             "hdel_plot_trend_result": hdel_plot_trend_result,
+        }
+
+
+class MarketKdjCrossGateView(HTTPMethodView):
+    async def get(self, request):
+        key = request.form.get("key").strip().lower()
+        if not key:
+            return "Invalid params:key"
+        symbol, interval = key.split("_")
+
+        hdel_plot_cross_result = SymbolHandle(symbol).del_kdj_cross_gate(interval)
+        return {
+            "key": f"{symbol}:{interval}",
+            "hdel_plot_cross_result": hdel_plot_cross_result,
         }
 
 

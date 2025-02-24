@@ -8,12 +8,27 @@ r_client = None
 
 
 class Base(object):
+    key = "Base"
     @staticmethod
     def redis():
         global r_client
         if not r_client:
             r_client = redis_client
         return r_client
+
+
+class AllCache(Base):
+    @classmethod
+    def get_client(cls):
+        return cls.redis()
+
+    @classmethod
+    def get_all(cls):
+        return cls.redis().keys()
+
+    @classmethod
+    def get_type(cls, val):
+        return cls.redis().type(val)
 
 
 class StringCache(Base):
@@ -24,6 +39,28 @@ class StringCache(Base):
     @classmethod
     def set(cls, val, ex=180):
         return cls.redis().set(cls.key, val, ex)
+
+    @classmethod
+    def incr(cls):
+        return cls.redis().incr(cls.key)
+
+    @classmethod
+    def delete(cls):
+        return cls.redis().delete(cls.key)
+
+
+class ListCache(Base):
+    @classmethod
+    def rpush(cls, val):
+        return cls.redis().rpush(cls.key, val)
+
+    @classmethod
+    def rpop(cls):
+        return cls.redis().rpop(cls.key)
+
+    @classmethod
+    def llen(cls):
+        return cls.redis().llen(cls.key)
 
     @classmethod
     def delete(cls):
@@ -54,3 +91,7 @@ class HashCache(Base):
     @classmethod
     def hmset(cls, map_vals):
         return cls.redis().hmset(cls.key, map_vals)
+
+    @classmethod
+    def delete(cls):
+        return cls.redis().delete(cls.key)

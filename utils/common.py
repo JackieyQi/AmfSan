@@ -2,10 +2,12 @@
 # coding:utf8
 
 import hashlib
+import functools
 import time
 from datetime import datetime, timedelta
 from decimal import ROUND_DOWN, Decimal
 from uuid import uuid4
+from settings.constants import PLOT_INTERVAL_CONFIG
 
 
 def generate_token(random_string, length=32):
@@ -37,7 +39,7 @@ def decimal2str(val: Decimal, num=8):
 
 
 def str2decimal(val: str, num=8):
-    return Decimal(decimal2str(Decimal(val)))
+    return Decimal(decimal2str(Decimal(val), num))
 
 
 def usdt2busd(val: str):
@@ -46,3 +48,70 @@ def usdt2busd(val: str):
 
 def busd2usdt(val: str):
     return val.replace("busd", "usdt").replace("BUSD", "USDT")
+
+
+def locking(key):
+    from cache import AllCache
+    redis_client = AllCache.get_client()
+
+    def decorate(func):
+        async def wrapper(*args, **kwargs):
+            if not redis_client.get(key):
+                redis_client.set(key, int(time.time()), ex=900, nx=True)
+                response = await func(*args, **kwargs)
+                redis_client.delete(key)
+                return response
+            else:
+                return "locking"
+        return wrapper
+    return decorate
+
+
+def set_lock_latest(key):
+    """
+    :param key: "lock_macd_latest:{symbol}:{interval}"
+    :param key: "lock_kdj_latest:{symbol}:{interval}"
+    :return:
+    """
+    from cache import AllCache
+    redis_client = AllCache.get_client()
+
+    def decorate(func):
+        @functools.wraps(func)
+        def wrapper(self, symbol, interval):
+            latest_open_ts = func(self, symbol, interval)
+            new_key = f"{key}:{symbol}:{interval}"
+
+            if not redis_client.get(new_key):
+                redis_client.set(new_key, latest_open_ts or "", ex=900, nx=True)
+            return
+        return wrapper
+    return decorate
+
+
+def check_lock_latest(key):
+    """
+    :param key: "lock_macd_latest:{symbol}:{interval}"
+    :param key: "lock_kdj_latest:{symbol}:{interval}"
+    :return:
+    """
+    from cache import AllCache
+    redis_client = AllCache.get_client()
+
+    def decorate(func):
+        @functools.wraps(func)
+        async def wrapper(self, symbol, interval):
+            interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+            new_key = f"{key}:{symbol}:{interval}"
+            latest_open_ts = redis_client.get(new_key)
+
+            if not latest_open_ts:
+                return await func(self, symbol, interval)
+            else:
+                if int(latest_open_ts) < (int(time.time()) - interval_sec * 7):
+                    return
+                else:
+                    redis_client.delete(new_key)
+                    return await func(self, symbol, interval)
+        return wrapper
+    return decorate

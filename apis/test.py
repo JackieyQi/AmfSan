@@ -13,7 +13,13 @@ async def get_test(*args, **kwargs):
 
 class TestView(HTTPMethodView):
     async def get(self, request):
+        symbol = request.form.get("symbol").strip().lower()
+        interval = request.form.get("interval").strip().lower()
+
         result = await get_test()
+        
+        from msgqueue.tasks.plot_llm import LlmMarketData
+        result = LlmMarketData().get_market_data(symbol, interval)
         return "{}".format(result)
 
 

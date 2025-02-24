@@ -5,17 +5,17 @@ import asyncio
 import logging
 import sys
 
-from exts import amf_queue, queue_conn
+from exts import amf_msg_queue, queue_conn
 from msgqueue import deal_msg
 
-logger = logging.getLogger("amfconsumer")
+logger = logging.getLogger("amfmsgconsumer")
 
 RESTART = False
 
 
 async def consumer():
     queue_conn.connect()
-    mq = queue_conn.SimpleQueue(amf_queue)
+    mq = queue_conn.SimpleQueue(amf_msg_queue)
 
     global RESTART
     while 1:
@@ -31,13 +31,11 @@ async def consumer():
             pass
         except:
             queue_conn.connect()
-            mq = queue_conn.SimpleQueue(amf_queue)
+            mq = queue_conn.SimpleQueue(amf_msg_queue)
 
         if not value:
             await asyncio.sleep(0.5)
             continue
-        # print(value)
-        # print(type(value), value.body)
         await deal_msg(value.body)
 
 

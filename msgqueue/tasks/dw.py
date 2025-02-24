@@ -2,15 +2,23 @@
 # coding:utf8
 
 import json
+import logging
 from decimal import Decimal as D
 
 from business.binance_exchange import BinanceExchangeRequestHandle
 # from business.huobi_exchange import HuobiExchangeAccountHandle
-from business.market import MarketPriceHandler
-from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable
+from business.market import MarketPriceHandler, MacdInitData, KdjInitData, EmaInitData
+from models.market import KlineTable
+from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable, KdjTable, EmaTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
-from utils.common import decimal2str, str2decimal
+from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
+from utils.common import decimal2str, str2decimal, locking, set_lock_latest
+from utils.hrequest import http_get_request
+from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
+
+
+logger = logging.getLogger(__name__)
 
 
 async def save_trade_history_job(*args, **kwargs):
@@ -79,8 +87,8 @@ async def save_account_balance_job(*args, **kwargs):
     if not asset_data:
         return
 
-    price_info = MarketPriceHandler().get_current_price()
-    current_price = str2decimal(price_info["price"])
+    current_price = MarketPriceHandler().get_current_price_by_cache("btcusdt")
+    current_price = str2decimal(current_price or "0")
 
     total_btc_valuation = D("0")
     for i in asset_data:
@@ -99,34 +107,149 @@ async def save_account_balance_job(*args, **kwargs):
     ).save()
 
 
-async def save_macd_job(*args, **kwargs):
-    macd_config = ["4h", "1h", "1d"]
-    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+@locking("save_kline_job")
+async def save_kline_job(*args, **kwargs):
+    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    query = SymbolPlotTable.select()
     for row in query:
-        for _interval in macd_config:
-            await MacdDataSaveHandle(row.symbol, _interval).save_data()
+        for _interval in PLOT_INTERVAL_LIST:
+            KlineDataSaveHandle(row.symbol, _interval).save_data()
+
+
+@locking("save_macd_job")
+async def save_macd_job(*args, **kwargs):
+    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    query = SymbolPlotTable.select()
+    for row in query:
+        for _interval in PLOT_INTERVAL_LIST:
+            MacdDataSaveHandle(row.symbol, _interval).save_data(row.symbol, _interval)
+
+
+@locking("save_kdj_job")
+async def save_kdj_job(*args, **kwargs):
+    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    query = SymbolPlotTable.select()
+    for row in query:
+        for _interval in PLOT_INTERVAL_LIST:
+            KdjDataSaveHandle(row.symbol, _interval).save_data(row.symbol, _interval)
+
+
+@locking("save_ema_job")
+async def save_ema_job(*args, **kwargs):
+    symbol_list = ["wifusdt", ]
+    for symbol in symbol_list:
+        for _interval in PLOT_INTERVAL_LIST:
+            await EmaDataSaveHandle(symbol, _interval).save_data()
+
+
+class KlineDataSaveHandle(object):
+    def __init__(self, symbol, interval):
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+    def get_k_lines_by_innerapi(self):
+        try:
+            db_last_k = (
+                KlineTable.select()
+                .where(
+                    KlineTable.symbol == self.symbol,
+                    KlineTable.interval_val == self.interval,
+                )
+                .order_by(KlineTable.id.desc())
+                .limit(1)
+                .get()
+            )
+
+            request_params = {
+                "key": "get_k_lines",
+                "symbol": self.symbol.upper(),
+                "interval": self.interval,
+                "start_ts": (db_last_k.open_ts - self.k_interval) * 1000,
+                "limit": 5,
+            }
+        except KlineTable.DoesNotExist:
+            request_params = {
+                "key": "get_k_lines",
+                "symbol": self.symbol.upper(),
+                "interval": self.interval,
+                "limit": 17,
+            }
+
+        resp_data = http_get_request(
+            f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
+            request_params,
+        )
+        if resp_data:
+            return resp_data["data"]
+
+    def save_data(self):
+        if not self.interval:
+            return
+
+        k_data = self.get_k_lines_by_innerapi()
+        if not k_data:
+            return
+
+        for data in k_data:
+            open_ts = int(data[0] / 1000)
+            open_price = D(data[1])
+            high_price = D(data[2])
+            low_price = D(data[3])
+            close_price = D(data[4])
+            volume = D(data[5])
+            close_ts = int(data[6] / 1000)
+            asset_volume = D(data[7])
+            trade_number = int(data[8])
+            buy_volume = D(data[9])
+            buy_asset_volume = D(data[10])
+
+            query = KlineTable.select().where(
+                    KlineTable.symbol == self.symbol,
+                    KlineTable.open_ts == open_ts,
+                    KlineTable.interval_val == self.interval,
+            )
+            if query:
+                last_db_k = query.get()
+                last_db_k.open_ts = open_ts
+                last_db_k.open_price = open_price
+                last_db_k.high_price = high_price
+                last_db_k.low_price = low_price
+                last_db_k.close_price = close_price
+                last_db_k.volume = volume
+                last_db_k.close_ts = close_ts
+                last_db_k.asset_volume = asset_volume
+                last_db_k.trade_number = trade_number
+                last_db_k.buy_volume = buy_volume
+                last_db_k.buy_asset_volume = buy_asset_volume
+                last_db_k.save()
+            else:
+                _ = KlineTable.create(
+                    symbol=self.symbol,
+                    interval_val=self.interval,
+                    open_ts=open_ts,
+                    open_price=open_price,
+                    high_price=high_price,
+                    low_price=low_price,
+                    close_price=close_price,
+                    volume=volume,
+                    close_ts=close_ts,
+                    asset_volume=asset_volume,
+                    trade_number=trade_number,
+                    buy_volume=buy_volume,
+                    buy_asset_volume=buy_asset_volume,
+                )
 
 
 class MacdDataSaveHandle(object):
     def __init__(self, symbol, interval):
         self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
 
-        if interval == "4h":
-            self.interval = "4h"
-            self.interval_sec = 4 * 3600
-            self.k_interval = 5 * 3600
-        elif interval == "1h":
-            self.interval = "1h"
-            self.interval_sec = 3600
-            self.k_interval = 5400
-        elif interval == "1d":
-            self.interval = "1d"
-            self.interval_sec = 24 * 3600
-            self.k_interval = 27 * 3600
-        else:
-            self.interval, self.interval_sec, self.k_interval = None, None, None
-
-    def get_k_lines_by_openapi(self):
+    def get_k_lines_from_db(self):
         try:
             db_last_macd = (
                 MacdTable.select()
@@ -141,17 +264,20 @@ class MacdDataSaveHandle(object):
         except MacdTable.DoesNotExist:
             return
 
-        resp_k = BinanceExchangeRequestHandle().get_k_lines(
-            self.symbol.upper(),
-            self.interval,
-            (db_last_macd.opening_ts - self.k_interval) * 1000,
-        )
-        return resp_k
+        try:
+            db_kline = KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == self.interval,
+                KlineTable.open_ts >= db_last_macd.opening_ts - self.k_interval,
+            ).order_by(KlineTable.id)
+        except KlineTable.DoesNotExist:
+            return
+        return db_kline
 
     def parsed_k_lines_data(self, data):
-        opening_ts = int(data[0] / 1000)
-        opening_price = D(data[1])
-        closing_price = D(data[4])
+        opening_ts = data.open_ts
+        opening_price = data.open_price
+        closing_price = data.close_price
 
         _db_rs = (
             MacdTable.select()
@@ -164,9 +290,14 @@ class MacdDataSaveHandle(object):
         )
         _db_rs = list(_db_rs)
 
+        if not _db_rs:
+            return
+
         last_macd_data = _db_rs[0]
         if len(_db_rs) == 2:
             now_macd_data = _db_rs[1]
+        elif last_macd_data.opening_ts != opening_ts - self.interval_sec:
+            return
         else:
             now_macd_data = None
 
@@ -174,7 +305,7 @@ class MacdDataSaveHandle(object):
         now_ema_26 = last_macd_data.ema_26 * 25 / 27 + closing_price * 2 / 27
         now_dea = last_macd_data.dea * 8 / 10 + (now_ema_12 - now_ema_26) * 2 / 10
         # now_dif = now_ema_12 - now_ema_26
-        now_macd = D(decimal2str(now_ema_12 - now_ema_26 - now_dea, 2))
+        now_macd = D(decimal2str(now_ema_12 - now_ema_26 - now_dea))
         if now_macd_data:
             now_macd_data.opening_ts = opening_ts
             now_macd_data.opening_price = opening_price
@@ -185,23 +316,300 @@ class MacdDataSaveHandle(object):
             now_macd_data.macd = now_macd
             now_macd_data.save()
         else:
-            _ = MacdTable.create(
-                symbol=self.symbol,
-                interval_val=self.interval,
-                opening_ts=opening_ts,
-                opening_price=opening_price,
-                closing_price=closing_price,
-                ema_12=now_ema_12,
-                ema_26=now_ema_26,
-                dea=now_dea,
-                macd=now_macd,
+            if not MacdTable.select().where(
+                    MacdTable.symbol == self.symbol,
+                    MacdTable.opening_ts == opening_ts,
+                    MacdTable.interval_val == self.interval,
+            ):
+                _ = MacdTable.create(
+                    symbol=self.symbol,
+                    interval_val=self.interval,
+                    opening_ts=opening_ts,
+                    opening_price=opening_price,
+                    closing_price=closing_price,
+                    ema_12=now_ema_12,
+                    ema_26=now_ema_26,
+                    dea=now_dea,
+                    macd=now_macd,
+                )
+        return opening_ts
+
+    def __init_macd_cache_data(self):
+        cache_data = MarketMacdCache(self.symbol, self.interval).get()
+        if not cache_data:
+            return
+
+        macd_init_data = {self.interval: json.loads(cache_data)}
+        MacdInitData(macd_init_data).start(self.interval)
+
+    @set_lock_latest("lock_macd_latest")
+    def save_data(self, symbol, interval):
+        if not self.interval:
+            return
+
+        self.__init_macd_cache_data()
+
+        k_data = self.get_k_lines_from_db()
+        if not k_data:
+            return
+
+        open_ts = None
+        for _data in k_data:
+            open_ts = self.parsed_k_lines_data(_data)
+        return open_ts
+
+
+class KdjDataSaveHandle(object):
+    def __init__(self, symbol, interval):
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+    def get_k_lines_from_db(self):
+        try:
+            db_last_kdj = (
+                KdjTable.select()
+                .where(
+                    KdjTable.symbol == self.symbol,
+                    KdjTable.interval_val == self.interval,
+                )
+                .order_by(KdjTable.id.desc())
+                .limit(1)
+                .get()
             )
+        except KdjTable.DoesNotExist:
+            return
+
+        try:
+            db_kline = KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == self.interval,
+                KlineTable.open_ts >= db_last_kdj.open_ts - self.k_interval,
+            ).order_by(KlineTable.id)
+        except KlineTable.DoesNotExist:
+            return
+        return db_kline
+
+    def __calculate_kdj(self, last_k, open_ts, close_price, period):
+        db_query = KlineTable.select().where(
+            KlineTable.symbol == self.symbol,
+            KlineTable.interval_val == self.interval,
+            KlineTable.open_ts > open_ts - self.interval_sec * period,
+            KlineTable.open_ts <= open_ts,
+        ).order_by(KlineTable.id)
+        db_query_list = list(db_query)
+        if len(db_query_list) < period:
+            return
+
+        low_price_list = []
+        high_price_list = []
+        for _row in db_query_list:
+            low_price_list.append(_row.low_price)
+            high_price_list.append(_row.high_price)
+        min_price = min(low_price_list)
+        max_price = max(high_price_list)
+
+        rsv = (close_price - min_price) / (max_price - min_price) * 100
+        last_k_val = last_k.k_val
+        last_d_val = last_k.d_val
+        if not last_k_val or not last_d_val:
+            return
+        k_val = D(2 / 3) * last_k_val + D(1 / 3) * rsv
+        d_val = D(2 / 3) * last_d_val + D(1 / 3) * k_val
+        j_val = D(3) * k_val - D(2) * d_val
+        return k_val, d_val, j_val
+
+    def parsed_k_lines_data(self, data):
+        open_ts = data.open_ts
+        close_price = data.close_price
+
+        db_query = (
+            KdjTable.select()
+            .where(
+                KdjTable.symbol == self.symbol,
+                KdjTable.interval_val == self.interval,
+                KdjTable.open_ts.in_([open_ts - self.interval_sec, open_ts]),
+            )
+            .order_by(KdjTable.id)
+        )
+        db_query_list = list(db_query)
+        if not db_query_list:
+            logger.error(f"KdjDataSaveHandle, no db_query_list, {self.symbol}, {self.interval}, {open_ts}")
+            return
+
+        last_kdj_data = db_query_list[0]
+        if last_kdj_data.open_ts != open_ts - self.interval_sec:
+            return
+
+        kdj_cfg = json.loads(last_kdj_data.cfg)
+        period = kdj_cfg["period"]
+        kdj_result = self.__calculate_kdj(last_kdj_data, open_ts, close_price, period)
+        if not kdj_result:
+            logger.error(f"KdjDataSaveHandle, no kdj_result, {self.symbol}, {self.interval}, {open_ts}")
+            return
+        k_val, d_val, j_val = kdj_result
+
+        if len(db_query_list) == 2:
+            now_kdj_data = db_query_list[1]
+            now_kdj_data.k_val = k_val
+            now_kdj_data.d_val = d_val
+            now_kdj_data.j_val = j_val
+            now_kdj_data.save()
+        else:
+            if not KdjTable.select().where(
+                    KdjTable.symbol == self.symbol,
+                    KdjTable.open_ts == open_ts,
+                    KdjTable.interval_val == self.interval,
+            ):
+                _ = KdjTable.create(
+                    symbol=self.symbol,
+                    interval_val=self.interval,
+                    open_ts=open_ts,
+                    k_val=k_val,
+                    d_val=d_val,
+                    j_val=j_val,
+                    cfg=last_kdj_data.cfg,
+                )
+        return open_ts
+
+    def __init_kdj_cache_data(self):
+        cache_data = MarketKdjCache(self.symbol, self.interval).get()
+        if not cache_data:
+            return
+
+        kdj_init_data = {self.interval: json.loads(cache_data)}
+        KdjInitData(kdj_init_data).start(self.interval)
+
+    @set_lock_latest("lock_kdj_latest")
+    def save_data(self, symbol, interval):
+        if not self.interval:
+            return
+
+        self.__init_kdj_cache_data()
+
+        k_data = self.get_k_lines_from_db()
+        if not k_data:
+            logger.error(f"KdjDataSaveHandle, no k_data, {self.symbol}, {self.interval}")
+            return
+
+        open_ts = None
+        for _data in k_data:
+            open_ts = self.parsed_k_lines_data(_data)
+        return open_ts
+
+
+class EmaDataSaveHandle(object):
+    def __init__(self, symbol, interval):
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+    def __init_ema_cache_data(self):
+        cache_data = MarketEmaCache(self.symbol, self.interval).get()
+        if not cache_data:
+            return
+
+        init_data = {self.interval: json.loads(cache_data)}
+        EmaInitData(init_data).start(self.interval)
+
+    def get_k_lines_from_db(self):
+        try:
+            db_last_ema = (
+                EmaTable.select()
+                .where(
+                    EmaTable.symbol == self.symbol,
+                    EmaTable.interval_val == self.interval,
+                )
+                .order_by(EmaTable.id.desc())
+                .limit(1)
+                .get()
+            )
+        except EmaTable.DoesNotExist:
+            return
+
+        try:
+            db_kline = KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == self.interval,
+                KlineTable.open_ts >= db_last_ema.open_ts - self.k_interval,
+            ).order_by(KlineTable.id)
+        except KlineTable.DoesNotExist:
+            return
+        return db_kline
+
+    def __calculate_ema(self, last_data, open_ts, close_price):
+        result = {}
+        n_list = [7, 20, 30]
+        for n in n_list:
+            if n == 7:
+                last_ema = last_data.ema7
+                ema = D(2 / (n + 1)) * close_price + D((1 - 2 / (n + 1))) * last_ema
+                result["ema7"] = ema
+            elif n == 20:
+                last_ema = last_data.ema20
+                ema = D(2 / (n + 1)) * close_price + D((1 - 2 / (n + 1))) * last_ema
+                result["ema20"] = ema
+            else:
+                last_ema = last_data.ema30
+                ema = D(2 / (n + 1)) * close_price + D((1 - 2 / (n + 1))) * last_ema
+                result["ema30"] = ema
+        return result
+
+    def parsed_k_lines_data(self, data):
+        open_ts = data.open_ts
+        close_price = data.close_price
+
+        db_query = (
+            EmaTable.select()
+            .where(
+                EmaTable.symbol == self.symbol,
+                EmaTable.interval_val == self.interval,
+                EmaTable.open_ts.in_([open_ts - self.interval_sec, open_ts]),
+            )
+            .order_by(EmaTable.id)
+        )
+        db_query_list = list(db_query)
+        if not db_query_list:
+            return
+
+        last_data = db_query_list[0]
+        if last_data.open_ts != open_ts - self.interval_sec:
+            return
+
+        ema_result = self.__calculate_ema(last_data, open_ts, close_price)
+        if not ema_result:
+            return
+
+        if len(db_query_list) == 2:
+            now_ema_data = db_query_list[1]
+            now_ema_data.ema7 = ema_result["ema7"]
+            now_ema_data.ema20 = ema_result["ema20"]
+            now_ema_data.ema30 = ema_result["ema30"]
+            now_ema_data.save()
+        else:
+            if not EmaTable.select().where(
+                    EmaTable.symbol == self.symbol,
+                    EmaTable.open_ts == open_ts,
+                    EmaTable.interval_val == self.interval,
+            ):
+                _ = EmaTable.create(
+                    symbol=self.symbol,
+                    interval_val=self.interval,
+                    open_ts=open_ts,
+                    ema7=ema_result["ema7"],
+                    ema20=ema_result["ema20"],
+                    ema30=ema_result["ema30"],
+                )
 
     async def save_data(self):
         if not self.interval:
             return
 
-        k_data = self.get_k_lines_by_openapi()
+        self.__init_ema_cache_data()
+
+        k_data = self.get_k_lines_from_db()
         if not k_data:
             return
 

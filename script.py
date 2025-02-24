@@ -5,7 +5,7 @@ import json
 from decimal import Decimal as D
 
 from exts import database
-from models import order, user, wallet
+from models import order, user, wallet, market
 
 
 def command_create_tables():
@@ -16,9 +16,12 @@ def command_create_tables():
                 order.SymbolPriceChangeHistoryTable,
                 order.OrderTradeHistoryTable,
                 order.SymbolPlotTable,
+                order.MacdTable,
+                order.KdjTable,
                 wallet.BalanceHistoryTable,
                 wallet.TotalBalanceHistoryTable,
                 user.EmailMsgHistoryTable,
+                market.KlineTable,
             ]
         )
 
