@@ -27,7 +27,7 @@ class MarketPriceView(HTTPMethodView):
         else:
             all_symbol_limit_price_dict = price_handler.get_all_limit_price()
             for k, v in all_symbol_limit_price_dict.items():
-                limit_low_price, limit_high_price = v
+                set_time, limit_low_price, limit_high_price = v
 
                 current_price = price_handler.get_current_price(k).get("price")
                 last_my_trade_price = price_handler.get_last_trade_price(k)
@@ -37,6 +37,7 @@ class MarketPriceView(HTTPMethodView):
                     "limit_low_price": decimal2str(limit_low_price),
                     "limit_high_price": decimal2str(limit_high_price),
                     "last_my_trade_price": decimal2str(last_my_trade_price),
+                    "set_time": set_time,
                 }
 
         return result
@@ -98,8 +99,9 @@ class SubmitMarketLimitPriceView(HTTPMethodView):
         if not low_price and not high_price:
             raise StandardResponseExc()
 
+        set_time = int(time.time())
         hset_limit_price_result = MarketPriceHandler().set_limit_price(
-            symbol, str2decimal(low_price), str2decimal(high_price)
+            symbol, str2decimal(low_price), str2decimal(high_price), set_time
         )
         if hset_limit_price_result == 1:
             set_limit_price_result = "success"

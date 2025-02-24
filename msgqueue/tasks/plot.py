@@ -172,7 +172,7 @@ class PlotAssetHandle(BasePlotHandle):
 class PlotPriceHandle(BasePlotHandle):
     def __init__(self, symbol, price):
         super().__init__()
-        limit_low_price, limit_high_price = price
+        set_time, limit_low_price, limit_high_price = price
 
         self.symbol = symbol
         self.limit_low_price = limit_low_price

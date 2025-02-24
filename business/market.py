@@ -88,6 +88,7 @@ class MarketPriceHandler(object):
         symbol: str = "btcusdt",
         low_price: Decimal = None,
         high_price: Decimal = None,
+        new_set_time: int = 0,
     ):
         current_price = self.get_current_price(symbol).get("price")
         if not current_price:
@@ -105,14 +106,14 @@ class MarketPriceHandler(object):
 
         limit_price = MarketPriceLimitCache.hget(symbol)
         if not limit_price:
-            limit_low_price, limit_high_price = "", ""
+            set_time, limit_low_price, limit_high_price = 0, "", ""
         else:
-            limit_low_price, limit_high_price = limit_price.split(":")
+            set_time, limit_low_price, limit_high_price = limit_price.split(":")
 
         result = MarketPriceLimitCache.hset(
             symbol,
-            "{}:{}".format(
-                low_price or limit_low_price, high_price or limit_high_price
+            "{}:{}:{}".format(
+                new_set_time, low_price or limit_low_price, high_price or limit_high_price
             ),
         )
 
@@ -144,14 +145,15 @@ class MarketPriceHandler(object):
         current_price = self.get_current_price(symbol).get("price")
         limit_price = MarketPriceLimitCache.hget(symbol)
         if not limit_price:
-            limit_low_price, limit_high_price = "", ""
+            set_time, limit_low_price, limit_high_price = 0, "", ""
         else:
-            limit_low_price, limit_high_price = limit_price.split(":")
+            set_time, limit_low_price, limit_high_price = limit_price.split(":")
         return {
             "symbol": symbol,
             "current_price": current_price,
             "limit_low_price": limit_low_price,
             "limit_high_price": limit_high_price,
+            "set_time": to_ctime(set_time),
         }
 
     def get_all_limit_price(self):
@@ -161,11 +163,11 @@ class MarketPriceHandler(object):
 
         result = {}
         for k, v in all_limit_price.items():
-            limit_low_price, limit_high_price = v.split(":")
+            set_time, limit_low_price, limit_high_price = v.split(":")
 
             limit_low_price = Decimal(limit_low_price) if limit_low_price else Decimal("0")
             limit_high_price = Decimal(limit_high_price) if limit_high_price else Decimal("0")
-            result[k] = (limit_low_price, limit_high_price)
+            result[k] = (set_time, limit_low_price, limit_high_price)
         return result
 
     def get_last_trade_price(self, symbol):
