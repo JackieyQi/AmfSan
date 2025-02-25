@@ -274,6 +274,7 @@ class PlotGptHandle(BasePlotHandle):
         close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
         set_limit_price_url = ""
 
+        # TODO: 全仓改分仓
         if not self.has_limit_price_check():
             query = (
                 KdjTable.select().where(
@@ -365,7 +366,17 @@ class PlotGptHandle(BasePlotHandle):
                                   f"symbol={self.symbol}&low_price={support_level}&high_price={resistance_level}"
 
         elif MarketPriceLimitCache.hget(self.symbol):
-            # TODO: 有的时候出场太早，趋势还在上涨。
+            limit_price = MarketPriceLimitCache.hget(self.symbol)
+            if not limit_price:
+                set_time, limit_low_price, limit_high_price = 0, "", ""
+            else:
+                set_time, limit_low_price, limit_high_price = limit_price.split(":")
+            set_time = int(set_time)
+            if not set_time:
+                hours_diff = None
+            else:
+                hours_diff = (int(time.time()) - set_time) // 3600
+
             if current_kdj_1h.j_val <= Decimal("80"):
                 for _kdj in latest_kdj_1h_list:
                     if _kdj.j_val >= Decimal("50"):
@@ -385,7 +396,8 @@ class PlotGptHandle(BasePlotHandle):
                     if query_list[i].close_price > query_list[i+1].close_price:
                         return
 
-                direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！"
+                direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
+                            f"<br>持仓时间：{hours_diff}"
 
             else:
                 if macd_list_1h[1].macd < 0 and macd_list_1h[0].macd >= 0:
@@ -442,7 +454,8 @@ class PlotGptHandle(BasePlotHandle):
                             f"<br>辅助信号-前最高价受阻: {check_price_resistance_signal}" \
                             f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}" \
                             f"<br>辅助信号-4小时MACD下降：{check_macd_4h_signal}" \
-                            f"<br>辅助信号-4小时KDJ下降：{check_kdj_4h_signal}"
+                            f"<br>辅助信号-4小时KDJ下降：{check_kdj_4h_signal}" \
+                            f"<br>持仓时间：{hours_diff}"
 
         else:
             return
