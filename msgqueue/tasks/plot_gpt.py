@@ -13,7 +13,7 @@ import logging
 import time
 from decimal import Decimal
 
-from cache.order import MarketPriceLimitCache
+from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
 from models.market import KlineTable
 from models.order import MacdTable, KdjTable
 from models.user import EmailMsgHistoryTable
@@ -123,89 +123,8 @@ class PlotGptHandle(BasePlotHandle):
             elif interval == "1h":
                 macd_list_1h = macd_list
 
-        # await self.trend_following_strategy(macd_list_1d, macd_list_4h, limit_count)
         await self.short_term_strategy(macd_list_1d, macd_list_4h, macd_list_1h, limit_count)
         await self.bull_run_strategy(macd_list_4h, macd_list_1h)
-
-    async def trend_following_strategy(self, macd_list_1d, macd_list_4h, limit_count):
-        """
-        趋势跟随策略
-            主要工具：MACD（跟踪趋势） + 日线/4小时线（确认趋势） + 1小时线（寻找买卖点）
-        📈 买入信号
-            1. 日线、4小时线的MACD金叉：DIF向上突破DEA，说明大方向上涨。
-            2. 1小时线的MACD：不考虑，滞后性太高。
-            3. KDJ确认超卖位置：当1小时KDJ处于20以下，且出现金叉信号时，进一步确认买入信号。
-        📉 卖出信号
-            1. 日线、4小时线的MACD：趋势向上，DIF向上突破DEA。
-            2. KDJ确认超买位置：当1小时KDJ均处于80以上，当前J值小于前一个J值。
-        ⚠️ 注意：当日线和4小时的趋势向上，但1小时出现反向信号时，可能是短期回调，不一定是大趋势的反转。
-        """
-
-        if macd_list_1d[0].macd < 0 or macd_list_4h[0].macd < 0:
-            return
-
-        interval = "1h"
-        query = (
-            KdjTable.select().where(
-                KdjTable.symbol == self.symbol,
-                KdjTable.interval_val == interval,
-            ).order_by(KdjTable.id.desc()).limit(limit_count)
-        )
-        query_list = [i for i in query]
-        if not query_list:
-            return
-        elif len(query_list) < limit_count:
-            return
-
-        current_data, last_data = query_list[0], query_list[1]
-
-        now_ts = int(time.time())
-        interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
-        if current_data.open_ts < (now_ts - interval_sec * 7):
-            self.result[
-                self.symbol
-            ] = f"""
-                    <br><a>Error: no lastest kdj data, {self.symbol}:{interval}</a>
-                    <br><a>open_ts:{ts2bjfmt(current_data.open_ts)}</a>
-                    <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
-                    """
-
-            return await self.send_msg(self.email_title, "".join(self.result.values()))
-
-        if current_data.k_val < Decimal("20") \
-                and current_data.d_val < Decimal("20") and current_data.j_val < Decimal("20"):
-            direction = "📈 买入信号"
-
-        elif current_data.k_val > Decimal("80") \
-                and current_data.d_val > Decimal("80") and current_data.j_val > Decimal("80"):
-            if current_data.j_val >= last_data.j_val:
-                return
-            if not MarketPriceLimitCache.hget(self.symbol):
-                return
-            direction = "📉 卖出信号"
-
-        else:
-            return
-
-        email_msg_md5_str = (
-            f"plotGpt:trend_following_strategy:{self.symbol}:{current_data.open_ts}"
-        )
-        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
-        try:
-            return EmailMsgHistoryTable.get(
-                EmailMsgHistoryTable.msg_md5 == email_msg_md5
-            )
-        except EmailMsgHistoryTable.DoesNotExist:
-            self.result[self.symbol] = self.trend_following_strategy_reformat_notice(direction, current_data)
-
-        email_content = "".join(self.result.values())
-        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
-
-        logger.info(
-            f"PlotGptHandle.trend_following_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
-        # TODO: receiver_list need optimized
-        await self.send_msg(self.email_title, email_content,
-                            receiver_list=["wayley@live.com", "358379803@qq.com", "bluekarl0220@gmail.com"])
 
     def get_signal_count_status(self, *args):
         true_count = sum([*args])
@@ -217,6 +136,34 @@ class PlotGptHandle(BasePlotHandle):
             return "减弱"
         else:
             return "持衡"
+
+    def get_fng_signal(self, buy=False):
+        """
+        策略信号-恐惧指数：
+            <= 20, 买入信号
+            >= 80, 卖出信号
+            其他不做参考
+        :return:
+        """
+        cache_data = FearAndGreedIndexCache.get()
+        if not cache_data:
+            return
+
+        fng_index = int(cache_data)
+        if buy is True:
+            if fng_index <= 20:
+                return True
+            elif fng_index >= 80:
+                return False
+            else:
+                return
+        else:
+            if fng_index <= 20:
+                return False
+            elif fng_index >= 80:
+                return True
+            else:
+                return
 
     async def short_term_strategy(self, macd_list_1d, macd_list_4h, macd_list_1h, limit_count):
         """
@@ -255,6 +202,7 @@ class PlotGptHandle(BasePlotHandle):
         if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
             return
         current_price = macd_list_1h[0].closing_price
+        all_signals_dict = {}
 
         query = (
             KdjTable.select().where(
@@ -306,6 +254,7 @@ class PlotGptHandle(BasePlotHandle):
 
             resistance_level, support_level = self.get_support_resistance_level("4h")
             check_price_fall_signal = current_price > support_level
+            all_signals_dict["check_price_fall_signal"] = check_price_fall_signal
 
             check_cv_cross_signal = False
             for _kdj in query_list[:3]:
@@ -313,6 +262,7 @@ class PlotGptHandle(BasePlotHandle):
                 if _cv == 0:
                     check_cv_cross_signal = True
                     break
+            all_signals_dict["check_cv_cross_signal"] = check_cv_cross_signal
 
             query = KlineTable.select().where(
                 KlineTable.symbol == self.symbol,
@@ -326,6 +276,7 @@ class PlotGptHandle(BasePlotHandle):
                 if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
                         and current_kdj_1h.j_val < Decimal("20"):
                     check_kdj_20_signal = True
+            all_signals_dict["check_kdj_20_signal"] = check_kdj_20_signal
 
             volume_4h_list = [i.volume for i in kline_4h_query_list[1:]]
             last_mean_4h_volume = sum(volume_4h_list) / Decimal(len(kline_4h_query_list[1:]))
@@ -337,21 +288,22 @@ class PlotGptHandle(BasePlotHandle):
                 check_4h_volume_up_signal = True
             else:
                 check_4h_volume_up_signal = False
+            all_signals_dict["check_4h_volume_up_signal"] = check_4h_volume_up_signal
 
             if current_1h_volume > last_mean_1h_volume:
                 check_1h_volume_up_signal = True
             else:
                 check_1h_volume_up_signal = False
+            all_signals_dict["check_1h_volume_up_signal"] = check_1h_volume_up_signal
 
-            if (check_price_fall_signal | check_cv_cross_signal | check_kdj_20_signal
-                | check_4h_volume_up_signal | check_1h_volume_up_signal) \
-                    is False:
+            check_fng_signal = self.get_fng_signal(buy=True)
+            if check_fng_signal is not None:
+                all_signals_dict["check_fng_signal"] = check_fng_signal
+
+            if any(list(all_signals_dict.values())) is not True:
                 return
 
-            signal_status = self.get_signal_count_status(
-                check_price_fall_signal, check_cv_cross_signal, check_kdj_20_signal,
-                check_4h_volume_up_signal, check_1h_volume_up_signal
-            )
+            signal_status = self.get_signal_count_status(*all_signals_dict.values())
 
             direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
                         f"<br>总体信号-<b>{signal_status}</b>" \
@@ -360,7 +312,8 @@ class PlotGptHandle(BasePlotHandle):
                         f"<br>辅助信号：1小时KDJ有交叉: {check_cv_cross_signal}, " \
                         f"<br>辅助信号：1小时KDJ超卖: {check_kdj_20_signal}, " \
                         f"<br>辅助信号：1小时交易量流入增加：{check_1h_volume_up_signal}, " \
-                        f"<br>辅助信号：4小时交易量流入增加：{check_4h_volume_up_signal},"
+                        f"<br>辅助信号：4小时交易量流入增加：{check_4h_volume_up_signal}," \
+                        f"<br>总信号：{all_signals_dict}"
 
             set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
                                   f"symbol={self.symbol}&low_price={support_level}&high_price={resistance_level}"
@@ -407,6 +360,7 @@ class PlotGptHandle(BasePlotHandle):
 
                 current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
                 check_trend_stalled_signal = current_trend_macd_1h not in ["parabolic_move", ]
+                all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
 
                 query = KlineTable.select().where(
                     KlineTable.symbol == self.symbol,
@@ -414,6 +368,7 @@ class PlotGptHandle(BasePlotHandle):
                 ).order_by(KlineTable.id.desc()).limit(4)
                 high_prices_list = [i.high_price for i in query]
                 check_price_resistance_signal = high_prices_list[0] < max(high_prices_list[1:])
+                all_signals_dict["check_price_resistance_signal"] = check_price_resistance_signal
 
                 resistance_level_1h, support_level_1h = self.get_support_resistance_level("1h")
                 if current_price > resistance_level_1h \
@@ -421,11 +376,13 @@ class PlotGptHandle(BasePlotHandle):
                     check_boll_resistance_signal = True
                 else:
                     check_boll_resistance_signal = False
+                all_signals_dict["check_boll_resistance_signal"] = check_boll_resistance_signal
 
                 if macd_list_4h[0].macd <= macd_list_4h[1].macd:
                     check_macd_4h_signal = True
                 else:
                     check_macd_4h_signal = False
+                all_signals_dict["check_macd_4h_signal"] = check_macd_4h_signal
 
                 query = (
                     KdjTable.select().where(
@@ -438,15 +395,16 @@ class PlotGptHandle(BasePlotHandle):
                     check_kdj_4h_signal = True
                 else:
                     check_kdj_4h_signal = False
+                all_signals_dict["check_kdj_4h_signal"] = check_kdj_4h_signal
 
-                if (check_trend_stalled_signal | check_price_resistance_signal | check_boll_resistance_signal
-                    | check_macd_4h_signal | check_kdj_4h_signal) is False:
+                check_fng_signal = self.get_fng_signal(buy=True)
+                if check_fng_signal is not None:
+                    all_signals_dict["check_fng_signal"] = check_fng_signal
+
+                if any(list(all_signals_dict.values())) is not True:
                     return
 
-                signal_status = self.get_signal_count_status(
-                    check_trend_stalled_signal, check_price_resistance_signal, check_boll_resistance_signal,
-                    check_macd_4h_signal, check_kdj_4h_signal
-                )
+                signal_status = self.get_signal_count_status(*all_signals_dict.values())
 
                 direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
                             f"<br>总体信号-<b>{signal_status}</b>" \
@@ -455,6 +413,7 @@ class PlotGptHandle(BasePlotHandle):
                             f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}" \
                             f"<br>辅助信号-4小时MACD下降：{check_macd_4h_signal}" \
                             f"<br>辅助信号-4小时KDJ下降：{check_kdj_4h_signal}" \
+                            f"<br>总信号：{all_signals_dict}" \
                             f"<br>持仓时间：{hours_diff}"
 
         else:

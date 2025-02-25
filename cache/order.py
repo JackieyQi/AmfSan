@@ -132,3 +132,11 @@ class MarketEmaCache(StringCache):
     def __init__(self, symbol, interval):
         super().__init__()
         MarketEmaCache.key = f"ema:{symbol}:{interval}"
+
+
+class FearAndGreedIndexCache(StringCache):
+    """
+    cmd: get fng_index
+    return 25
+    """
+    key = "fng_index"

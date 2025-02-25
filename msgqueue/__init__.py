@@ -25,6 +25,7 @@ route_map = {
     "save_ema_job": dw.save_ema_job,
     "save_account_balance_job": dw.save_account_balance_job,
     "save_trade_history_job": dw.save_trade_history_job,
+    "save_fng_job": dw.save_fng_job,
     #
     "check_balance_job": plot.check_balance,
     "check_price_job": plot.check_price,

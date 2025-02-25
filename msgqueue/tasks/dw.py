@@ -15,7 +15,7 @@ from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
 from utils.common import decimal2str, str2decimal, locking, set_lock_latest
 from utils.hrequest import http_get_request
-from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
+from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache, FearAndGreedIndexCache
 
 
 logger = logging.getLogger(__name__)
@@ -105,6 +105,24 @@ async def save_account_balance_job(*args, **kwargs):
         exchange_platform="binance",
         exchange_data=json.dumps(asset_data),
     ).save()
+
+
+async def save_fng_job(*args, **kwargs):
+    """
+    恐惧与贪婪指数
+    :param args:
+    :param kwargs:
+    :return:
+    """
+    resp_data = http_get_request(
+        "https://api.alternative.me/fng/",
+        {"limit": 3},
+    )
+    if not resp_data:
+        return
+    fear_and_greed_data = resp_data["data"]
+    current_fng_index = fear_and_greed_data[0]["value"]
+    FearAndGreedIndexCache.set(int(current_fng_index), 27*3600)
 
 
 @locking("save_kline_job")
