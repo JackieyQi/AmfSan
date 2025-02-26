@@ -19,7 +19,8 @@ from models.order import MacdTable, KdjTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt
-from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers
+from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
+    enhanced_analyze_by_groups
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
 from .base import BasePlotHandle
@@ -33,12 +34,69 @@ class PlotGptHandle(BasePlotHandle):
         self.symbol = symbol
         self.email_title = f"{symbol} GPT Plot Notice"
 
+        self._kline_list_4h = None
+        self._kline_list_1h = None
+        self._macd_list_1d = None
+        self._macd_list_4h = None
+        self._macd_list_1h = None
+        self._kdj_list_1d = None
+        self._kdj_list_4h = None
+        self._kdj_list_1h = None
+
         if "1h" not in PLOT_INTERVAL_CONFIG:
             raise Exception("Interval 1h miss.")
         if "4h" not in PLOT_INTERVAL_CONFIG:
             raise Exception("Interval 4h miss.")
         if "1d" not in PLOT_INTERVAL_CONFIG:
             raise Exception("Interval 1d miss.")
+
+    @property
+    def kline_list_4h(self):
+        if self._kline_list_4h is None:
+            self._kline_list_4h = self.get_kline_list("4h", limit_count=4)
+        return self._kline_list_4h
+
+    @property
+    def kline_list_1h(self):
+        if self._kline_list_1h is None:
+            self._kline_list_1h = self.get_kline_list("1h", limit_count=11)
+        return self._kline_list_1h
+
+    @property
+    def macd_list_1d(self):
+        if self._macd_list_1d is None:
+            self._macd_list_1d = self.get_macd_list("1d", limit_count=30)
+        return self._macd_list_1d
+
+    @property
+    def macd_list_4h(self):
+        if self._macd_list_4h is None:
+            self._macd_list_4h = self.get_macd_list("4h", limit_count=30)
+        return self._macd_list_4h
+
+    @property
+    def macd_list_1h(self):
+        if self._macd_list_1h is None:
+            self._macd_list_1h = self.get_macd_list("1h", limit_count=30)
+        return self._macd_list_1h
+
+    @property
+    def kdj_list_1d(self):
+        if self._kdj_list_1d is None:
+            self._kdj_list_1d = self.get_kdj_list("1d", limit_count=2)
+        return self._kdj_list_1d
+
+    @property
+    def kdj_list_4h(self):
+        if self._kdj_list_4h is None:
+            self._kdj_list_4h = self.get_kdj_list("4h", limit_count=3)
+        return self._kdj_list_4h
+
+    @property
+    def kdj_list_1h(self):
+        if self._kdj_list_1h is None:
+            self._kdj_list_1h = self.get_kdj_list("1h", limit_count=8)
+        return self._kdj_list_1h
 
     def has_limit_price_check(self):
         all_limit_price = MarketPriceLimitCache.hgetall()
@@ -57,14 +115,17 @@ class PlotGptHandle(BasePlotHandle):
         支撑位: 布林带下轨
         阻力位: 布林带上轨
         """
-        query = (
-            MacdTable.select().where(
-                MacdTable.symbol == self.symbol,
-                MacdTable.interval_val == interval,
-            ).order_by(MacdTable.id.desc()).limit(27)
-        )
+        if interval == "1d":
+            macd_list = self.macd_list_1d[:27]
+        elif interval == "4h":
+            macd_list = self.macd_list_4h[:27]
+        elif interval == "1h":
+            macd_list = self.macd_list_1h[:27]
+        else:
+            raise ValueError(f"get_support_resistance_level, interval:{interval}")
+
         close_prices_list, ema_list = [], []
-        for i, row in enumerate(query):
+        for i, row in enumerate(macd_list):
             if i == 0:
                 # current_close_price = row.closing_price
                 continue
@@ -85,21 +146,58 @@ class PlotGptHandle(BasePlotHandle):
         return template_gpt_plot_bull_run_strategy_notice(
             self.symbol, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
-    async def check(self, limit_count=7):
+    def get_kline_list(self, interval, limit_count=18):
+        query = (
+            KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == interval,
+            ).order_by(KlineTable.id.desc()).limit(limit_count)
+        )
+        query_list = [i for i in query]
+        if not query_list:
+            return
+        if len(query_list) < limit_count:
+            return
+        return query_list
 
-        macd_list_1d, macd_list_4h, macd_list_1h = None, None, None
+    def get_macd_list(self, interval, limit_count=18):
+        query = (
+            MacdTable.select().where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == interval,
+            ).order_by(MacdTable.id.desc()).limit(limit_count)
+        )
+        query_list = [i for i in query]
+        if not query_list:
+            return
+        if len(query_list) < limit_count:
+            return
+        return query_list
+
+    def get_kdj_list(self, interval, limit_count=18):
+        query = (
+            KdjTable.select().where(
+                KdjTable.symbol == self.symbol,
+                KdjTable.interval_val == interval,
+            ).order_by(KdjTable.id.desc()).limit(limit_count)
+        )
+        query_list = [i for i in query]
+        if not query_list:
+            return
+        if len(query_list) < limit_count:
+            return
+        return query_list
+
+    async def check(self, limit_count=7):
         for interval in ["1d", "4h", "1h"]:
-            query = (
-                MacdTable.select().where(
-                    MacdTable.symbol == self.symbol,
-                    MacdTable.interval_val == interval,
-                ).order_by(MacdTable.id.desc()).limit(limit_count)
-            )
-            macd_list = [i for i in query]
-            if not macd_list:
-                return
-            if len(macd_list) < limit_count:
-                return
+            if interval == "1h":
+                continue
+            elif interval == "4h":
+                macd_list = self.macd_list_4h
+            elif interval == "1d":
+                macd_list = self.macd_list_1d
+            else:
+                continue
 
             now_macd_data, last_macd_data = macd_list[0], macd_list[1]
 
@@ -116,15 +214,8 @@ class PlotGptHandle(BasePlotHandle):
 
                 return await self.send_msg(self.email_title, "".join(self.result.values()))
 
-            if interval == "1d":
-                macd_list_1d = macd_list
-            elif interval == "4h":
-                macd_list_4h = macd_list
-            elif interval == "1h":
-                macd_list_1h = macd_list
-
-        await self.short_term_strategy(macd_list_1d, macd_list_4h, macd_list_1h, limit_count)
-        await self.bull_run_strategy(macd_list_4h, macd_list_1h)
+        await self.short_term_strategy(limit_count)
+        await self.bull_run_strategy()
 
     def get_signal_count_status(self, *args):
         true_count = sum([*args])
@@ -165,7 +256,7 @@ class PlotGptHandle(BasePlotHandle):
             else:
                 return
 
-    async def short_term_strategy(self, macd_list_1d, macd_list_4h, macd_list_1h, limit_count):
+    async def short_term_strategy(self, limit_count):
         """
         短线快进快出策略
             主要工具：1小时KDJ+4小时MACD/日线MACD
@@ -199,91 +290,65 @@ class PlotGptHandle(BasePlotHandle):
 
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
-        if macd_list_1d[0].macd < 0 and macd_list_4h[0].macd < 0:
+        if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
             return
-        current_price = macd_list_1h[0].closing_price
+
+        current_price = None
         all_signals_dict = {}
-
-        query = (
-            KdjTable.select().where(
-                KdjTable.symbol == self.symbol,
-                KdjTable.interval_val == "1h",
-            ).order_by(KdjTable.id.desc()).limit(limit_count)
-        )
-        query_list = [i for i in query]
-        if not query_list:
-            return
-        elif len(query_list) < limit_count:
-            return
-
-        current_kdj_1h = query_list[0]
-        latest_kdj_1h_list = query_list[:3]
 
         close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
         set_limit_price_url = ""
 
         # TODO: 全仓改分仓
         if not self.has_limit_price_check():
-            query = (
-                KdjTable.select().where(
-                    KdjTable.symbol == self.symbol,
-                    KdjTable.interval_val == "1d",
-                ).order_by(KdjTable.id.desc()).limit(limit_count)
-            )
-            query_list = [i for i in query]
-            if (query_list[0].j_val < query_list[0].d_val) and (query_list[1].j_val > query_list[1].d_val):
+            if (self.kdj_list_1d[0].j_val < self.kdj_list_1d[0].d_val) \
+                    and (self.kdj_list_1d[1].j_val > self.kdj_list_1d[1].d_val):
                 return
 
+            current_kdj_1h = self.kdj_list_1h[0]
             if current_kdj_1h.k_val > Decimal("35") \
                     or current_kdj_1h.d_val > Decimal("35") or current_kdj_1h.j_val > Decimal("35"):
                 return
 
-            current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
+            # TODO: 手动回测-是否改为相对趋势
+            current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in self.macd_list_1h[:7]][::-1])
             if current_trend_macd_1h in ["downward_spiral", ]:
                 return
 
-            kline_1h_query = KlineTable.select().where(
-                KlineTable.symbol == self.symbol,
-                KlineTable.interval_val == "1h",
-            ).order_by(KlineTable.id.desc()).limit(11)
-            kline_1h_query_list = [i for i in kline_1h_query]
-            current_1h_low_price = kline_1h_query_list[0].low_price
-            last_1h_low_price = min([i.low_price for i in kline_1h_query_list[1:]])
+            current_1h_low_price = self.kline_list_1h[0].low_price
+            last_1h_low_price = min([i.low_price for i in self.kdj_list_1h[1:11]])
             if current_1h_low_price < last_1h_low_price:
                 return
+
+            current_price = self.macd_list_1h[0].closing_price
 
             resistance_level, support_level = self.get_support_resistance_level("4h")
             check_price_fall_signal = current_price > support_level
             all_signals_dict["check_price_fall_signal"] = check_price_fall_signal
 
             check_cv_cross_signal = False
-            for _kdj in query_list[:3]:
+            # TODO: 窗口大小，KDJ三线是否凑集
+            for _kdj in self.kdj_list_1h[:8]:
                 _cv = calculate_cv([_kdj.k_val, _kdj.d_val, _kdj.j_val])
                 if _cv == 0:
                     check_cv_cross_signal = True
                     break
             all_signals_dict["check_cv_cross_signal"] = check_cv_cross_signal
 
-            query = KlineTable.select().where(
-                KlineTable.symbol == self.symbol,
-                KlineTable.interval_val == "4h",
-            ).order_by(KlineTable.id.desc()).limit(4)
-            kline_4h_query_list = [i for i in query]
-
             check_kdj_20_signal = False
-            high_prices_4h_list = [i.high_price for i in kline_4h_query_list[:3]]
+            high_prices_4h_list = [i.high_price for i in self.kline_list_4h[:3]]
             if all(x < y for x, y in zip(high_prices_4h_list, high_prices_4h_list[1:])) is True:
                 if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
                         and current_kdj_1h.j_val < Decimal("20"):
                     check_kdj_20_signal = True
             all_signals_dict["check_kdj_20_signal"] = check_kdj_20_signal
 
-            volume_4h_list = [i.volume for i in kline_4h_query_list[1:]]
-            last_mean_4h_volume = sum(volume_4h_list) / Decimal(len(kline_4h_query_list[1:]))
-            current_4h_volume = kline_4h_query_list[0].volume
-            volume_1h_list = [i.volume for i in kline_1h_query_list[1:]]
-            last_mean_1h_volume = sum(volume_1h_list) / Decimal(len(kline_1h_query_list[1:]))
-            current_1h_volume = kline_1h_query_list[0].volume
+            volume_4h_list = [i.volume for i in self.kline_list_4h[1:4]]
+            last_mean_4h_volume = sum(volume_4h_list) / Decimal(len(self.kline_list_4h[1:4]))
+            current_4h_volume = self.kline_list_4h[0].volume
+            volume_1h_list = [i.volume for i in self.kline_list_1h[1:11]]
+            last_mean_1h_volume = sum(volume_1h_list) / Decimal(len(self.kline_list_1h[1:11]))
+            current_1h_volume = self.kline_list_1h[0].volume
             if current_4h_volume > last_mean_4h_volume:
                 check_4h_volume_up_signal = True
             else:
@@ -330,6 +395,8 @@ class PlotGptHandle(BasePlotHandle):
             else:
                 hours_diff = (int(time.time()) - set_time) // 3600
 
+            current_kdj_1h = self.kdj_list_1h[0]
+            latest_kdj_1h_list = self.kdj_list_1h[:3]
             if current_kdj_1h.j_val <= Decimal("80"):
                 for _kdj in latest_kdj_1h_list:
                     if _kdj.j_val >= Decimal("50"):
@@ -338,38 +405,30 @@ class PlotGptHandle(BasePlotHandle):
                 if current_kdj_1h.j_val > latest_kdj_1h_list[1].j_val:
                     return
 
-                query = KlineTable.select().where(
-                    KlineTable.symbol == self.symbol,
-                    KlineTable.interval_val == "1h",
-                ).order_by(KlineTable.id.desc()).limit(2)
-                query_list = [i for i in query]
-                for i in range(len(query_list) - 1):
-                    if query_list[i].open_price > query_list[i+1].open_price:
+                for i in range(len(self.kline_list_1h[:2]) - 1):
+                    if self.kline_list_1h[i].open_price > self.kdj_list_1h[i+1].open_price:
                         return
-                    if query_list[i].close_price > query_list[i+1].close_price:
+                    if self.kline_list_1h[i].close_price > self.kline_list_1h[i+1].close_price:
                         return
 
                 direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
                             f"<br>持仓时间：{hours_diff}"
 
             else:
-                if macd_list_1h[1].macd < 0 and macd_list_1h[0].macd >= 0:
+                if self.macd_list_1h[1].macd < 0 and self.macd_list_1h[0].macd >= 0:
                     return
-                if macd_list_4h[1].macd < 0 and macd_list_4h[0].macd >= 0:
+                if self.macd_list_4h[1].macd < 0 and self.macd_list_4h[0].macd >= 0:
                     return
 
-                current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in macd_list_1h][::-1])
+                current_trend_macd_1h, _ = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[:18]][::-1])
                 check_trend_stalled_signal = current_trend_macd_1h not in ["parabolic_move", ]
                 all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
 
-                query = KlineTable.select().where(
-                    KlineTable.symbol == self.symbol,
-                    KlineTable.interval_val == "1h",
-                ).order_by(KlineTable.id.desc()).limit(4)
-                high_prices_list = [i.high_price for i in query]
+                high_prices_list = [i.high_price for i in self.kline_list_1h[:4]]
                 check_price_resistance_signal = high_prices_list[0] < max(high_prices_list[1:])
                 all_signals_dict["check_price_resistance_signal"] = check_price_resistance_signal
 
+                current_price = self.macd_list_1h[0].closing_price
                 resistance_level_1h, support_level_1h = self.get_support_resistance_level("1h")
                 if current_price > resistance_level_1h \
                         and (high_prices_list[0] - current_price)/high_prices_list[0] >= Decimal("0.005"):
@@ -378,20 +437,14 @@ class PlotGptHandle(BasePlotHandle):
                     check_boll_resistance_signal = False
                 all_signals_dict["check_boll_resistance_signal"] = check_boll_resistance_signal
 
-                if macd_list_4h[0].macd <= macd_list_4h[1].macd:
+                if self.macd_list_4h[0].macd <= self.macd_list_4h[1].macd:
                     check_macd_4h_signal = True
                 else:
                     check_macd_4h_signal = False
                 all_signals_dict["check_macd_4h_signal"] = check_macd_4h_signal
 
-                query = (
-                    KdjTable.select().where(
-                        KdjTable.symbol == self.symbol,
-                        KdjTable.interval_val == "4h",
-                    ).order_by(KdjTable.id.desc()).limit(limit_count)
-                )
-                query_list = [i for i in query]
-                if (query_list[0].k_val < query_list[1].k_val) and (query_list[0].j_val < query_list[1].j_val):
+                if (self.kdj_list_4h[0].k_val < self.kdj_list_4h[1].k_val) \
+                        and (self.kdj_list_4h[0].j_val < self.kdj_list_4h[1].j_val):
                     check_kdj_4h_signal = True
                 else:
                     check_kdj_4h_signal = False
@@ -438,7 +491,7 @@ class PlotGptHandle(BasePlotHandle):
             f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
         await self.send_msg(self.email_title, email_content)
 
-    async def bull_run_strategy(self, macd_list_4h, macd_list_1h):
+    async def bull_run_strategy(self):
         """
         牛市大涨策略：
             主要工具：4小时K线图
@@ -447,25 +500,17 @@ class PlotGptHandle(BasePlotHandle):
             2. 4小时KDJ最近3根线持续上行，J值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
         """
-        if macd_list_1h[0].macd < 0:
+        if self.macd_list_1h[0].macd < 0:
             return
-        current_price = macd_list_1h[0].closing_price
-
-        query = (
-            KdjTable.select().where(
-                KdjTable.symbol == self.symbol,
-                KdjTable.interval_val == "4h",
-            ).order_by(KdjTable.id.desc()).limit(3)
-        )
-        query_list = [i for i in query]
+        current_price = self.macd_list_1h[0].closing_price
 
         kdj_4h_up_signal = False
-        for row in query_list:
+        for row in self.kdj_list_4h[:3]:
             if row.j_val < row.d_val:
                 break
             kdj_4h_up_signal = True
 
-        crossovers_data = analyze_crossovers(query_list)
+        crossovers_data = analyze_crossovers(self.kdj_list_4h[:3])
         if crossovers_data["golden_cross"] > 0:
             kdj_4h_cross_signal = True
         else:
@@ -474,13 +519,9 @@ class PlotGptHandle(BasePlotHandle):
         if (kdj_4h_up_signal | kdj_4h_cross_signal) is False:
             return
 
-        query = KlineTable.select().where(
-            KlineTable.symbol == self.symbol,
-            KlineTable.interval_val == "4h",
-        ).order_by(KlineTable.id.desc()).limit(3)
         last_high_price = None
         open_ts = None
-        for row in query:
+        for row in self.kline_list_4h[:3]:
             if last_high_price and last_high_price < row.high_price:
                 return
             last_high_price = row.high_price

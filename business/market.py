@@ -153,7 +153,7 @@ class MarketPriceHandler(object):
             "current_price": current_price,
             "limit_low_price": limit_low_price,
             "limit_high_price": limit_high_price,
-            "set_time": to_ctime(set_time),
+            "set_time": to_ctime(int(set_time)),
         }
 
     def get_all_limit_price(self):

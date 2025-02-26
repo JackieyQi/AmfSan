@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 # coding:utf8
 
+import time
 import json
 import logging
 from decimal import Decimal as D
@@ -123,6 +124,7 @@ async def save_fng_job(*args, **kwargs):
     fear_and_greed_data = resp_data["data"]
     current_fng_index = fear_and_greed_data[0]["value"]
     FearAndGreedIndexCache.set(int(current_fng_index), 27*3600)
+    logger.info(f"save_fng_job, time:{int(time.time())}, index:{current_fng_index}")
 
 
 @locking("save_kline_job")
