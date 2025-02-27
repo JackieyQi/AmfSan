@@ -171,10 +171,10 @@ def template_gpt_plot_short_term_strategy_notice(
 
 
 def template_gpt_plot_bull_run_strategy_notice(
-        symbol, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url):
+        symbol, direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url):
     return f"""
             <div>
-            <br><br><b> 📝4小时连续破高上涨 {symbol.upper()}</b>
+            <br><br><b> 📝4小时连续破高上涨 {symbol.upper()}</b>: {direction}
             <br>当前价: {current_price}, 发送时间：{ts2bjfmt(send_ts)}
             <br>opening time:{ts2bjfmt(open_ts)}
             </div>

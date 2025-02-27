@@ -142,9 +142,9 @@ class PlotGptHandle(BasePlotHandle):
         return template_gpt_plot_short_term_strategy_notice(
             self.symbol, direction, current_kdj_1h.open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
-    def bull_run_strategy_reformat_notice(self, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url):
+    def bull_run_strategy_reformat_notice(self, direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url):
         return template_gpt_plot_bull_run_strategy_notice(
-            self.symbol, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
+            self.symbol, direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
     def get_kline_list(self, interval, limit_count=18):
         query = (
@@ -272,6 +272,7 @@ class PlotGptHandle(BasePlotHandle):
                 5.3. (或)4小时K线的 **近三条的最高价逐步下降**，表示下跌压力依旧很大，1小时KDJ均值小于20附近，增强买入信号。
                 5.4. (或)1小时成交量 **高于过去10根均值**，资金流入，增强买入信号。
                 5.5. (或)4小时成交量 **高于过去3根均值**，资金持续流入，增强买入信号。
+
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
             2. 1小时KDJ的J值小于80时，判断是否趋势向下。
@@ -287,6 +288,7 @@ class PlotGptHandle(BasePlotHandle):
                     3.2.3. (或)当前价格，在1小时布林带上轨且回落0.5%，表示出场信号加强。
                     3.2.4. (或)4小时MACD的最近2根柱状图，向下扩大，表示出场信号加强。
                     3.2.5. (或)4小时KDJ的最近2个时间段，K线和J线均下跌，表示出场信号加强。
+                    3.2.6. (或)1小时KDJ的前一时间段均大于90，且当前时间段出现死叉，表示高位死叉，表示出场信号加强。
 
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
@@ -396,23 +398,23 @@ class PlotGptHandle(BasePlotHandle):
                 hours_diff = (int(time.time()) - set_time) // 3600
 
             current_kdj_1h = self.kdj_list_1h[0]
-            latest_kdj_1h_list = self.kdj_list_1h[:3]
             if current_kdj_1h.j_val <= Decimal("80"):
-                for _kdj in latest_kdj_1h_list:
+                for _kdj in self.kdj_list_1h[:3]:
                     if _kdj.j_val >= Decimal("50"):
                         return
 
-                if current_kdj_1h.j_val > latest_kdj_1h_list[1].j_val:
+                if current_kdj_1h.j_val > self.kdj_list_1h[1].j_val:
                     return
 
                 for i in range(len(self.kline_list_1h[:2]) - 1):
-                    if self.kline_list_1h[i].open_price > self.kdj_list_1h[i+1].open_price:
+                    if self.kline_list_1h[i].open_price > self.kline_list_1h[i+1].open_price:
                         return
                     if self.kline_list_1h[i].close_price > self.kline_list_1h[i+1].close_price:
                         return
 
                 direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
-                            f"<br>持仓时间：{hours_diff}"
+                            f"<br>持仓时间：{hours_diff} 小时" \
+                            f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
 
             else:
                 if self.macd_list_1h[1].macd < 0 and self.macd_list_1h[0].macd >= 0:
@@ -420,7 +422,7 @@ class PlotGptHandle(BasePlotHandle):
                 if self.macd_list_4h[1].macd < 0 and self.macd_list_4h[0].macd >= 0:
                     return
 
-                current_trend_macd_1h, _ = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[:18]][::-1])
+                current_trend_macd_1h = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[:18]][::-1])
                 check_trend_stalled_signal = current_trend_macd_1h not in ["parabolic_move", ]
                 all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
 
@@ -450,7 +452,12 @@ class PlotGptHandle(BasePlotHandle):
                     check_kdj_4h_signal = False
                 all_signals_dict["check_kdj_4h_signal"] = check_kdj_4h_signal
 
-                check_fng_signal = self.get_fng_signal(buy=True)
+                if self.kdj_list_1h[1].k_val >= Decimal("90") and self.kdj_list_1h[1].d_val >= Decimal("90") \
+                        and self.kdj_list_1h[1].j_val >= Decimal("90"):
+                    if self.kdj_list_1h[1].k_val > self.kdj_list_1h[1].d_val and current_kdj_1h.k_val < current_kdj_1h.d_val:
+                        all_signals_dict["overbought_death_cross_signal"] = True
+
+                check_fng_signal = self.get_fng_signal(buy=False)
                 if check_fng_signal is not None:
                     all_signals_dict["check_fng_signal"] = check_fng_signal
 
@@ -467,7 +474,7 @@ class PlotGptHandle(BasePlotHandle):
                             f"<br>辅助信号-4小时MACD下降：{check_macd_4h_signal}" \
                             f"<br>辅助信号-4小时KDJ下降：{check_kdj_4h_signal}" \
                             f"<br>总信号：{all_signals_dict}" \
-                            f"<br>持仓时间：{hours_diff}"
+                            f"<br>持仓时间：{hours_diff} 小时"
 
         else:
             return
@@ -497,7 +504,7 @@ class PlotGptHandle(BasePlotHandle):
             主要工具：4小时K线图
         📈 买入信号
             1. 1小时MACD上行，DIF突破DEA。
-            2. 4小时KDJ最近3根线持续上行，J值大于D值。(或 4小时KDJ最近3根线有金叉)
+            2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
         """
         if self.macd_list_1h[0].macd < 0:
@@ -506,7 +513,7 @@ class PlotGptHandle(BasePlotHandle):
 
         kdj_4h_up_signal = False
         for row in self.kdj_list_4h[:3]:
-            if row.j_val < row.d_val:
+            if row.k_val < row.d_val:
                 break
             kdj_4h_up_signal = True
 
@@ -529,6 +536,16 @@ class PlotGptHandle(BasePlotHandle):
             if not open_ts:
                 open_ts = row.open_ts
 
+        from cache import AllCache
+        redis_client = AllCache.get_client()
+        cache_data = redis_client.get(f"bull_run_signals:{self.symbol}")
+
+
+        direction = f"""
+        <br>参考日线+4小时线 -> 判断是否买入
+        <br>参考15分钟线+5分钟线+3分钟线 -> 精准买入价
+        """
+
         current_ts = int(time.time())
         email_msg_md5_str = (
             f"plotGpt:bull_run_strategy:{self.symbol}:{open_ts}"
@@ -546,7 +563,7 @@ class PlotGptHandle(BasePlotHandle):
             send_ts = int(time.time())
 
             self.result[self.symbol] = self.bull_run_strategy_reformat_notice(
-                open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
+                direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
