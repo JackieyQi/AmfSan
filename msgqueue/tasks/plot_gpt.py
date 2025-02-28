@@ -19,6 +19,7 @@ from models.order import MacdTable, KdjTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt
+from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
     enhanced_analyze_by_groups
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
@@ -256,6 +257,36 @@ class PlotGptHandle(BasePlotHandle):
             else:
                 return
 
+    def get_recommend_price(self, current_price):
+        """
+        根据当前深度信息，最大挂单量的价格，作为支撑位和阻力位。
+        结合当前价，计算建议买入价。
+        :return:
+        """
+        resp_data = http_get_request(
+            "https://api.binance.com/api/v3/depth",
+            {"symbol": self.symbol.upper(), "limit": 99},
+        )
+        if not resp_data:
+            return
+        bids_list = resp_data["bids"]
+        asks_list = resp_data["asks"]
+
+        bid_data = max(bids_list, key=lambda x: Decimal(x[1]))
+        bid_price = Decimal(bid_data[0])
+
+        ask_data = max(asks_list, key=lambda x: Decimal(x[1]))
+        ask_price = Decimal(ask_data[0])
+
+        recommend_bid_price = bid_price + (current_price - bid_price) * Decimal("0.6")
+        recommend_ask_price = current_price + (ask_price - current_price) * Decimal("0.6")
+        return {
+            "bid_price": bid_price,
+            "ask_price": ask_price,
+            "recommend_bid_price": recommend_bid_price,
+            "recommend_ask_price": recommend_ask_price,
+        }
+
     async def short_term_strategy(self, limit_count):
         """
         短线快进快出策略
@@ -268,7 +299,7 @@ class PlotGptHandle(BasePlotHandle):
             4. 1小时MACD：最近7根线MACD柱状图的下行趋势减弱，表示下跌趋势减缓，接着考虑买入的辅助信号。
             5. 1小时级别击穿前低价：当前1小时的最低价，小于前10根1小时线的最低价，下跌趋势延续，不要向下考虑。
                 5.1. (或)当前价格 **大于 4小时布林带下轨值**，未击穿支撑位，增强买入信号。
-                5.2. (或)1小时KDJ **最近3条线，有接近死叉或金叉**，增强买入信号。
+                5.2. (或)1小时KDJ **最近8条线，有接近死叉或金叉**，增强买入信号。
                 5.3. (或)4小时K线的 **近三条的最高价逐步下降**，表示下跌压力依旧很大，1小时KDJ均值小于20附近，增强买入信号。
                 5.4. (或)1小时成交量 **高于过去10根均值**，资金流入，增强买入信号。
                 5.5. (或)4小时成交量 **高于过去3根均值**，资金持续流入，增强买入信号。
@@ -318,7 +349,7 @@ class PlotGptHandle(BasePlotHandle):
                 return
 
             current_1h_low_price = self.kline_list_1h[0].low_price
-            last_1h_low_price = min([i.low_price for i in self.kdj_list_1h[1:11]])
+            last_1h_low_price = min([i.low_price for i in self.kline_list_1h[1:11]])
             if current_1h_low_price < last_1h_low_price:
                 return
 
@@ -372,9 +403,15 @@ class PlotGptHandle(BasePlotHandle):
 
             signal_status = self.get_signal_count_status(*all_signals_dict.values())
 
+            recommend_price_data = self.get_recommend_price(current_price)
+            recommend_support_level_price = recommend_price_data["bid_price"]
+            recommend_resistance_level_price = recommend_price_data["ask_price"]
+            recommend_bid_price = recommend_price_data["recommend_bid_price"]
+
             direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
                         f"<br>总体信号-<b>{signal_status}</b>" \
-                        f"<br>建议支撑位:{support_level}, 建议阻力位:{resistance_level}， " \
+                        f"<br>建议支撑位:{recommend_support_level_price}, 建议阻力位:{recommend_resistance_level_price}， " \
+                        f"<br>建议买入价：{recommend_bid_price}" \
                         f"<br>辅助信号：价格未击穿支撑位: {check_price_fall_signal}, " \
                         f"<br>辅助信号：1小时KDJ有交叉: {check_cv_cross_signal}, " \
                         f"<br>辅助信号：1小时KDJ超卖: {check_kdj_20_signal}, " \
@@ -383,7 +420,9 @@ class PlotGptHandle(BasePlotHandle):
                         f"<br>总信号：{all_signals_dict}"
 
             set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                  f"symbol={self.symbol}&low_price={support_level}&high_price={resistance_level}"
+                                  f"symbol={self.symbol}" \
+                                  f"&low_price={recommend_support_level_price}" \
+                                  f"&high_price={recommend_resistance_level_price}"
 
         elif MarketPriceLimitCache.hget(self.symbol):
             limit_price = MarketPriceLimitCache.hget(self.symbol)
@@ -413,8 +452,13 @@ class PlotGptHandle(BasePlotHandle):
                         return
 
                 current_price = self.kline_list_1h[0].close_price
+
+                recommend_price_data = self.get_recommend_price(current_price)
+                recommend_ask_price = recommend_price_data["recommend_ask_price"]
+
                 direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
                             f"<br>持仓时间：{hours_diff} 小时" \
+                            f"<br>建议卖出价：{recommend_ask_price}" \
                             f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
 
             else:
@@ -467,8 +511,12 @@ class PlotGptHandle(BasePlotHandle):
 
                 signal_status = self.get_signal_count_status(*all_signals_dict.values())
 
+                recommend_price_data = self.get_recommend_price(current_price)
+                recommend_ask_price = recommend_price_data["recommend_ask_price"]
+
                 direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
                             f"<br>总体信号-<b>{signal_status}</b>" \
+                            f"<br>建议卖出价：{recommend_ask_price}" \
                             f"<br>辅助信号-MACD趋势止升: {check_trend_stalled_signal}" \
                             f"<br>辅助信号-前最高价受阻: {check_price_resistance_signal}" \
                             f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}" \
@@ -537,12 +585,17 @@ class PlotGptHandle(BasePlotHandle):
             if not open_ts:
                 open_ts = row.open_ts
 
-        from cache import AllCache
-        redis_client = AllCache.get_client()
-        cache_data = redis_client.get(f"bull_run_signals:{self.symbol}")
+        # from cache import AllCache
+        # redis_client = AllCache.get_client()
+        # cache_data = redis_client.get(f"bull_run_signals:{self.symbol}")
 
+        recommend_price_data = self.get_recommend_price(current_price)
+        recommend_support_level_price = recommend_price_data["bid_price"]
+        recommend_resistance_level_price = recommend_price_data["ask_price"]
+        recommend_bid_price = recommend_price_data["recommend_bid_price"]
 
         direction = f"""
+        <br>建议买入价: {recommend_bid_price}
         <br>参考日线+4小时线 -> 判断是否买入
         <br>参考15分钟线+5分钟线+3分钟线 -> 精准买入价
         """
@@ -559,8 +612,8 @@ class PlotGptHandle(BasePlotHandle):
         except EmailMsgHistoryTable.DoesNotExist:
             close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
             set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                  f"symbol={self.symbol}&low_price={current_price*Decimal('0.988')}" \
-                                  f"&high_price={current_price*Decimal('1.012')}"
+                                  f"symbol={self.symbol}&low_price={recommend_support_level_price}" \
+                                  f"&high_price={recommend_resistance_level_price}"
             send_ts = int(time.time())
 
             self.result[self.symbol] = self.bull_run_strategy_reformat_notice(

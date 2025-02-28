@@ -116,7 +116,8 @@ def schedules():
     # schedule.every().day.at("15:27").do(check_balance_job)
     # schedule.every().day.at("03:17").do(save_account_balance_job)
     # schedule.every().day.at("15:17").do(save_account_balance_job)
-    schedule.every().day.at("08:17").do(save_fng_job)
+    # server UTC time
+    schedule.every().day.at("00:17").do(save_fng_job)
 
     while True:
         schedule.run_pending()
