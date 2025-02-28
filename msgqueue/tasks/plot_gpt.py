@@ -412,6 +412,7 @@ class PlotGptHandle(BasePlotHandle):
                     if self.kline_list_1h[i].close_price > self.kline_list_1h[i+1].close_price:
                         return
 
+                current_price = self.kline_list_1h[0].close_price
                 direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
                             f"<br>持仓时间：{hours_diff} 小时" \
                             f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
