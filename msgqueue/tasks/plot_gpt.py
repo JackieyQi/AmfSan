@@ -287,7 +287,7 @@ class PlotGptHandle(BasePlotHandle):
             "recommend_ask_price": recommend_ask_price,
         }
 
-    def get_previous_high_price(self, kline_list, window_size=10):
+    def get_previous_high_price(self, kline_list, window_size=3):
         """
         根据局部极大值算法，计算前高点。
         :return:
@@ -296,6 +296,10 @@ class PlotGptHandle(BasePlotHandle):
         for i in range(window_size, len(kline_list) - window_size):
             left = kline_list[i-window_size: i]
             left_prices = [v.high_price for v in left]
+
+            if not high_list:
+                high_list.append(max(left_prices))
+
             right = kline_list[i+1: i+window_size+1]
             right_prices = [v.high_price for v in right]
 
