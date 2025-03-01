@@ -113,7 +113,7 @@ class MarketPriceHandler(object):
         result = MarketPriceLimitCache.hset(
             symbol,
             "{}:{}:{}".format(
-                new_set_time, low_price or limit_low_price, high_price or limit_high_price
+                int(set_time) or new_set_time, low_price or limit_low_price, high_price or limit_high_price
             ),
         )
 

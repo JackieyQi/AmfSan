@@ -553,11 +553,19 @@ class PlotGptHandle(BasePlotHandle):
             主要工具：4小时K线图
         📈 买入信号
             1. 1小时MACD上行，DIF突破DEA。
+            2. 1小时KDJ不是80高位死叉位置，继续向下判断。
             2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
         """
         if self.macd_list_1h[0].macd < 0:
             return
+
+        if self.kdj_list_1h[1].k_val >= Decimal("80") and self.kdj_list_1h[1].d_val >= Decimal("80") \
+                and self.kdj_list_1h[1].j_val >= Decimal("80"):
+            if self.kdj_list_1h[1].k_val > self.kdj_list_1h[1].d_val \
+                    and self.kdj_list_1h[0].k_val < self.kdj_list_1h[0].d_val:
+                return
+
         current_price = self.macd_list_1h[0].closing_price
 
         kdj_4h_up_signal = False
