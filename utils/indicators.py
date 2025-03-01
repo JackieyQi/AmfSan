@@ -1,9 +1,11 @@
 #! /usr/bin/env python
 # -*- coding: UTF-8 -*-
 
+import time
 import numpy as np
 import pandas as pd
 from utils.common import str2decimal
+from cache import AllCache
 
 
 def analyze_list_trend(decimal_array, num=8):
@@ -240,3 +242,36 @@ def analyze_crossovers(data_array):
         "golden_cross": golden_cross,
         "death_cross": death_cross,
     }
+
+
+class RollingCounter(object):
+    def __init__(self, symbol, counter_name):
+        self.symbol = symbol
+        self.counter_name = counter_name
+
+        self.redis_client = AllCache.get_client()
+
+    def increment(self):
+        ts = int(time.time())
+
+        pipe = self.redis_client.pipeline()
+        pipe.zadd(f"{self.counter_name}:{self.symbol}", {str(ts): ts})
+        pipe.execute()
+        return ts
+
+    def get_last_count(self, interval=86400):
+        now = int(time.time())
+        time_ago = now - interval
+
+        count = self.redis_client.zcount(
+            f"{self.counter_name}:{self.symbol}",
+            min=time_ago,
+            max=now
+        )
+
+        self.redis_client.zremrangebyscore(
+            f"{self.counter_name}:{self.symbol}",
+            min=0,
+            max=time_ago-1
+        )
+        return count

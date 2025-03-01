@@ -21,7 +21,7 @@ from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRIC
 from utils.common import ts2bjfmt
 from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
-    enhanced_analyze_by_groups
+    enhanced_analyze_by_groups, RollingCounter
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
 from .base import BasePlotHandle
@@ -60,7 +60,7 @@ class PlotGptHandle(BasePlotHandle):
     @property
     def kline_list_1h(self):
         if self._kline_list_1h is None:
-            self._kline_list_1h = self.get_kline_list("1h", limit_count=11)
+            self._kline_list_1h = self.get_kline_list("1h", limit_count=30)
         return self._kline_list_1h
 
     @property
@@ -286,6 +286,24 @@ class PlotGptHandle(BasePlotHandle):
             "recommend_bid_price": recommend_bid_price,
             "recommend_ask_price": recommend_ask_price,
         }
+
+    def get_previous_high_price(self, kline_list, window_size=10):
+        """
+        根据局部极大值算法，计算前高点。
+        :return:
+        """
+        high_list = []
+        for i in range(window_size, len(kline_list) - window_size):
+            left = kline_list[i-window_size: i]
+            left_prices = [v.high_price for v in left]
+            right = kline_list[i+1: i+window_size+1]
+            right_prices = [v.high_price for v in right]
+
+            if kline_list[i].high_price > max(left_prices) and kline_list[i].high_price > max(right_prices):
+                high_list.append(kline_list[i].high_price)
+
+        # TODO: 优化前高点的对比策略->是否考虑趋势判断
+        return max(high_list)
 
     async def short_term_strategy(self, limit_count):
         """
@@ -552,21 +570,29 @@ class PlotGptHandle(BasePlotHandle):
         牛市大涨策略：
             主要工具：4小时K线图
         📈 买入信号
-            1. 1小时MACD上行，DIF突破DEA。
-            2. 1小时KDJ不是80高位死叉位置，继续向下判断。
+            #1. 1小时MACD上行，DIF突破DEA。
+            #2. 1小时KDJ不是80高位死叉位置，继续向下判断。
             2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
-        """
-        if self.macd_list_1h[0].macd < 0:
-            return
 
-        if self.kdj_list_1h[1].k_val >= Decimal("80") and self.kdj_list_1h[1].d_val >= Decimal("80") \
-                and self.kdj_list_1h[1].j_val >= Decimal("80"):
-            if self.kdj_list_1h[1].k_val > self.kdj_list_1h[1].d_val \
-                    and self.kdj_list_1h[0].k_val < self.kdj_list_1h[0].d_val:
-                return
+            若不触发当前报警：
+            则判断：24小时内有历史报警+当前价格大于历史20根线的最高价，触发报警
+        """
+        # if self.macd_list_1h[0].macd < 0:
+        #     return
+
+        # if self.kdj_list_1h[1].k_val >= Decimal("80") and self.kdj_list_1h[1].d_val >= Decimal("80") \
+        #         and self.kdj_list_1h[1].j_val >= Decimal("80"):
+        #     if self.kdj_list_1h[1].k_val > self.kdj_list_1h[1].d_val \
+        #             and self.kdj_list_1h[0].k_val < self.kdj_list_1h[0].d_val:
+        #         return
 
         current_price = self.macd_list_1h[0].closing_price
+
+        counter = RollingCounter(self.symbol, "BullRun")
+        final_count = counter.get_last_count()
+
+        previous_high_price_1h = self.get_previous_high_price(self.kline_list_1h[1:21])
 
         kdj_4h_up_signal = False
         for row in self.kdj_list_4h[:3]:
@@ -581,28 +607,47 @@ class PlotGptHandle(BasePlotHandle):
             kdj_4h_cross_signal = False
 
         if (kdj_4h_up_signal | kdj_4h_cross_signal) is False:
-            return
+            if final_count > 0 and current_price >= previous_high_price_1h:
+                direction = f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
 
-        last_high_price = None
-        open_ts = None
-        for row in self.kline_list_4h[:3]:
-            if last_high_price and last_high_price < row.high_price:
+                # 1小时时间
+                open_ts = self.kline_list_1h[0].open_ts
+            else:
                 return
-            last_high_price = row.high_price
 
-            if not open_ts:
-                open_ts = row.open_ts
+        else:
+            direction = ""
 
-        # from cache import AllCache
-        # redis_client = AllCache.get_client()
-        # cache_data = redis_client.get(f"bull_run_signals:{self.symbol}")
+            last_high_price = None
+            open_ts = None
+            high_price_up_4h_signal = True
+            for row in self.kline_list_4h[:3]:
+                if last_high_price and last_high_price < row.high_price:
+                    high_price_up_4h_signal = False
+                    continue
+                last_high_price = row.high_price
+
+                if not open_ts:
+                    # 4小时时间
+                    open_ts = row.open_ts
+
+            if high_price_up_4h_signal is False:
+                if final_count > 0 and current_price >= previous_high_price_1h:
+                    direction = f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
+
+                    # 1小时时间
+                    open_ts = self.kline_list_1h[0].open_ts
+                else:
+                    return
+            else:
+                counter.increment()
 
         recommend_price_data = self.get_recommend_price(current_price)
         recommend_support_level_price = recommend_price_data["bid_price"]
         recommend_resistance_level_price = recommend_price_data["ask_price"]
         recommend_bid_price = recommend_price_data["recommend_bid_price"]
 
-        direction = f"""
+        direction += f"""
         <br>建议买入价: {recommend_bid_price}
         <br>参考日线+4小时线 -> 判断是否买入
         <br>参考15分钟线+5分钟线+3分钟线 -> 精准买入价
