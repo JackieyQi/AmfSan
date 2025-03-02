@@ -518,8 +518,7 @@ class PlotGptHandle(BasePlotHandle):
                     check_kdj_4h_signal = False
                 all_signals_dict["check_kdj_4h_signal"] = check_kdj_4h_signal
 
-                # TODO: 根据增加灵敏度，缩短持仓时间，是否调整为85
-                if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("90")):
+                if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("85")):
                     all_signals_dict["overbought_death_cross_signal"] = True
 
                 check_fng_signal = self.get_fng_signal(buy=False)
