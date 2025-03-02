@@ -341,7 +341,7 @@ class PlotGptHandle(BasePlotHandle):
                     3.2.3. (或)当前价格，在1小时布林带上轨且回落0.5%，表示出场信号加强。
                     3.2.4. (或)4小时MACD的最近2根柱状图，向下扩大，表示出场信号加强。
                     3.2.5. (或)4小时KDJ的最近2个时间段，K线和J线均下跌，表示出场信号加强。
-                    3.2.6. (或)1小时KDJ的前一时间段均大于90，且当前时间段出现死叉，表示高位死叉，表示出场信号加强。
+                    3.2.6. (或)1小时KDJ的高位值85死叉，表示出场信号加强。
 
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
@@ -518,10 +518,9 @@ class PlotGptHandle(BasePlotHandle):
                     check_kdj_4h_signal = False
                 all_signals_dict["check_kdj_4h_signal"] = check_kdj_4h_signal
 
-                if self.kdj_list_1h[1].k_val >= Decimal("90") and self.kdj_list_1h[1].d_val >= Decimal("90") \
-                        and self.kdj_list_1h[1].j_val >= Decimal("90"):
-                    if self.kdj_list_1h[1].k_val > self.kdj_list_1h[1].d_val and current_kdj_1h.k_val < current_kdj_1h.d_val:
-                        all_signals_dict["overbought_death_cross_signal"] = True
+                # TODO: 根据增加灵敏度，缩短持仓时间，是否调整为85
+                if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("90")):
+                    all_signals_dict["overbought_death_cross_signal"] = True
 
                 check_fng_signal = self.get_fng_signal(buy=False)
                 if check_fng_signal is not None:
@@ -575,7 +574,7 @@ class PlotGptHandle(BasePlotHandle):
                 return False
         return True
 
-    def _check_kdj_golden_cross(self, kdj_list):
+    def _check_kdj_golden_cross_count(self, kdj_list):
         """检查KDJ是否有金叉信号"""
         crossovers_data = analyze_crossovers(kdj_list)
         return crossovers_data["golden_cross"] > 0
@@ -590,6 +589,13 @@ class PlotGptHandle(BasePlotHandle):
                 kdj_list[1].j_val <= threshold and
                 kdj_list[1].k_val < kdj_list[1].d_val and
                 kdj_list[0].k_val > kdj_list[0].d_val)
+
+    def _check_kdj_death_cross_by_threshold(self, kdj_list, threshold):
+        return (kdj_list[1].k_val >= threshold and
+                kdj_list[1].d_val >= threshold and
+                kdj_list[1].j_val >= threshold and
+                kdj_list[1].k_val > kdj_list[1].d_val and
+                kdj_list[0].k_val < kdj_list[0].d_val)
 
     def _check_increasing_highs(self, kline_list):
         """检查最高价是否逐步递增"""
@@ -638,7 +644,7 @@ class PlotGptHandle(BasePlotHandle):
         final_count = counter.get_last_count()
 
         kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3])
-        kdj_4h_cross_signal = self._check_kdj_golden_cross(self.kdj_list_4h[:3])
+        kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[:3])
 
         if (kdj_4h_up_signal or kdj_4h_cross_signal) is False:
             if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
@@ -678,28 +684,26 @@ class PlotGptHandle(BasePlotHandle):
         <br>参考15分钟线+5分钟线+3分钟线 -> 精准买入价
         """
 
-        current_ts = int(time.time())
-        email_msg_md5_str = (
-            f"plotGpt:bull_run_strategy:{self.symbol}:{open_ts}"
-        )
+        email_msg_md5_str = f"plotGpt:bull_run_strategy:{self.symbol}:{open_ts}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
-        try:
-            return EmailMsgHistoryTable.get(
-                EmailMsgHistoryTable.msg_md5 == email_msg_md5
-            )
-        except EmailMsgHistoryTable.DoesNotExist:
-            close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
-            set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                  f"symbol={self.symbol}&low_price={recommend_support_level_price}" \
-                                  f"&high_price={recommend_resistance_level_price}"
-            send_ts = int(time.time())
 
-            self.result[self.symbol] = self.bull_run_strategy_reformat_notice(
-                direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
+        try:
+            return EmailMsgHistoryTable.get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
+        except EmailMsgHistoryTable.DoesNotExist:
+            pass
+
+        close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
+        set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+                              f"symbol={self.symbol}&low_price={recommend_support_level_price}" \
+                              f"&high_price={recommend_resistance_level_price}"
+        send_ts = int(time.time())
+
+        self.result[self.symbol] = self.bull_run_strategy_reformat_notice(
+            direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
 
         logger.info(
-            f"PlotGptHandle.bull_run_strategy finish, start end_msg, symbol:{self.symbol}, ts:{current_ts}")
+            f"PlotGptHandle.bull_run_strategy finish, start end_msg, symbol:{self.symbol}, ts:{send_ts}")
         await self.send_msg(self.email_title, email_content)
