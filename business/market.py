@@ -117,15 +117,15 @@ class MarketPriceHandler(object):
             ),
         )
 
-        SymbolPriceChangeHistoryTableCache.rpush(
-            f"{symbol}:"
-            f"{str(current_price)}:"
-            f"{str(limit_low_price or Decimal('0'))}:"
-            f"{str(low_price or Decimal('0'))}:"
-            f"{str(limit_high_price or Decimal('0'))}:"
-            f"{str(high_price or Decimal('0'))}:"
-            f"{int(time.time())}"
-        )
+        # SymbolPriceChangeHistoryTableCache.rpush(
+        #     f"{symbol}:"
+        #     f"{str(current_price)}:"
+        #     f"{str(limit_low_price or Decimal('0'))}:"
+        #     f"{str(low_price or Decimal('0'))}:"
+        #     f"{str(limit_high_price or Decimal('0'))}:"
+        #     f"{str(high_price or Decimal('0'))}:"
+        #     f"{int(time.time())}"
+        # )
         return result
 
     def save_limit_price_change_history_to_db(

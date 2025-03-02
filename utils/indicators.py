@@ -244,6 +244,59 @@ def analyze_crossovers(data_array):
     }
 
 
+def check_near_support(klines_data, support_level, percentage_threshold=0.03, atr_multiplier=0.5):
+    """
+
+    :param klines_data: 按时间正序排列
+    :param support_level: 支撑位价格
+    :param percentage_threshold: 百分比阈值，默认3%
+    :param atr_multiplier: ATR倍数阈值，默认0.5倍
+    :return:
+    """
+    df = pd.DataFrame([
+        {
+            "open": float(k.open_price),
+            "high": float(k.high_price),
+            "close": float(k.close_price),
+            "low": float(k.low_price)
+        } for k in klines_data
+    ])
+
+    # 获取最新价格数据
+    current_low = df["low"].iloc[-1]
+    current_close = df["close"].iloc[-1]
+    support_level_float = float(support_level)
+
+    # 计算ATR (14周期简化版)
+    df["tr"] = np.maximum(
+        df["high"] - df["low"],
+        np.maximum(
+            abs(df['high'] - df['close'].shift(1)),
+            abs(df['low'] - df['close'].shift(1))
+        )
+    )
+
+    # 确保有足够的数据计算ATR
+    if len(df) >= 14:
+        atr = df["tr"].rolling(14).mean().iloc[-1]
+    else:
+        atr = df["tr"].mean()  # 如果数据不足14条，使用平均值
+
+    # 计算当前价格与支撑位的距离
+    distance = current_low - support_level_float
+    percentage_distance = distance / support_level_float
+    atr_distance = distance / atr if atr != 0 else float('inf')
+
+    # 判断条件
+    is_near_by_percentage = 0 <= percentage_distance <= percentage_threshold
+    is_near_by_atr = 0 <= atr_distance <= atr_multiplier
+    price_structure_valid = current_low <= support_level_float * (
+                1 + percentage_threshold) and current_close > support_level_float
+
+    # 综合判断
+    return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
+
+
 class RollingCounter(object):
     def __init__(self, symbol, counter_name):
         self.symbol = symbol

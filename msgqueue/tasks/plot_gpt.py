@@ -21,7 +21,7 @@ from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRIC
 from utils.common import ts2bjfmt
 from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
-    enhanced_analyze_by_groups, RollingCounter
+    enhanced_analyze_by_groups, RollingCounter, check_near_support
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
 from .base import BasePlotHandle
@@ -320,7 +320,7 @@ class PlotGptHandle(BasePlotHandle):
             3. 1小时KDJ的值均大于35，表示超卖反弹，增强买入信号，接着考虑第4点。
             4. 1小时MACD：最近7根线MACD柱状图的下行趋势减弱，表示下跌趋势减缓，接着考虑买入的辅助信号。
             5. 1小时级别击穿前低价：当前1小时的最低价，小于前10根1小时线的最低价，下跌趋势延续，不要向下考虑。
-                5.1. (或)当前价格 **大于 4小时布林带下轨值**，未击穿支撑位，增强买入信号。
+                5.1. (或)当前价格 **靠近 4小时布林带下轨值**，未击穿支撑位，增强买入信号。
                 5.2. (或)1小时KDJ **最近8条线，有接近死叉或金叉**，增强买入信号。
                 5.3. (或)4小时K线的 **近三条的最高价逐步下降**，表示下跌压力依旧很大，1小时KDJ均值小于20附近，增强买入信号。
                 5.4. (或)1小时成交量 **高于过去10根均值**，资金流入，增强买入信号。
@@ -348,7 +348,6 @@ class PlotGptHandle(BasePlotHandle):
         if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
             return
 
-        current_price = None
         all_signals_dict = {}
 
         close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
@@ -378,7 +377,7 @@ class PlotGptHandle(BasePlotHandle):
             current_price = self.macd_list_1h[0].closing_price
 
             resistance_level, support_level = self.get_support_resistance_level("4h")
-            check_price_fall_signal = current_price > support_level
+            check_price_fall_signal = check_near_support(self.kline_list_1h[:21][::-1], support_level)
             all_signals_dict["check_price_fall_signal"] = check_price_fall_signal
 
             check_cv_cross_signal = False
@@ -569,6 +568,45 @@ class PlotGptHandle(BasePlotHandle):
             f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
         await self.send_msg(self.email_title, email_content)
 
+    def _check_kdj_uptrend(self, kdj_list):
+        """检查KDJ是否处于上升趋势(K>D)"""
+        for row in kdj_list:
+            if row.k_val < row.d_val:
+                return False
+        return True
+
+    def _check_kdj_golden_cross(self, kdj_list):
+        """检查KDJ是否有金叉信号"""
+        crossovers_data = analyze_crossovers(kdj_list)
+        return crossovers_data["golden_cross"] > 0
+
+    def _check_price_breakout(self, count, current_price, previous_high):
+        """检查是否有价格突破"""
+        return count > 0 and current_price >= previous_high
+
+    def _check_kdj_golden_cross_by_threshold(self, kdj_list, threshold):
+        return (kdj_list[1].k_val <= threshold and
+                kdj_list[1].d_val <= threshold and
+                kdj_list[1].j_val <= threshold and
+                kdj_list[1].k_val < kdj_list[1].d_val and
+                kdj_list[0].k_val > kdj_list[0].d_val)
+
+    def _check_increasing_highs(self, kline_list):
+        """检查最高价是否逐步递增"""
+        last_high_price = None
+        open_ts = None
+
+        for row in kline_list:
+            if last_high_price and last_high_price < row.high_price:
+                return False, open_ts
+
+            last_high_price = row.high_price
+
+            if not open_ts:
+                open_ts = row.open_ts
+
+        return True, open_ts
+
     async def bull_run_strategy(self):
         """
         牛市大涨策略：
@@ -578,6 +616,8 @@ class PlotGptHandle(BasePlotHandle):
             #2. 1小时KDJ不是80高位死叉位置，继续向下判断。
             2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
+
+            增加辅助信号：日线kdj金叉位置
 
             若不触发当前报警：
             则判断：24小时内有历史报警+当前价格大于历史20根线的最高价，触发报警
@@ -592,26 +632,16 @@ class PlotGptHandle(BasePlotHandle):
         #         return
 
         current_price = self.macd_list_1h[0].closing_price
+        previous_high_price_1h = self.get_previous_high_price(self.kline_list_1h[1:21])
 
         counter = RollingCounter(self.symbol, "BullRun")
         final_count = counter.get_last_count()
 
-        previous_high_price_1h = self.get_previous_high_price(self.kline_list_1h[1:21])
+        kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3])
+        kdj_4h_cross_signal = self._check_kdj_golden_cross(self.kdj_list_4h[:3])
 
-        kdj_4h_up_signal = False
-        for row in self.kdj_list_4h[:3]:
-            if row.k_val < row.d_val:
-                break
-            kdj_4h_up_signal = True
-
-        crossovers_data = analyze_crossovers(self.kdj_list_4h[:3])
-        if crossovers_data["golden_cross"] > 0:
-            kdj_4h_cross_signal = True
-        else:
-            kdj_4h_cross_signal = False
-
-        if (kdj_4h_up_signal | kdj_4h_cross_signal) is False:
-            if final_count > 0 and current_price >= previous_high_price_1h:
+        if (kdj_4h_up_signal or kdj_4h_cross_signal) is False:
+            if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
                 direction = f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
 
                 # 1小时时间
@@ -620,23 +650,10 @@ class PlotGptHandle(BasePlotHandle):
                 return
 
         else:
-            direction = ""
+            high_price_up_4h_signal, open_ts = self._check_increasing_highs(self.kline_list_4h[:3])
 
-            last_high_price = None
-            open_ts = None
-            high_price_up_4h_signal = True
-            for row in self.kline_list_4h[:3]:
-                if last_high_price and last_high_price < row.high_price:
-                    high_price_up_4h_signal = False
-                    continue
-                last_high_price = row.high_price
-
-                if not open_ts:
-                    # 4小时时间
-                    open_ts = row.open_ts
-
-            if high_price_up_4h_signal is False:
-                if final_count > 0 and current_price >= previous_high_price_1h:
+            if not high_price_up_4h_signal:
+                if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
                     direction = f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
 
                     # 1小时时间
@@ -645,6 +662,10 @@ class PlotGptHandle(BasePlotHandle):
                     return
             else:
                 counter.increment()
+                direction = ""
+
+        if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
+                direction += "信号增强：日线KDJ金叉"
 
         recommend_price_data = self.get_recommend_price(current_price)
         recommend_support_level_price = recommend_price_data["bid_price"]
