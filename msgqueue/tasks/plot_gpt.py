@@ -618,7 +618,7 @@ class PlotGptHandle(BasePlotHandle):
             主要工具：4小时K线图
         📈 买入信号
             #1. 1小时MACD上行，DIF突破DEA。
-            #2. 1小时KDJ不是80高位死叉位置，继续向下判断。
+            2. 1小时KDJ不是80高位死叉位置，继续向下判断。
             2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
 
@@ -630,11 +630,8 @@ class PlotGptHandle(BasePlotHandle):
         # if self.macd_list_1h[0].macd < 0:
         #     return
 
-        # if self.kdj_list_1h[1].k_val >= Decimal("80") and self.kdj_list_1h[1].d_val >= Decimal("80") \
-        #         and self.kdj_list_1h[1].j_val >= Decimal("80"):
-        #     if self.kdj_list_1h[1].k_val > self.kdj_list_1h[1].d_val \
-        #             and self.kdj_list_1h[0].k_val < self.kdj_list_1h[0].d_val:
-        #         return
+        if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("80")):
+            return
 
         current_price = self.macd_list_1h[0].closing_price
         previous_high_price_1h = self.get_previous_high_price(self.kline_list_1h[1:21])
@@ -670,7 +667,7 @@ class PlotGptHandle(BasePlotHandle):
                 direction = ""
 
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
-                direction += "信号增强：日线KDJ金叉"
+            direction += "信号增强：日线KDJ金叉"
 
         recommend_price_data = self.get_recommend_price(current_price)
         recommend_support_level_price = recommend_price_data["bid_price"]
