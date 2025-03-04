@@ -43,8 +43,8 @@ class MarketPriceView(HTTPMethodView):
         return result
 
     async def post(self, request):
-        low_price = request.form.get("low_price", "0")
-        high_price = request.form.get("high_price", "0")
+        low_price = request.form.get("low_price", 0)
+        high_price = request.form.get("high_price", 0)
         symbol = request.form.get("symbol", "btcusdt").strip().lower()
         if not low_price and not high_price:
             raise StandardResponseExc()
@@ -74,7 +74,7 @@ class MarketPriceView(HTTPMethodView):
 
 class MarketPriceGateView(HTTPMethodView):
     async def get(self, request):
-        symbol = request.form.get("symbol").strip().lower()
+        symbol = request.form.get("symbol", "").strip().lower()
         if not symbol:
             return "Invalid params:symbol"
 
@@ -91,7 +91,7 @@ class MarketPriceGateView(HTTPMethodView):
 
 class SubmitMarketLimitPriceView(HTTPMethodView):
     async def get(self, request):
-        symbol = request.form.get("symbol").strip().lower()
+        symbol = request.form.get("symbol", "").strip().lower()
         if not symbol:
             return "Invalid params:symbol"
         low_price = request.form.get("low_price", 0)
@@ -125,7 +125,7 @@ class SubmitMarketLimitPriceView(HTTPMethodView):
 
 class MarketMacdCrossGateView(HTTPMethodView):
     async def get(self, request):
-        key = request.form.get("key").strip().lower()
+        key = request.form.get("key", "").strip().lower()
         if not key:
             return "Invalid params:key"
         symbol, interval = key.split("_")
@@ -139,7 +139,7 @@ class MarketMacdCrossGateView(HTTPMethodView):
 
 class MarketMacdTrendGateView(HTTPMethodView):
     async def get(self, request):
-        key = request.form.get("key").strip().lower()
+        key = request.form.get("key", "").strip().lower()
         if not key:
             return "Invalid params:key"
         symbol, interval = key.split("_")
@@ -153,7 +153,7 @@ class MarketMacdTrendGateView(HTTPMethodView):
 
 class MarketKdjCrossGateView(HTTPMethodView):
     async def get(self, request):
-        key = request.form.get("key").strip().lower()
+        key = request.form.get("key", "").strip().lower()
         if not key:
             return "Invalid params:key"
         symbol, interval = key.split("_")

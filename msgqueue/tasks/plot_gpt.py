@@ -218,16 +218,16 @@ class PlotGptHandle(BasePlotHandle):
         await self.short_term_strategy(limit_count)
         await self.bull_run_strategy()
 
-    def get_signal_count_status(self, *args):
+    def get_signal_count_data(self, *args):
         true_count = sum([*args])
         false_count = len([*args]) - true_count
 
         if true_count > false_count:
-            return "增强"
+            return {"status": "增强", "true_count": true_count, "false_count": false_count}
         elif true_count < false_count:
-            return "减弱"
+            return {"status": "减弱", "true_count": true_count, "false_count": false_count}
         else:
-            return "持衡"
+            return {"status": "持衡", "true_count": true_count, "false_count": false_count}
 
     def get_fng_signal(self, buy=False):
         """
@@ -268,7 +268,8 @@ class PlotGptHandle(BasePlotHandle):
             {"symbol": self.symbol.upper(), "limit": 99},
         )
         if not resp_data:
-            return
+            return {"bid_price": "", "ask_price": "", "recommend_bid_price": "", "recommend_ask_price": ""}
+
         bids_list = resp_data["bids"]
         asks_list = resp_data["asks"]
 
@@ -309,6 +310,81 @@ class PlotGptHandle(BasePlotHandle):
         # TODO: 优化前高点的对比策略->是否考虑趋势判断
         return max(high_list)
 
+    def _check_kdj_uptrend(self, kdj_list):
+        """检查KDJ是否处于上升趋势(K>D)"""
+        for row in kdj_list:
+            if row.k_val < row.d_val:
+                return False
+        return True
+
+    def _check_kdj_golden_cross_count(self, kdj_list, threshold=0):
+        """检查 KDJ历史金叉数量"""
+        crossovers_data = analyze_crossovers(kdj_list)
+        return crossovers_data["golden_cross"] > threshold
+
+    def _check_kdj_golden_cross_by_threshold(self, kdj_list, threshold):
+        """检查 KDJ当前低位金叉"""
+        return (kdj_list[1].k_val <= threshold and
+                kdj_list[1].d_val <= threshold and
+                kdj_list[1].j_val <= threshold and
+                kdj_list[1].k_val < kdj_list[1].d_val and
+                kdj_list[0].k_val > kdj_list[0].d_val)
+
+    def _check_kdj_death_cross_by_threshold(self, kdj_list, threshold):
+        """检查 KDJ当前高位死叉"""
+        return (kdj_list[1].k_val >= threshold and
+                kdj_list[1].d_val >= threshold and
+                kdj_list[1].j_val >= threshold and
+                kdj_list[1].k_val > kdj_list[1].d_val and
+                kdj_list[0].k_val < kdj_list[0].d_val)
+
+    def _check_price_breakout(self, count, current_price, previous_high):
+        """检查 是否有价格突破"""
+        return count > 0 and current_price >= previous_high
+
+    def _check_increasing_highs(self, kline_list):
+        """检查 最高价是否逐步递增"""
+        last_high_price = None
+        open_ts = None
+
+        for row in kline_list:
+            if last_high_price and last_high_price < row.high_price:
+                return False, open_ts
+
+            last_high_price = row.high_price
+
+            if not open_ts:
+                open_ts = row.open_ts
+
+        return True, open_ts
+
+    def _check_continuous_selling(self, kline_list, threshold=3):
+        """
+        检查 是否连续卖出
+        :param kline_list: 时间正序
+        :return:
+        """
+        continuous_down_count = 0
+
+        for i in range(len(kline_list)):
+            current_kline = kline_list[i]
+
+            # 检查是否为下跌K线（收盘价低于开盘价）
+            if current_kline.close_price < current_kline.open_price:
+                continuous_down_count += 1
+
+                # 如果不是第一根K线，检查收盘价是否低于前一根K线
+                if i > 0 and current_kline.close_price >= kline_list[i - 1].close_price:
+                    continuous_down_count = 0  # 重置计数
+            else:
+                continuous_down_count = 0  # 遇到非下跌K线，重置计数
+
+            # 如果已经找到足够的连续下跌K线，返回True
+            if continuous_down_count >= threshold:
+                return True
+
+        return False
+
     async def short_term_strategy(self, limit_count):
         """
         短线快进快出策略
@@ -322,9 +398,11 @@ class PlotGptHandle(BasePlotHandle):
             5. 1小时级别击穿前低价：当前1小时的最低价，小于前10根1小时线的最低价，下跌趋势延续，不要向下考虑。
                 5.1. (或)当前价格 **靠近 4小时布林带下轨值**，未击穿支撑位，增强买入信号。
                 5.2. (或)1小时KDJ **最近8条线，有接近死叉或金叉**，增强买入信号。
-                5.3. (或)4小时K线的 **近三条的最高价逐步下降**，表示下跌压力依旧很大，1小时KDJ均值小于20附近，增强买入信号。
+                5.3. (或)1小时K线的 **近三条的最高价没有逐步下降**，表示下跌压力减缓，1小时KDJ均值小于20附近，增强买入信号。
                 5.4. (或)1小时成交量 **高于过去10根均值**，资金流入，增强买入信号。
                 5.5. (或)4小时成交量 **高于过去3根均值**，资金持续流入，增强买入信号。
+                5.6. (增)1小时K线，**最近5根线出现连续卖出3根**，表示下跌压力过大，减弱买入信号。
+                5.7. (增)贪婪指数小于20值时，表示卖方市场，增加买入信号。
 
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
@@ -390,8 +468,8 @@ class PlotGptHandle(BasePlotHandle):
             all_signals_dict["check_cv_cross_signal"] = check_cv_cross_signal
 
             check_kdj_20_signal = False
-            high_prices_4h_list = [i.high_price for i in self.kline_list_4h[:3]]
-            if all(x < y for x, y in zip(high_prices_4h_list, high_prices_4h_list[1:])) is True:
+            high_prices_1h_list = [i.high_price for i in self.kline_list_1h[:3]]
+            if all(x < y for x, y in zip(high_prices_1h_list, high_prices_1h_list[1:])) is False:
                 if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
                         and current_kdj_1h.j_val < Decimal("20"):
                     check_kdj_20_signal = True
@@ -415,6 +493,9 @@ class PlotGptHandle(BasePlotHandle):
                 check_1h_volume_up_signal = False
             all_signals_dict["check_1h_volume_up_signal"] = check_1h_volume_up_signal
 
+            if self._check_continuous_selling(self.kline_list_1h[:5][::-1]):
+                all_signals_dict["check_continuous_selling"] = False
+
             check_fng_signal = self.get_fng_signal(buy=True)
             if check_fng_signal is not None:
                 all_signals_dict["check_fng_signal"] = check_fng_signal
@@ -422,7 +503,9 @@ class PlotGptHandle(BasePlotHandle):
             if any(list(all_signals_dict.values())) is not True:
                 return
 
-            signal_status = self.get_signal_count_status(*all_signals_dict.values())
+            signal_data = self.get_signal_count_data(*all_signals_dict.values())
+            if signal_data["true_count"] == 1:
+                return
 
             recommend_price_data = self.get_recommend_price(current_price)
             recommend_support_level_price = recommend_price_data["bid_price"]
@@ -430,7 +513,7 @@ class PlotGptHandle(BasePlotHandle):
             recommend_bid_price = recommend_price_data["recommend_bid_price"]
 
             direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
-                        f"<br>总体信号-<b>{signal_status}</b>" \
+                        f"<br>总体信号-<b>{signal_data['status']}</b>" \
                         f"<br>建议支撑位:{recommend_support_level_price}, 建议阻力位:{recommend_resistance_level_price}， " \
                         f"<br>建议买入价：{recommend_bid_price}" \
                         f"<br>辅助信号：价格未击穿支撑位: {check_price_fall_signal}, " \
@@ -528,13 +611,13 @@ class PlotGptHandle(BasePlotHandle):
                 if any(list(all_signals_dict.values())) is not True:
                     return
 
-                signal_status = self.get_signal_count_status(*all_signals_dict.values())
+                signal_data = self.get_signal_count_data(*all_signals_dict.values())
 
                 recommend_price_data = self.get_recommend_price(current_price)
                 recommend_ask_price = recommend_price_data["recommend_ask_price"]
 
                 direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
-                            f"<br>总体信号-<b>{signal_status}</b>" \
+                            f"<br>总体信号-<b>{signal_data['status']}</b>" \
                             f"<br>建议卖出价：{recommend_ask_price}" \
                             f"<br>辅助信号-MACD趋势止升: {check_trend_stalled_signal}" \
                             f"<br>辅助信号-前最高价受阻: {check_price_resistance_signal}" \
@@ -565,52 +648,6 @@ class PlotGptHandle(BasePlotHandle):
         logger.info(
             f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
         await self.send_msg(self.email_title, email_content)
-
-    def _check_kdj_uptrend(self, kdj_list):
-        """检查KDJ是否处于上升趋势(K>D)"""
-        for row in kdj_list:
-            if row.k_val < row.d_val:
-                return False
-        return True
-
-    def _check_kdj_golden_cross_count(self, kdj_list):
-        """检查KDJ是否有金叉信号"""
-        crossovers_data = analyze_crossovers(kdj_list)
-        return crossovers_data["golden_cross"] > 0
-
-    def _check_price_breakout(self, count, current_price, previous_high):
-        """检查是否有价格突破"""
-        return count > 0 and current_price >= previous_high
-
-    def _check_kdj_golden_cross_by_threshold(self, kdj_list, threshold):
-        return (kdj_list[1].k_val <= threshold and
-                kdj_list[1].d_val <= threshold and
-                kdj_list[1].j_val <= threshold and
-                kdj_list[1].k_val < kdj_list[1].d_val and
-                kdj_list[0].k_val > kdj_list[0].d_val)
-
-    def _check_kdj_death_cross_by_threshold(self, kdj_list, threshold):
-        return (kdj_list[1].k_val >= threshold and
-                kdj_list[1].d_val >= threshold and
-                kdj_list[1].j_val >= threshold and
-                kdj_list[1].k_val > kdj_list[1].d_val and
-                kdj_list[0].k_val < kdj_list[0].d_val)
-
-    def _check_increasing_highs(self, kline_list):
-        """检查最高价是否逐步递增"""
-        last_high_price = None
-        open_ts = None
-
-        for row in kline_list:
-            if last_high_price and last_high_price < row.high_price:
-                return False, open_ts
-
-            last_high_price = row.high_price
-
-            if not open_ts:
-                open_ts = row.open_ts
-
-        return True, open_ts
 
     async def bull_run_strategy(self):
         """
