@@ -411,6 +411,9 @@ class PlotGptHandle(BasePlotHandle):
                 2.2. 1小时的最新2根线的J值向上，表示可能存在反弹，不考虑挂单卖出。
                 2.3. 1小时的K线的最新2根线，价格区间没有上涨，表示下跌信号增强，考虑挂单卖出。
 
+                新增策略：
+                        KDJ值30到70区间，横盘震荡下行，提示离场。
+
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
                 3.1. 1小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
                 3.2. 4小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
@@ -542,28 +545,38 @@ class PlotGptHandle(BasePlotHandle):
 
             current_kdj_1h = self.kdj_list_1h[0]
             if current_kdj_1h.j_val <= Decimal("80"):
-                for _kdj in self.kdj_list_1h[:3]:
-                    if _kdj.j_val >= Decimal("50"):
+                direction = ""
+
+                recent_kdj_list_1h = [i for i in self.kdj_list_1h if i.open_ts >= set_time]
+                recent_macd_list_1h = [i for i in self.macd_list_1h if i.opening_ts >= set_time]
+                if (len(recent_kdj_list_1h) >= 5 and
+                        all(Decimal("30") <= i.j_val < Decimal("70") for i in recent_kdj_list_1h) and
+                        all(i.macd < 0 for i in recent_macd_list_1h)):
+                    direction = f"🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, 横盘震荡向下。"
+
+                if not direction:
+
+                    if any(_kdj.j_val >= Decimal("50") for _kdj in self.kdj_list_1h[:3]):
                         return
 
-                if current_kdj_1h.j_val > self.kdj_list_1h[1].j_val:
-                    return
-
-                for i in range(len(self.kline_list_1h[:2]) - 1):
-                    if self.kline_list_1h[i].open_price > self.kline_list_1h[i+1].open_price:
-                        return
-                    if self.kline_list_1h[i].close_price > self.kline_list_1h[i+1].close_price:
+                    if current_kdj_1h.j_val > self.kdj_list_1h[1].j_val:
                         return
 
-                current_price = self.kline_list_1h[0].close_price
+                    for i in range(len(self.kline_list_1h[:2]) - 1):
+                        if self.kline_list_1h[i].open_price > self.kline_list_1h[i+1].open_price:
+                            return
+                        if self.kline_list_1h[i].close_price > self.kline_list_1h[i+1].close_price:
+                            return
 
-                recommend_price_data = self.get_recommend_price(current_price)
-                recommend_ask_price = recommend_price_data["recommend_ask_price"]
+                    current_price = self.kline_list_1h[0].close_price
 
-                direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
-                            f"<br>持仓时间：{hours_diff} 小时" \
-                            f"<br>建议卖出价：{recommend_ask_price}" \
-                            f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
+                    recommend_price_data = self.get_recommend_price(current_price)
+                    recommend_ask_price = recommend_price_data["recommend_ask_price"]
+
+                    direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
+                                f"<br>持仓时间：{hours_diff} 小时" \
+                                f"<br>建议卖出价：{recommend_ask_price}" \
+                                f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
 
             else:
                 if self.macd_list_1h[1].macd < 0 and self.macd_list_1h[0].macd >= 0:
