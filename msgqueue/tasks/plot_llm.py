@@ -1,7 +1,12 @@
 #! /usr/bin/env python
 # -*- coding: UTF-8 -*-
 
+import json
 from decimal import Decimal
+from langchain.chat_models import ChatOpenAI
+from langchain.memory import ConversationBufferMemory
+from langchain.schema import AgentAction, AgentFinish, HumanMessage, SystemMessage
+
 from utils.common import decimal2str
 from models.market import KlineTable
 from models.order import MacdTable, KdjTable
@@ -73,6 +78,7 @@ class LlmMarketData(object):
                 "high_price": decimal2str(kline.high_price),
                 "close_price": decimal2str(kline.close_price),
                 "low_price": decimal2str(kline.low_price),
+                "open_time": int(kline.open_ts),
             }
 
             # 添加EMA数据（如果存在对应的MACD记录）
@@ -87,7 +93,8 @@ class LlmMarketData(object):
             volume_type = "buy" if kline.buy_volume > (kline.volume - kline.buy_volume) else "sell"
             volume_array.append({
                 "volume": decimal2str(kline.volume),
-                "type": volume_type
+                "type": volume_type,
+                "open_time": int(kline.open_ts),
             })
 
             # 添加MACD数据
@@ -95,7 +102,8 @@ class LlmMarketData(object):
                 macd_array.append({
                     "dif": decimal2str(macd.ema_12 - macd.ema_26),  # DIF = EMA12 - EMA26
                     "dea": decimal2str(macd.dea),
-                    "macd": decimal2str(macd.macd)
+                    "macd": decimal2str(macd.macd),
+                    "open_time": int(kline.open_ts),
                 })
 
             # 添加KDJ数据
@@ -104,7 +112,8 @@ class LlmMarketData(object):
                 kdj_array.append({
                     "k_val": decimal2str(kdj.k_val),
                     "d_val": decimal2str(kdj.d_val),
-                    "j_val": decimal2str(kdj.j_val)
+                    "j_val": decimal2str(kdj.j_val),
+                    "open_time": int(kline.open_ts),
                 })
 
         return {
@@ -113,3 +122,128 @@ class LlmMarketData(object):
             "macd_array": macd_array,
             "kdj_array": kdj_array
         }
+
+
+class MarketAnalysisAgent(object):
+    def __init__(self, openai_api_key):
+        self.llm = ChatOpenAI(
+            temperature=0,
+            model_name="gpt-4",
+            openai_api_key=openai_api_key,
+        )
+
+        self.memories = {
+            "1d": ConversationBufferMemory(memory_key="1d_analysis"),
+            "4h": ConversationBufferMemory(memory_key="4h_analysis"),
+            "1h": ConversationBufferMemory(memory_key="1h_analysis"),
+        }
+
+        self.market_data = LlmMarketData()
+
+    def __create_analysis_prompt(self):
+        return """
+        你是一个专业的加密货币交易分析师。基于提供的市场数据进行分析，输出买入、卖出或持仓的建议概率。
+        
+        当前数据包含:
+        1. K线数据：开盘价、最高价、最低价、收盘价
+        2. 交易量数据
+        3. MACD指标：DIF、DEA、MACD
+        4. KDJ指标：K值、D值、J值
+        
+        请分析这些数据，并给出以下形式的回答：
+        {
+            "buy_probability": float,  # 买入概率 (0-1)
+            "sell_probability": float, # 卖出概率 (0-1)
+            "hold_probability": float, # 持仓概率 (0-1)
+            "analysis": string,       # 分析理由
+            "risk_level": string     # 风险等级 (low/medium/high)
+        }
+        
+        历史分析记录:
+        {history}
+        
+        当前时间周期: {interval}
+        请分析当前市场数据:
+        {market_data}
+        """
+
+    def __format_market_data(self, data):
+        """格式化市场数据为易读的字符串"""
+        if not data:
+            return "No data available"
+
+        latest_price = data["price_array"][-1]
+        latest_macd = data["macd_array"][-1] if data["macd_array"] else None
+        latest_kdj = data["kdj_array"][-1] if data["kdj_array"] else None
+
+        formatted_data = f"""
+        最新价格数据:
+        - 开盘价: {latest_price['open_price']}
+        - 最高价: {latest_price['high_price']}
+        - 最低价: {latest_price['low_price']}
+        - 收盘价: {latest_price['close_price']}
+        """
+
+        if latest_macd:
+            formatted_data += f"""
+        MACD指标:
+        - DIF: {latest_macd['dif']}
+        - DEA: {latest_macd['dea']}
+        - MACD: {latest_macd['macd']}
+        """
+
+        if latest_kdj:
+            formatted_data += f"""
+        KDJ指标:
+        - K值: {latest_kdj['k_val']}
+        - D值: {latest_kdj['d_val']}
+        - J值: {latest_kdj['j_val']}
+        """
+
+        return formatted_data
+
+    async def analyze_market(self, symbol, interval):
+        market_data = self.market_data.get_market_data(symbol, interval)
+        if not market_data:
+            return {"error": "No market data available"}
+
+        memory = self.memories[interval]
+        history = memory.load_memory_variables({})
+
+        formatted_data = self.__format_market_data(market_data)
+        prompt = self.__create_analysis_prompt().format(
+            history=history.get(memory.memory_key, "No previous analysis"),
+            interval=interval,
+            market_data=formatted_data,
+        )
+
+        # 调用LLM进行分析
+        messages = [
+            SystemMessage(content="You are a professional cryptocurrency trading analyst."),
+            HumanMessage(content=prompt)
+        ]
+        response = await self.llm.agenerate([messages])
+
+        analysis_result = json.loads(response.generations[0][0].text)
+        # 验证概率总和是否为1
+        probabilities = [
+            analysis_result["buy_probability"],
+            analysis_result["sell_probability"],
+            analysis_result["hold_probability"]
+        ]
+
+        if abs(sum(probabilities) - 1.0) > 0.01:
+            raise ValueError("Probabilities must sum to 1")
+
+        memory.save_context(
+            {"input": f"Market analysis for {interval}"},
+            {"output": json.dumps(analysis_result, indent=2)}
+        )
+
+        return analysis_result
+
+    async def analyze_all_intervals(self, symbol):
+        result = {}
+        for interval in ["1d", "4h", "1h"]:
+            result[interval] = await self.analyze_market(symbol, interval)
+        return result
