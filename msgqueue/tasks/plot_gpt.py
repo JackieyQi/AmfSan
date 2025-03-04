@@ -517,14 +517,20 @@ class PlotGptHandle(BasePlotHandle):
 
             direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
                         f"<br>总体信号-<b>{signal_data['status']}</b>" \
-                        f"<br>建议支撑位:{recommend_support_level_price}, 建议阻力位:{recommend_resistance_level_price}， " \
                         f"<br>建议买入价：{recommend_bid_price}" \
-                        f"<br>辅助信号：价格未击穿支撑位: {check_price_fall_signal}, " \
-                        f"<br>辅助信号：1小时KDJ有交叉: {check_cv_cross_signal}, " \
-                        f"<br>辅助信号：1小时KDJ超卖: {check_kdj_20_signal}, " \
-                        f"<br>辅助信号：1小时交易量流入增加：{check_1h_volume_up_signal}, " \
-                        f"<br>辅助信号：4小时交易量流入增加：{check_4h_volume_up_signal}," \
+                        f"<br><b>挂单失败，严禁追涨，十追九败</b><br><br><br>" \
                         f"<br>总信号：{all_signals_dict}"
+
+            # direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
+            #             f"<br>总体信号-<b>{signal_data['status']}</b>" \
+            #             f"<br>建议支撑位:{recommend_support_level_price}, 建议阻力位:{recommend_resistance_level_price}， " \
+            #             f"<br>建议买入价：{recommend_bid_price}" \
+            #             f"<br>辅助信号：价格未击穿支撑位: {check_price_fall_signal}, " \
+            #             f"<br>辅助信号：1小时KDJ有交叉: {check_cv_cross_signal}, " \
+            #             f"<br>辅助信号：1小时KDJ超卖: {check_kdj_20_signal}, " \
+            #             f"<br>辅助信号：1小时交易量流入增加：{check_1h_volume_up_signal}, " \
+            #             f"<br>辅助信号：4小时交易量流入增加：{check_4h_volume_up_signal}," \
+            #             f"<br>总信号：{all_signals_dict}"
 
             set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
                                   f"symbol={self.symbol}" \
@@ -552,6 +558,8 @@ class PlotGptHandle(BasePlotHandle):
                 if (len(recent_kdj_list_1h) >= 5 and
                         all(Decimal("30") <= i.j_val < Decimal("70") for i in recent_kdj_list_1h) and
                         all(i.macd < 0 for i in recent_macd_list_1h)):
+
+                    current_price = self.kline_list_1h[0].close_price
                     direction = f"🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, 横盘震荡向下。"
 
                 if not direction:
@@ -625,6 +633,8 @@ class PlotGptHandle(BasePlotHandle):
                     return
 
                 signal_data = self.get_signal_count_data(*all_signals_dict.values())
+                if signal_data["true_count"] == 1:
+                    return
 
                 recommend_price_data = self.get_recommend_price(current_price)
                 recommend_ask_price = recommend_price_data["recommend_ask_price"]
@@ -632,13 +642,20 @@ class PlotGptHandle(BasePlotHandle):
                 direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
                             f"<br>总体信号-<b>{signal_data['status']}</b>" \
                             f"<br>建议卖出价：{recommend_ask_price}" \
-                            f"<br>辅助信号-MACD趋势止升: {check_trend_stalled_signal}" \
-                            f"<br>辅助信号-前最高价受阻: {check_price_resistance_signal}" \
-                            f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}" \
-                            f"<br>辅助信号-4小时MACD下降：{check_macd_4h_signal}" \
-                            f"<br>辅助信号-4小时KDJ下降：{check_kdj_4h_signal}" \
+                            f"<br><br><br><br><br>" \
                             f"<br>总信号：{all_signals_dict}" \
                             f"<br>持仓时间：{hours_diff} 小时"
+
+                # direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
+                #             f"<br>总体信号-<b>{signal_data['status']}</b>" \
+                #             f"<br>建议卖出价：{recommend_ask_price}" \
+                #             f"<br>辅助信号-MACD趋势止升: {check_trend_stalled_signal}" \
+                #             f"<br>辅助信号-前最高价受阻: {check_price_resistance_signal}" \
+                #             f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}" \
+                #             f"<br>辅助信号-4小时MACD下降：{check_macd_4h_signal}" \
+                #             f"<br>辅助信号-4小时KDJ下降：{check_kdj_4h_signal}" \
+                #             f"<br>总信号：{all_signals_dict}" \
+                #             f"<br>持仓时间：{hours_diff} 小时"
 
         else:
             return
@@ -726,8 +743,7 @@ class PlotGptHandle(BasePlotHandle):
 
         direction += f"""
         <br>建议买入价: {recommend_bid_price}
-        <br>参考日线+4小时线 -> 判断是否买入
-        <br>参考15分钟线+5分钟线+3分钟线 -> 精准买入价
+        <br><br><br>
         """
 
         email_msg_md5_str = f"plotGpt:bull_run_strategy:{self.symbol}:{open_ts}"
