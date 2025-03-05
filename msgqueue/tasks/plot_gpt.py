@@ -730,7 +730,6 @@ class PlotGptHandle(BasePlotHandle):
                 else:
                     return
             else:
-                counter.increment()
                 direction = ""
 
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
@@ -752,7 +751,7 @@ class PlotGptHandle(BasePlotHandle):
         try:
             return EmailMsgHistoryTable.get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
         except EmailMsgHistoryTable.DoesNotExist:
-            pass
+            counter.increment()
 
         close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
         set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
