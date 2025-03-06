@@ -90,7 +90,7 @@ class PlotGptHandle(BasePlotHandle):
     @property
     def kdj_list_4h(self):
         if self._kdj_list_4h is None:
-            self._kdj_list_4h = self.get_kdj_list("4h", limit_count=3)
+            self._kdj_list_4h = self.get_kdj_list("4h", limit_count=8)
         return self._kdj_list_4h
 
     @property
@@ -689,6 +689,8 @@ class PlotGptHandle(BasePlotHandle):
             2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
 
+            新增待回测验证：4. 4小时K线连续4根线KDJ的J值超100，不再考虑。
+
             增加辅助信号：日线kdj金叉位置
 
             若不触发当前报警：
@@ -731,6 +733,8 @@ class PlotGptHandle(BasePlotHandle):
                     return
             else:
                 direction = ""
+                if all([i.j_val >= Decimal("100") for i in self.kdj_list_4h[:4]]):
+                    return
 
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
             direction += "信号增强：日线KDJ金叉"

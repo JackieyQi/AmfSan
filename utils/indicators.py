@@ -4,7 +4,8 @@
 import time
 import numpy as np
 import pandas as pd
-from utils.common import str2decimal
+from decimal import Decimal
+from utils.common import str2decimal, leading_zeros
 from cache import AllCache
 
 
@@ -151,6 +152,11 @@ def enhanced_analyze_list_trend(decimal_array, previous_trends=None, num=8):
 
 
 def enhanced_analyze_by_groups(data, group_size=7):
+    zeros_count = leading_zeros(data[0])
+    if zeros_count:
+        for i, val in enumerate(data):
+            data[i] = val * Decimal(f"{zeros_count}")
+
     results = []
     for i in range(0, len(data) - group_size + 1):
         group = data[i:i + group_size]
