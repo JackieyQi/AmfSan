@@ -11,6 +11,7 @@
 import hashlib
 import logging
 import time
+import json
 from decimal import Decimal
 
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
@@ -636,13 +637,28 @@ class PlotGptHandle(BasePlotHandle):
                 if signal_data["true_count"] == 1:
                     return
 
+                # TODO: 增加历史信号->叠加增强
+                from cache import AllCache
+                redis_client = AllCache.get_client()
+                key = f"shortSignals:{self.symbol}"
+                history_signals_str = redis_client.get(key)
+                if history_signals_str:
+                    history_signals = json.loads(history_signals_str)
+                    history_signals_msg = f"短期累计出场次数：{len(history_signals)}"
+                else:
+                    history_signals = {}
+                    history_signals_msg = ""
+                history_signals[len(history_signals)+1] = all_signals_dict
+                # TODO: 过期时间是否需要叠加
+                redis_client.set(key, json.dumps(history_signals), 3600)
+
                 recommend_price_data = self.get_recommend_price(current_price)
                 recommend_ask_price = recommend_price_data["recommend_ask_price"]
 
                 direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
                             f"<br>总体信号-<b>{signal_data['status']}</b>" \
                             f"<br>建议卖出价：{recommend_ask_price}" \
-                            f"<br><br><br><br><br>" \
+                            f"<br><br>{history_signals_msg}<br><br><br>" \
                             f"<br>总信号：{all_signals_dict}" \
                             f"<br>持仓时间：{hours_diff} 小时"
 
