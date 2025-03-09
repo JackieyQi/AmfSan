@@ -323,6 +323,11 @@ class PlotGptHandle(BasePlotHandle):
         crossovers_data = analyze_crossovers(kdj_list)
         return crossovers_data["golden_cross"] > threshold
 
+    def _check_kdj_golden_cross(self, kdj_list):
+        """检查 KDJ当前金叉"""
+        return (kdj_list[1].k_val < kdj_list[1].d_val and
+                kdj_list[0].k_val > kdj_list[0].d_val)
+
     def _check_kdj_golden_cross_by_threshold(self, kdj_list, threshold):
         """检查 KDJ当前低位金叉"""
         return (kdj_list[1].k_val <= threshold and
@@ -330,6 +335,11 @@ class PlotGptHandle(BasePlotHandle):
                 kdj_list[1].j_val <= threshold and
                 kdj_list[1].k_val < kdj_list[1].d_val and
                 kdj_list[0].k_val > kdj_list[0].d_val)
+
+    def _check_kdj_death_cross(self, kdj_list):
+        """检查 KDJ当前死叉"""
+        return (kdj_list[1].k_val > kdj_list[1].d_val and
+                kdj_list[0].k_val < kdj_list[0].d_val)
 
     def _check_kdj_death_cross_by_threshold(self, kdj_list, threshold):
         """检查 KDJ当前高位死叉"""
@@ -437,8 +447,7 @@ class PlotGptHandle(BasePlotHandle):
 
         # TODO: 全仓改分仓
         if not self.has_limit_price_check():
-            if (self.kdj_list_1d[0].j_val < self.kdj_list_1d[0].d_val) \
-                    and (self.kdj_list_1d[1].j_val > self.kdj_list_1d[1].d_val):
+            if self._check_kdj_death_cross(self.kdj_list_1d):
                 return
 
             current_kdj_1h = self.kdj_list_1h[0]
@@ -700,7 +709,7 @@ class PlotGptHandle(BasePlotHandle):
         牛市大涨策略：
             主要工具：4小时K线图
         📈 买入信号
-            #1. 1小时MACD上行，DIF突破DEA。
+            1. 日线KDJ刚形成死叉，不再考虑买入。
             2. 1小时KDJ不是80高位死叉位置，继续向下判断。
             2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
@@ -712,8 +721,8 @@ class PlotGptHandle(BasePlotHandle):
             若不触发当前报警：
             则判断：24小时内有历史报警+当前价格大于历史20根线的最高价，触发报警
         """
-        # if self.macd_list_1h[0].macd < 0:
-        #     return
+        if self._check_kdj_death_cross(self.kdj_list_1d):
+            return
 
         if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("80")):
             return
@@ -751,6 +760,8 @@ class PlotGptHandle(BasePlotHandle):
                 direction = ""
                 if all([i.j_val >= Decimal("100") for i in self.kdj_list_4h[:4]]):
                     return
+
+        # TODO: 是否只判断价格破新高
 
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
             direction += "信号增强：日线KDJ金叉"
