@@ -45,12 +45,10 @@ class PlotGptHandle(BasePlotHandle):
         self._kdj_list_4h = None
         self._kdj_list_1h = None
 
-        if "1h" not in PLOT_INTERVAL_CONFIG:
-            raise Exception("Interval 1h miss.")
-        if "4h" not in PLOT_INTERVAL_CONFIG:
-            raise Exception("Interval 4h miss.")
-        if "1d" not in PLOT_INTERVAL_CONFIG:
-            raise Exception("Interval 1d miss.")
+        required_intervals = ["1h", "4h", "1d"]
+        for interval in required_intervals:
+            if interval not in PLOT_INTERVAL_CONFIG:
+                raise ValueError(f"Required interval {interval} is missing in configuration")
 
     @property
     def kline_list_4h(self):
@@ -101,40 +99,33 @@ class PlotGptHandle(BasePlotHandle):
         return self._kdj_list_1h
 
     def has_limit_price_check(self):
-        all_limit_price = MarketPriceLimitCache.hgetall()
-        if not all_limit_price:
+        all_limit_prices = MarketPriceLimitCache.hgetall()
+        if not all_limit_prices:
             return False
 
-        if "btcusdt" in all_limit_price:
-            del all_limit_price["btcusdt"]
-
-        if not all_limit_price:
-            return False
-        return True
+        all_limit_prices.pop("btcusdt", None)
+        return bool(all_limit_prices)
 
     def get_support_resistance_level(self, interval):
         """
         支撑位: 布林带下轨
         阻力位: 布林带上轨
         """
-        if interval == "1d":
-            macd_list = self.macd_list_1d[:27]
-        elif interval == "4h":
-            macd_list = self.macd_list_4h[:27]
-        elif interval == "1h":
-            macd_list = self.macd_list_1h[:27]
-        else:
-            raise ValueError(f"get_support_resistance_level, interval:{interval}")
+        interval_map = {
+            "1d": self.macd_list_1d,
+            "4h": self.macd_list_4h,
+            "1h": self.macd_list_1h
+        }
 
-        close_prices_list, ema_list = [], []
-        for i, row in enumerate(macd_list):
-            if i == 0:
-                # current_close_price = row.closing_price
-                continue
-            close_prices_list.append(row.closing_price)
-            ema_list.append(row.ema_26)
+        if interval not in interval_map:
+            raise ValueError(f"Invalid interval: {interval}")
 
-        last_higher_band, last_lower_band = calculate_bollinger_bands(close_prices_list[::-1], ema_list[::-1])
+        macd_list = interval_map[interval][:27]
+
+        close_prices = [row.closing_price for row in macd_list[1:]]
+        ema_values = [row.ema_26 for row in macd_list[1:]]
+
+        last_higher_band, last_lower_band = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
         return last_higher_band, last_lower_band
 
     def trend_following_strategy_reformat_notice(self, direction, current_data):
@@ -155,9 +146,7 @@ class PlotGptHandle(BasePlotHandle):
                 KlineTable.interval_val == interval,
             ).order_by(KlineTable.id.desc()).limit(limit_count)
         )
-        query_list = [i for i in query]
-        if not query_list:
-            return
+        query_list = list(query)
         if len(query_list) < limit_count:
             return
         return query_list
@@ -169,9 +158,7 @@ class PlotGptHandle(BasePlotHandle):
                 MacdTable.interval_val == interval,
             ).order_by(MacdTable.id.desc()).limit(limit_count)
         )
-        query_list = [i for i in query]
-        if not query_list:
-            return
+        query_list = list(query)
         if len(query_list) < limit_count:
             return
         return query_list
@@ -183,45 +170,14 @@ class PlotGptHandle(BasePlotHandle):
                 KdjTable.interval_val == interval,
             ).order_by(KdjTable.id.desc()).limit(limit_count)
         )
-        query_list = [i for i in query]
-        if not query_list:
-            return
+        query_list = list(query)
         if len(query_list) < limit_count:
             return
         return query_list
 
-    async def check(self, limit_count=7):
-        for interval in ["1d", "4h", "1h"]:
-            if interval == "1h":
-                continue
-            elif interval == "4h":
-                macd_list = self.macd_list_4h
-            elif interval == "1d":
-                macd_list = self.macd_list_1d
-            else:
-                continue
-
-            now_macd_data, last_macd_data = macd_list[0], macd_list[1]
-
-            now_ts = int(time.time())
-            interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
-            if now_macd_data.opening_ts < (now_ts - interval_sec * limit_count):
-                self.result[
-                    self.symbol
-                ] = f"""
-                        <br><a>Error: no lastest macd data, {self.symbol}:{interval}</a>
-                        <br><a>opening_ts:{ts2bjfmt(now_macd_data.opening_ts)}</a>
-                        <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
-                        """
-
-                return await self.send_msg(self.email_title, "".join(self.result.values()))
-
-        await self.short_term_strategy(limit_count)
-        await self.bull_run_strategy()
-
-    def get_signal_count_data(self, *args):
-        true_count = sum([*args])
-        false_count = len([*args]) - true_count
+    def get_signal_count_data(self, *signals):
+        true_count = sum(signals)
+        false_count = len(signals) - true_count
 
         if true_count > false_count:
             return {"status": "增强", "true_count": true_count, "false_count": false_count}
@@ -248,15 +204,12 @@ class PlotGptHandle(BasePlotHandle):
                 return True
             elif fng_index >= 80:
                 return False
-            else:
-                return
         else:
             if fng_index <= 20:
                 return False
             elif fng_index >= 80:
                 return True
-            else:
-                return
+        return
 
     def get_recommend_price(self, current_price):
         """
@@ -313,10 +266,7 @@ class PlotGptHandle(BasePlotHandle):
 
     def _check_kdj_uptrend(self, kdj_list):
         """检查KDJ是否处于上升趋势(K>D)"""
-        for row in kdj_list:
-            if row.k_val < row.d_val:
-                return False
-        return True
+        return all(row.k_val >= row.d_val for row in kdj_list)
 
     def _check_kdj_golden_cross_count(self, kdj_list, threshold=0):
         """检查 KDJ历史金叉数量"""
@@ -356,18 +306,13 @@ class PlotGptHandle(BasePlotHandle):
     def _check_increasing_highs(self, kline_list):
         """检查 最高价是否逐步递增"""
         last_high_price = None
-        open_ts = None
 
         for row in kline_list:
             if last_high_price and last_high_price < row.high_price:
-                return False, open_ts
-
+                return False, row.open_ts
             last_high_price = row.high_price
 
-            if not open_ts:
-                open_ts = row.open_ts
-
-        return True, open_ts
+        return True, kline_list[0].open_ts
 
     def _check_continuous_selling(self, kline_list, threshold=3):
         """
@@ -395,6 +340,27 @@ class PlotGptHandle(BasePlotHandle):
                 return True
 
         return False
+
+    async def check(self, limit_count=7):
+        for interval, macd_list in (("1d", self.macd_list_1d), ("4h", self.macd_list_4h)):
+            now_ts = int(time.time())
+            interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+            if macd_list[0].opening_ts < (now_ts - interval_sec * limit_count):
+                self.result[
+                    self.symbol
+                ] = f"""
+                        <br><a>Error: no lastest macd data, {self.symbol}:{interval}</a>
+                        <br><a>opening_ts:{ts2bjfmt(macd_list[0].opening_ts)}</a>
+                        <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
+                        """
+
+                return await self.send_msg(self.email_title, "".join(self.result.values()))
+
+        if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
+            return
+
+        await self.short_term_strategy(limit_count)
+        await self.bull_run_strategy()
 
     async def short_term_strategy(self, limit_count):
         """
@@ -437,115 +403,17 @@ class PlotGptHandle(BasePlotHandle):
 
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
-        if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
-            return
-
-        all_signals_dict = {}
-
         close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
         set_limit_price_url = ""
 
         # TODO: 全仓改分仓
         if not self.has_limit_price_check():
-            if self._check_kdj_death_cross(self.kdj_list_1d):
+            direction_info = self._get_buy_direction()
+            if not direction_info:
                 return
-
-            current_kdj_1h = self.kdj_list_1h[0]
-            if current_kdj_1h.k_val > Decimal("35") \
-                    or current_kdj_1h.d_val > Decimal("35") or current_kdj_1h.j_val > Decimal("35"):
-                return
-
-            # TODO: 手动回测-是否改为相对趋势
-            current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in self.macd_list_1h[:7]][::-1])
-            if current_trend_macd_1h in ["downward_spiral", ]:
-                return
-
-            current_1h_low_price = self.kline_list_1h[0].low_price
-            last_1h_low_price = min([i.low_price for i in self.kline_list_1h[1:11]])
-            if current_1h_low_price < last_1h_low_price:
-                return
-
-            current_price = self.macd_list_1h[0].closing_price
-
-            resistance_level, support_level = self.get_support_resistance_level("4h")
-            check_price_fall_signal = check_near_support(self.kline_list_1h[:21][::-1], support_level)
-            all_signals_dict["check_price_fall_signal"] = check_price_fall_signal
-
-            check_cv_cross_signal = False
-            # TODO: 窗口大小，KDJ三线是否凑集
-            for _kdj in self.kdj_list_1h[:8]:
-                _cv = calculate_cv([_kdj.k_val, _kdj.d_val, _kdj.j_val])
-                if _cv == 0:
-                    check_cv_cross_signal = True
-                    break
-            all_signals_dict["check_cv_cross_signal"] = check_cv_cross_signal
-
-            check_kdj_20_signal = False
-            high_prices_1h_list = [i.high_price for i in self.kline_list_1h[:3]]
-            if all(x < y for x, y in zip(high_prices_1h_list, high_prices_1h_list[1:])) is False:
-                if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
-                        and current_kdj_1h.j_val < Decimal("20"):
-                    check_kdj_20_signal = True
-            all_signals_dict["check_kdj_20_signal"] = check_kdj_20_signal
-
-            volume_4h_list = [i.volume for i in self.kline_list_4h[1:4]]
-            last_mean_4h_volume = sum(volume_4h_list) / Decimal(len(self.kline_list_4h[1:4]))
-            current_4h_volume = self.kline_list_4h[0].volume
-            volume_1h_list = [i.volume for i in self.kline_list_1h[1:11]]
-            last_mean_1h_volume = sum(volume_1h_list) / Decimal(len(self.kline_list_1h[1:11]))
-            current_1h_volume = self.kline_list_1h[0].volume
-            if current_4h_volume > last_mean_4h_volume:
-                check_4h_volume_up_signal = True
-            else:
-                check_4h_volume_up_signal = False
-            all_signals_dict["check_4h_volume_up_signal"] = check_4h_volume_up_signal
-
-            if current_1h_volume > last_mean_1h_volume:
-                check_1h_volume_up_signal = True
-            else:
-                check_1h_volume_up_signal = False
-            all_signals_dict["check_1h_volume_up_signal"] = check_1h_volume_up_signal
-
-            if self._check_continuous_selling(self.kline_list_1h[:5][::-1]):
-                all_signals_dict["check_continuous_selling"] = False
-
-            check_fng_signal = self.get_fng_signal(buy=True)
-            if check_fng_signal is not None:
-                all_signals_dict["check_fng_signal"] = check_fng_signal
-
-            if any(list(all_signals_dict.values())) is not True:
-                return
-
-            signal_data = self.get_signal_count_data(*all_signals_dict.values())
-            if signal_data["true_count"] == 1:
-                return
-
-            recommend_price_data = self.get_recommend_price(current_price)
-            recommend_support_level_price = recommend_price_data["bid_price"]
-            recommend_resistance_level_price = recommend_price_data["ask_price"]
-            recommend_bid_price = recommend_price_data["recommend_bid_price"]
-
-            direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
-                        f"<br>总体信号-<b>{signal_data['status']}</b>" \
-                        f"<br>建议买入价：{recommend_bid_price}" \
-                        f"<br><b>挂单失败，严禁追涨，十追九败</b><br><br><br>" \
-                        f"<br>总信号：{all_signals_dict}"
-
-            # direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
-            #             f"<br>总体信号-<b>{signal_data['status']}</b>" \
-            #             f"<br>建议支撑位:{recommend_support_level_price}, 建议阻力位:{recommend_resistance_level_price}， " \
-            #             f"<br>建议买入价：{recommend_bid_price}" \
-            #             f"<br>辅助信号：价格未击穿支撑位: {check_price_fall_signal}, " \
-            #             f"<br>辅助信号：1小时KDJ有交叉: {check_cv_cross_signal}, " \
-            #             f"<br>辅助信号：1小时KDJ超卖: {check_kdj_20_signal}, " \
-            #             f"<br>辅助信号：1小时交易量流入增加：{check_1h_volume_up_signal}, " \
-            #             f"<br>辅助信号：4小时交易量流入增加：{check_4h_volume_up_signal}," \
-            #             f"<br>总信号：{all_signals_dict}"
-
-            set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                  f"symbol={self.symbol}" \
-                                  f"&low_price={recommend_support_level_price}" \
-                                  f"&high_price={recommend_resistance_level_price}"
+            direction = direction_info["direction"]
+            set_limit_price_url = direction_info["set_limit_price_url"]
+            current_price = direction_info["current_price"]
 
         elif MarketPriceLimitCache.hget(self.symbol):
             limit_price = MarketPriceLimitCache.hget(self.symbol)
@@ -559,134 +427,26 @@ class PlotGptHandle(BasePlotHandle):
             else:
                 hours_diff = (int(time.time()) - set_time) // 3600
 
-            current_kdj_1h = self.kdj_list_1h[0]
-            if current_kdj_1h.j_val <= Decimal("80"):
-                direction = ""
+            if self.kdj_list_1h[0].j_val <= Decimal("80"):
 
-                recent_kdj_list_1h = [i for i in self.kdj_list_1h if i.open_ts >= set_time]
-                recent_macd_list_1h = [i for i in self.macd_list_1h if i.opening_ts >= set_time]
-                if (len(recent_kdj_list_1h) >= 5 and
-                        all(Decimal("30") <= i.j_val < Decimal("70") for i in recent_kdj_list_1h) and
-                        all(i.macd < 0 for i in recent_macd_list_1h)):
-
-                    current_price = self.kline_list_1h[0].close_price
-                    direction = f"🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, 横盘震荡向下。"
-
-                if not direction:
-
-                    if any(_kdj.j_val >= Decimal("50") for _kdj in self.kdj_list_1h[:3]):
-                        return
-
-                    if current_kdj_1h.j_val > self.kdj_list_1h[1].j_val:
-                        return
-
-                    for i in range(len(self.kline_list_1h[:2]) - 1):
-                        if self.kline_list_1h[i].open_price > self.kline_list_1h[i+1].open_price:
-                            return
-                        if self.kline_list_1h[i].close_price > self.kline_list_1h[i+1].close_price:
-                            return
-
-                    current_price = self.kline_list_1h[0].close_price
-
-                    recommend_price_data = self.get_recommend_price(current_price)
-                    recommend_ask_price = recommend_price_data["recommend_ask_price"]
-
-                    direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
-                                f"<br>持仓时间：{hours_diff} 小时" \
-                                f"<br>建议卖出价：{recommend_ask_price}" \
-                                f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
+                direction_info = self._get_sell_direction_sideways_or_downward(set_time, hours_diff)
+                if not direction_info:
+                    return
+                direction = direction_info["direction"]
+                current_price = direction_info["current_price"]
 
             else:
-                if self.macd_list_1h[1].macd < 0 and self.macd_list_1h[0].macd >= 0:
+                direction_info = self._get_sell_direction_upward(hours_diff)
+                if not direction_info:
                     return
-                if self.macd_list_4h[1].macd < 0 and self.macd_list_4h[0].macd >= 0:
-                    return
-
-                current_trend_macd_1h = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[:18]][::-1])
-                check_trend_stalled_signal = current_trend_macd_1h not in ["parabolic_move", ]
-                all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
-
-                high_prices_list = [i.high_price for i in self.kline_list_1h[:4]]
-                check_price_resistance_signal = high_prices_list[0] < max(high_prices_list[1:])
-                all_signals_dict["check_price_resistance_signal"] = check_price_resistance_signal
-
-                current_price = self.macd_list_1h[0].closing_price
-                resistance_level_1h, support_level_1h = self.get_support_resistance_level("1h")
-                if current_price > resistance_level_1h \
-                        and (high_prices_list[0] - current_price)/high_prices_list[0] >= Decimal("0.005"):
-                    check_boll_resistance_signal = True
-                else:
-                    check_boll_resistance_signal = False
-                all_signals_dict["check_boll_resistance_signal"] = check_boll_resistance_signal
-
-                if self.macd_list_4h[0].macd <= self.macd_list_4h[1].macd:
-                    check_macd_4h_signal = True
-                else:
-                    check_macd_4h_signal = False
-                all_signals_dict["check_macd_4h_signal"] = check_macd_4h_signal
-
-                if (self.kdj_list_4h[0].k_val < self.kdj_list_4h[1].k_val) \
-                        and (self.kdj_list_4h[0].j_val < self.kdj_list_4h[1].j_val):
-                    check_kdj_4h_signal = True
-                else:
-                    check_kdj_4h_signal = False
-                all_signals_dict["check_kdj_4h_signal"] = check_kdj_4h_signal
-
-                if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("85")):
-                    all_signals_dict["overbought_death_cross_signal"] = True
-
-                check_fng_signal = self.get_fng_signal(buy=False)
-                if check_fng_signal is not None:
-                    all_signals_dict["check_fng_signal"] = check_fng_signal
-
-                if any(list(all_signals_dict.values())) is not True:
-                    return
-
-                signal_data = self.get_signal_count_data(*all_signals_dict.values())
-                if signal_data["true_count"] == 1:
-                    return
-
-                # TODO: 增加历史信号->叠加增强
-                from cache import AllCache
-                redis_client = AllCache.get_client()
-                key = f"shortSignals:{self.symbol}"
-                history_signals_str = redis_client.get(key)
-                if history_signals_str:
-                    history_signals = json.loads(history_signals_str)
-                    history_signals_msg = f"短期累计出场次数：{len(history_signals)}"
-                else:
-                    history_signals = {}
-                    history_signals_msg = ""
-                history_signals[len(history_signals)+1] = all_signals_dict
-                # TODO: 过期时间是否需要叠加
-                redis_client.set(key, json.dumps(history_signals), 3600)
-
-                recommend_price_data = self.get_recommend_price(current_price)
-                recommend_ask_price = recommend_price_data["recommend_ask_price"]
-
-                direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
-                            f"<br>总体信号-<b>{signal_data['status']}</b>" \
-                            f"<br>建议卖出价：{recommend_ask_price}" \
-                            f"<br><br>{history_signals_msg}<br><br><br>" \
-                            f"<br>总信号：{all_signals_dict}" \
-                            f"<br>持仓时间：{hours_diff} 小时"
-
-                # direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
-                #             f"<br>总体信号-<b>{signal_data['status']}</b>" \
-                #             f"<br>建议卖出价：{recommend_ask_price}" \
-                #             f"<br>辅助信号-MACD趋势止升: {check_trend_stalled_signal}" \
-                #             f"<br>辅助信号-前最高价受阻: {check_price_resistance_signal}" \
-                #             f"<br>辅助信号-BOLL上轨价格回落: {check_boll_resistance_signal}" \
-                #             f"<br>辅助信号-4小时MACD下降：{check_macd_4h_signal}" \
-                #             f"<br>辅助信号-4小时KDJ下降：{check_kdj_4h_signal}" \
-                #             f"<br>总信号：{all_signals_dict}" \
-                #             f"<br>持仓时间：{hours_diff} 小时"
+                direction = direction_info["direction"]
+                current_price = direction_info["current_price"]
 
         else:
             return
 
         email_msg_md5_str = (
-            f"plotGpt:short_term_strategy:{self.symbol}:{current_kdj_1h.open_ts}"
+            f"plotGpt:short_term_strategy:{self.symbol}:{self.kdj_list_1h[0].open_ts}"
         )
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
@@ -695,7 +455,7 @@ class PlotGptHandle(BasePlotHandle):
             )
         except EmailMsgHistoryTable.DoesNotExist:
             self.result[self.symbol] = self.short_term_strategy_reformat_notice(
-                direction, current_kdj_1h, current_price, int(time.time()), close_monitor_url, set_limit_price_url)
+                direction, self.kdj_list_1h[0], current_price, int(time.time()), close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
         EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
@@ -704,11 +464,227 @@ class PlotGptHandle(BasePlotHandle):
             f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
         await self.send_msg(self.email_title, email_content)
 
+    def _get_buy_direction(self):
+        all_signals_dict = {}
+
+        if self._check_kdj_death_cross(self.kdj_list_1d):
+            return
+
+        current_kdj_1h = self.kdj_list_1h[0]
+        if current_kdj_1h.k_val > Decimal("35") \
+                or current_kdj_1h.d_val > Decimal("35") or current_kdj_1h.j_val > Decimal("35"):
+            return
+
+        # TODO: 手动回测-是否改为相对趋势
+        current_trend_macd_1h, _ = analyze_list_trend([i.macd for i in self.macd_list_1h[:7]][::-1])
+        if current_trend_macd_1h in ["downward_spiral", ]:
+            return
+
+        current_1h_low_price = self.kline_list_1h[0].low_price
+        last_1h_low_price = min([i.low_price for i in self.kline_list_1h[1:11]])
+        if current_1h_low_price < last_1h_low_price:
+            return
+
+        current_price = self.macd_list_1h[0].closing_price
+
+        resistance_level, support_level = self.get_support_resistance_level("4h")
+        check_price_fall_signal = check_near_support(self.kline_list_1h[:21][::-1], support_level)
+        # near_support
+        all_signals_dict["check_price_fall_signal"] = check_price_fall_signal
+
+        check_cv_cross_signal = any(
+            calculate_cv([kdj.k_val, kdj.d_val, kdj.j_val]) == 0
+            for kdj in self.kdj_list_1h[:8]
+        )
+        # TODO: 窗口大小，KDJ三线是否凑集
+        # kdj_convergence
+        all_signals_dict["check_cv_cross_signal"] = check_cv_cross_signal
+
+        check_kdj_20_signal = False
+        high_prices_1h_list = [i.high_price for i in self.kline_list_1h[:3]]
+        if all(x < y for x, y in zip(high_prices_1h_list, high_prices_1h_list[1:])) is False:
+            if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
+                    and current_kdj_1h.j_val < Decimal("20"):
+                check_kdj_20_signal = True
+        # oversold_non_decreasing
+        all_signals_dict["check_kdj_20_signal"] = check_kdj_20_signal
+
+        volume_4h_list = [i.volume for i in self.kline_list_4h[1:4]]
+        last_mean_4h_volume = sum(volume_4h_list) / Decimal(len(self.kline_list_4h[1:4]))
+        current_4h_volume = self.kline_list_4h[0].volume
+        volume_1h_list = [i.volume for i in self.kline_list_1h[1:11]]
+        last_mean_1h_volume = sum(volume_1h_list) / Decimal(len(self.kline_list_1h[1:11]))
+        current_1h_volume = self.kline_list_1h[0].volume
+        if current_4h_volume > last_mean_4h_volume:
+            check_4h_volume_up_signal = True
+        else:
+            check_4h_volume_up_signal = False
+        #     volume_4h_increasing
+        all_signals_dict["check_4h_volume_up_signal"] = check_4h_volume_up_signal
+
+        if current_1h_volume > last_mean_1h_volume:
+            check_1h_volume_up_signal = True
+        else:
+            check_1h_volume_up_signal = False
+        #     volume_1h_increasing
+        all_signals_dict["check_1h_volume_up_signal"] = check_1h_volume_up_signal
+
+        if self._check_continuous_selling(self.kline_list_1h[:5][::-1]):
+            all_signals_dict["check_continuous_selling"] = False
+
+        check_fng_signal = self.get_fng_signal(buy=True)
+        if check_fng_signal is not None:
+            all_signals_dict["check_fng_signal"] = check_fng_signal
+
+        if any(list(all_signals_dict.values())) is not True:
+            return
+
+        signal_data = self.get_signal_count_data(*all_signals_dict.values())
+        if signal_data["true_count"] == 1:
+            return
+
+        recommend_price_data = self.get_recommend_price(current_price)
+        recommend_support_level_price = recommend_price_data["bid_price"]
+        recommend_resistance_level_price = recommend_price_data["ask_price"]
+        recommend_bid_price = recommend_price_data["recommend_bid_price"]
+
+        direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
+                    f"<br>总体信号-<b>{signal_data['status']}</b>" \
+                    f"<br>建议买入价：{recommend_bid_price}" \
+                    f"<br><b>挂单失败，严禁追涨，十追九败</b><br><br><br>" \
+                    f"<br>总信号：{all_signals_dict}"
+
+        set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+                              f"symbol={self.symbol}" \
+                              f"&low_price={recommend_support_level_price}" \
+                              f"&high_price={recommend_resistance_level_price}"
+
+        return {"direction": direction, "set_limit_price_url": set_limit_price_url,
+                "current_price": current_price}
+
+    def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
+        current_price, direction = "", ""
+
+        recent_kdj_list_1h = [i for i in self.kdj_list_1h if i.open_ts >= set_time]
+        recent_macd_list_1h = [i for i in self.macd_list_1h if i.opening_ts >= set_time]
+        if (len(recent_kdj_list_1h) >= 5 and
+                all(Decimal("30") <= i.j_val < Decimal("70") for i in recent_kdj_list_1h) and
+                all(i.macd < 0 for i in recent_macd_list_1h)):
+            current_price = self.kline_list_1h[0].close_price
+            direction = f"🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, 横盘震荡向下。"
+
+        if not direction:
+
+            if any(_kdj.j_val >= Decimal("50") for _kdj in self.kdj_list_1h[:3]):
+                return
+
+            if self.kdj_list_1h[0].j_val > self.kdj_list_1h[1].j_val:
+                return
+
+            for i in range(len(self.kline_list_1h[:2]) - 1):
+                if self.kline_list_1h[i].open_price > self.kline_list_1h[i + 1].open_price:
+                    return
+                if self.kline_list_1h[i].close_price > self.kline_list_1h[i + 1].close_price:
+                    return
+
+            current_price = self.kline_list_1h[0].close_price
+
+            recommend_price_data = self.get_recommend_price(current_price)
+            recommend_ask_price = recommend_price_data["recommend_ask_price"]
+
+            direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
+                        f"<br>持仓时间：{hours_diff} 小时" \
+                        f"<br>建议卖出价：{recommend_ask_price}" \
+                        f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
+        return {
+            "current_price": current_price,
+            "direction": direction,
+        }
+
+    def _get_sell_direction_upward(self, hours_diff):
+        all_signals_dict = {}
+
+        if self.macd_list_1h[1].macd < 0 and self.macd_list_1h[0].macd >= 0:
+            return
+        if self.macd_list_4h[1].macd < 0 and self.macd_list_4h[0].macd >= 0:
+            return
+
+        current_trend_macd_1h = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[:18]][::-1])
+        check_trend_stalled_signal = current_trend_macd_1h not in ["parabolic_move", ]
+        all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
+
+        high_prices_list = [i.high_price for i in self.kline_list_1h[:4]]
+        check_price_resistance_signal = high_prices_list[0] < max(high_prices_list[1:])
+        all_signals_dict["check_price_resistance_signal"] = check_price_resistance_signal
+
+        current_price = self.macd_list_1h[0].closing_price
+        resistance_level_1h, support_level_1h = self.get_support_resistance_level("1h")
+        if current_price > resistance_level_1h \
+                and (high_prices_list[0] - current_price) / high_prices_list[0] >= Decimal("0.005"):
+            check_boll_resistance_signal = True
+        else:
+            check_boll_resistance_signal = False
+        all_signals_dict["check_boll_resistance_signal"] = check_boll_resistance_signal
+
+        if self.macd_list_4h[0].macd <= self.macd_list_4h[1].macd:
+            check_macd_4h_signal = True
+        else:
+            check_macd_4h_signal = False
+        all_signals_dict["check_macd_4h_signal"] = check_macd_4h_signal
+
+        if (self.kdj_list_4h[0].k_val < self.kdj_list_4h[1].k_val) \
+                and (self.kdj_list_4h[0].j_val < self.kdj_list_4h[1].j_val):
+            check_kdj_4h_signal = True
+        else:
+            check_kdj_4h_signal = False
+        all_signals_dict["check_kdj_4h_signal"] = check_kdj_4h_signal
+
+        if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("85")):
+            all_signals_dict["overbought_death_cross_signal"] = True
+
+        check_fng_signal = self.get_fng_signal(buy=False)
+        if check_fng_signal is not None:
+            all_signals_dict["check_fng_signal"] = check_fng_signal
+
+        if any(list(all_signals_dict.values())) is not True:
+            return
+
+        signal_data = self.get_signal_count_data(*all_signals_dict.values())
+        if signal_data["true_count"] == 1:
+            return
+
+        # TODO: 增加历史信号->叠加增强
+        from cache import AllCache
+        redis_client = AllCache.get_client()
+        key = f"shortSignals:{self.symbol}"
+        history_signals_str = redis_client.get(key)
+        if history_signals_str:
+            history_signals = json.loads(history_signals_str)
+            history_signals_msg = f"短期累计出场次数：{len(history_signals)}"
+        else:
+            history_signals = {}
+            history_signals_msg = ""
+        history_signals[len(history_signals) + 1] = all_signals_dict
+        # TODO: 过期时间是否需要叠加
+        redis_client.set(key, json.dumps(history_signals), 3600)
+
+        recommend_price_data = self.get_recommend_price(current_price)
+        recommend_ask_price = recommend_price_data["recommend_ask_price"]
+
+        direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
+                    f"<br>总体信号-<b>{signal_data['status']}</b>" \
+                    f"<br>建议卖出价：{recommend_ask_price}" \
+                    f"<br><br>{history_signals_msg}<br><br><br>" \
+                    f"<br>总信号：{all_signals_dict}" \
+                    f"<br>持仓时间：{hours_diff} 小时"
+        return {"direction": direction, "current_price": current_price}
+
     async def bull_run_strategy(self):
         """
         牛市大涨策略：
             主要工具：4小时K线图
         📈 买入信号
+            1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
             1. 日线KDJ刚形成死叉，不再考虑买入。
             2. 1小时KDJ不是80高位死叉位置，继续向下判断。
             2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
