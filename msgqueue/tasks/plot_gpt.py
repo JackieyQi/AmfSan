@@ -383,13 +383,15 @@ class PlotGptHandle(BasePlotHandle):
 
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
-            2. 1小时KDJ的J值小于80时，判断是否趋势向下。
-                2.1. 1小时的最新3条线的J值均小于50，表示市场没有上涨动能，考虑挂买入价卖出。
-                2.2. 1小时的最新2根线的J值向上，表示可能存在反弹，不考虑挂单卖出。
-                2.3. 1小时的K线的最新2根线，价格区间没有上涨，表示下跌信号增强，考虑挂单卖出。
+                1.1. 持仓时间超过7.5小时，报警离场。
 
-                新增策略：
-                        KDJ值30到70区间，横盘震荡下行，提示离场。
+            2. 1小时KDJ的J值小于80时，判断是否趋势向下。
+                2.1. 1小时KDJ值30到70区间，1小时MACD负值，横盘震荡下行，提示离场。
+
+                2.2. 没有触发(2.1)条件时。
+                2.2.1. 1小时的最新3条线的J值均小于50，表示市场没有上涨动能，考虑挂买入价卖出。
+                2.2.2. 1小时的最新2根线的J值向上，表示可能存在反弹，不考虑挂单卖出。
+                2.2.3. 1小时的K线的最新2根线，价格区间没有上涨，表示下跌信号增强，考虑挂单卖出。
 
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
                 3.1. 1小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
@@ -425,9 +427,13 @@ class PlotGptHandle(BasePlotHandle):
             if not set_time:
                 hours_diff = None
             else:
-                hours_diff = (int(time.time()) - set_time) // 3600
+                hours_diff = round((int(time.time()) - set_time) / 3600, 1)
 
-            if self.kdj_list_1h[0].j_val <= Decimal("80"):
+            if hours_diff and hours_diff >= 7.5:
+                current_price = self.kline_list_1h[0].close_price
+                direction = f"🚔 持仓时间过长警告: 📉 建议卖出, 持仓时间：{hours_diff} 小时。"
+
+            elif self.kdj_list_1h[0].j_val <= Decimal("80"):
 
                 direction_info = self._get_sell_direction_sideways_or_downward(set_time, hours_diff)
                 if not direction_info:

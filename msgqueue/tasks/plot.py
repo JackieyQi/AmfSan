@@ -209,7 +209,7 @@ class PlotPriceHandle(BasePlotHandle):
         self.result[
             self.symbol
         ] = f"""
-        <br><br><b> {self.symbol}: </b><br>new low price:{current_price},
+        <br><br><b> {self.symbol}: </b><br>‼️ new low price:{current_price},
         <br>last limit low price:{self.limit_low_price} !!!
         <br><a href={INNER_GET_PRICE_URL}{self.symbol}>Get current price info.</a>
         <br><a href={INNER_GET_UPDATE_PRICE_URL}{"low"}/{self.symbol}/>Update new low price.<a>
@@ -233,7 +233,7 @@ class PlotPriceHandle(BasePlotHandle):
         self.result[
             self.symbol
         ] = f"""
-        <br><br><b> {self.symbol}: </b><br>new high price:{current_price},
+        <br><br><b> {self.symbol}: </b><br>💰💰 new high price:{current_price},
         <br>last limit high price:{self.limit_high_price} !!!
         <br><a href={INNER_GET_PRICE_URL}{self.symbol}>Get current price info.</a>
         <br><a href={INNER_GET_UPDATE_PRICE_URL}{"high"}/{self.symbol}/>Update new high price.<a>
