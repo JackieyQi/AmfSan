@@ -106,7 +106,7 @@ class PlotGptHandle(BasePlotHandle):
         all_limit_prices.pop("btcusdt", None)
         return bool(all_limit_prices)
 
-    def get_support_resistance_level(self, interval):
+    def get_bollinger_bands(self, interval):
         """
         支撑位: 布林带下轨
         阻力位: 布林带上轨
@@ -125,8 +125,8 @@ class PlotGptHandle(BasePlotHandle):
         close_prices = [row.closing_price for row in macd_list[1:]]
         ema_values = [row.ema_26 for row in macd_list[1:]]
 
-        last_higher_band, last_lower_band = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
-        return last_higher_band, last_lower_band
+        last_upper_band, last_lower_band = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
+        return last_upper_band, last_lower_band
 
     def trend_following_strategy_reformat_notice(self, direction, current_data):
         return template_gpt_plot_trend_following_strategy_notice(self.symbol, direction, current_data.open_ts)
@@ -211,7 +211,7 @@ class PlotGptHandle(BasePlotHandle):
                 return True
         return
 
-    def get_recommend_price(self, current_price):
+    def get_depth_prices(self, current_price):
         """
         根据当前深度信息，最大挂单量的价格，作为支撑位和阻力位。
         结合当前价，计算建议买入价。
@@ -241,6 +241,24 @@ class PlotGptHandle(BasePlotHandle):
             "recommend_bid_price": recommend_bid_price,
             "recommend_ask_price": recommend_ask_price,
         }
+
+    def get_tp_and_sl(self, depth_bid_price, depth_ask_price, bb_upper_4h_price):
+        """
+        计算 止盈（Take Profit, TP）和止损（Stop Loss, SL）
+        止损价 = (1小时布林带下轨 + 99条深度数据的最大买单价 + min(EMA12, EMA26)) / 3
+        止盈价 = (4小时布林带上轨 + 99条深度数据的最大卖单价 + 过去17根1小时K线最高值) / 3
+        :return:
+        """
+        ema12_price = self.macd_list_1h[0].ema_12
+        ema26_price = self.macd_list_1h[0].ema_26
+
+        bb_upper_1h_price, bb_lower_1h_price = self.get_bollinger_bands("1h")
+
+        previous_high_price = max([i.high_price for i in self.kline_list_1h[1:18]])
+
+        sl_price = (bb_lower_1h_price + depth_bid_price + min(ema12_price, ema26_price)) / Decimal("3")
+        tp_price = (bb_upper_4h_price + depth_ask_price + previous_high_price) / Decimal("3")
+        return {"sl_price": sl_price, "tp_price": tp_price}
 
     def get_previous_high_price(self, kline_list, window_size=3):
         """
@@ -493,8 +511,8 @@ class PlotGptHandle(BasePlotHandle):
 
         current_price = self.macd_list_1h[0].closing_price
 
-        resistance_level, support_level = self.get_support_resistance_level("4h")
-        check_price_fall_signal = check_near_support(self.kline_list_1h[:21][::-1], support_level)
+        bb_upper_4h, bb_lower_4h = self.get_bollinger_bands("4h")
+        check_price_fall_signal = check_near_support(self.kline_list_1h[:21][::-1], bb_lower_4h)
         # near_support
         all_signals_dict["check_price_fall_signal"] = check_price_fall_signal
 
@@ -549,10 +567,14 @@ class PlotGptHandle(BasePlotHandle):
         if signal_data["true_count"] == 1:
             return
 
-        recommend_price_data = self.get_recommend_price(current_price)
-        recommend_support_level_price = recommend_price_data["bid_price"]
-        recommend_resistance_level_price = recommend_price_data["ask_price"]
-        recommend_bid_price = recommend_price_data["recommend_bid_price"]
+        depth_prices_data = self.get_depth_prices(current_price)
+        depth_bid_price = depth_prices_data["bid_price"]
+        depth_ask_price = depth_prices_data["ask_price"]
+        recommend_bid_price = depth_prices_data["recommend_bid_price"]
+
+        tp_and_sl_price_data = self.get_tp_and_sl(depth_bid_price, depth_ask_price, bb_upper_4h)
+        tp_price = tp_and_sl_price_data["tp_price"]
+        sl_price = tp_and_sl_price_data["sl_price"]
 
         direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
                     f"<br>总体信号-<b>{signal_data['status']}</b>" \
@@ -562,8 +584,8 @@ class PlotGptHandle(BasePlotHandle):
 
         set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
                               f"symbol={self.symbol}" \
-                              f"&low_price={recommend_support_level_price}" \
-                              f"&high_price={recommend_resistance_level_price}"
+                              f"&low_price={sl_price}" \
+                              f"&high_price={tp_price}"
 
         return {"direction": direction, "set_limit_price_url": set_limit_price_url,
                 "current_price": current_price}
@@ -595,8 +617,8 @@ class PlotGptHandle(BasePlotHandle):
 
             current_price = self.kline_list_1h[0].close_price
 
-            recommend_price_data = self.get_recommend_price(current_price)
-            recommend_ask_price = recommend_price_data["recommend_ask_price"]
+            depth_prices_data = self.get_depth_prices(current_price)
+            recommend_ask_price = depth_prices_data["recommend_ask_price"]
 
             direction = f" 🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, \n\n\b<br>上涨受阻，挂卖单在买入价->⌛️等待卖出！" \
                         f"<br>持仓时间：{hours_diff} 小时" \
@@ -624,8 +646,8 @@ class PlotGptHandle(BasePlotHandle):
         all_signals_dict["check_price_resistance_signal"] = check_price_resistance_signal
 
         current_price = self.macd_list_1h[0].closing_price
-        resistance_level_1h, support_level_1h = self.get_support_resistance_level("1h")
-        if current_price > resistance_level_1h \
+        bb_upper_1h, bb_lower_1h = self.get_bollinger_bands("1h")
+        if current_price > bb_upper_1h \
                 and (high_prices_list[0] - current_price) / high_prices_list[0] >= Decimal("0.005"):
             check_boll_resistance_signal = True
         else:
@@ -674,8 +696,8 @@ class PlotGptHandle(BasePlotHandle):
         # TODO: 过期时间是否需要叠加
         redis_client.set(key, json.dumps(history_signals), 3600)
 
-        recommend_price_data = self.get_recommend_price(current_price)
-        recommend_ask_price = recommend_price_data["recommend_ask_price"]
+        depth_prices_data = self.get_depth_prices(current_price)
+        recommend_ask_price = depth_prices_data["recommend_ask_price"]
 
         direction = f" 🔴 短线高频交易(策略待优化): 📉 卖出信号, " \
                     f"<br>总体信号-<b>{signal_data['status']}</b>" \
@@ -748,10 +770,16 @@ class PlotGptHandle(BasePlotHandle):
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
             direction += "信号增强：日线KDJ金叉"
 
-        recommend_price_data = self.get_recommend_price(current_price)
-        recommend_support_level_price = recommend_price_data["bid_price"]
-        recommend_resistance_level_price = recommend_price_data["ask_price"]
-        recommend_bid_price = recommend_price_data["recommend_bid_price"]
+        depth_prices_data = self.get_depth_prices(current_price)
+        depth_bid_price = depth_prices_data["bid_price"]
+        depth_ask_price = depth_prices_data["ask_price"]
+        recommend_bid_price = depth_prices_data["recommend_bid_price"]
+
+        bb_upper_4h, bb_lower_4h = self.get_bollinger_bands("4h")
+
+        tp_and_sl_price_data = self.get_tp_and_sl(depth_bid_price, depth_ask_price, bb_upper_4h)
+        tp_price = tp_and_sl_price_data["tp_price"]
+        sl_price = tp_and_sl_price_data["sl_price"]
 
         direction += f"""
         <br>建议买入价: {recommend_bid_price}
@@ -768,8 +796,8 @@ class PlotGptHandle(BasePlotHandle):
 
         close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
         set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                              f"symbol={self.symbol}&low_price={recommend_support_level_price}" \
-                              f"&high_price={recommend_resistance_level_price}"
+                              f"symbol={self.symbol}&low_price={sl_price}" \
+                              f"&high_price={tp_price}"
         send_ts = int(time.time())
 
         self.result[self.symbol] = self.bull_run_strategy_reformat_notice(
