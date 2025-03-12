@@ -197,12 +197,17 @@ class KlineDataSaveHandle(object):
                 "limit": 17,
             }
 
-        resp_data = http_get_request(
-            f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
-            request_params,
-        )
-        if resp_data:
-            return resp_data["data"]
+        # resp_data = http_get_request(
+        #     f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
+        #     request_params,
+        # )
+        # if resp_data:
+        #     return resp_data["data"]
+
+        result = BinanceExchangeRequestHandle().get_k_lines(
+            self.symbol.upper(), self.interval, int(request_params.get("start_ts", 0)), int(request_params["limit"]))
+        if result:
+            return result
 
     def save_data(self):
         if not self.interval:

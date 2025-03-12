@@ -7,8 +7,12 @@ import uuid
 import schedule
 import ujson as json
 from cache import AllCache
-from exts import amf_queue, amf_plot_queue, queue_conn
+from exts import amf_queue, amf_plot_queue, queue_conn, amf_kline_queue
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +47,14 @@ class JobScheduler(object):
         kwargs.update({"uuid": uuid.uuid4().hex})
         self.push_to_queue(amf_queue, job_name, **kwargs)
 
+    def push_to_kline(self, job_name: str, **kwargs) -> None:
+        if self.redis_client.get(job_name):
+            logger.info(f"Skipping job {job_name} due to Redis lock")
+            return
+
+        kwargs.update({"uuid": uuid.uuid4().hex})
+        self.push_to_queue(amf_kline_queue, job_name, **kwargs)
+
     def push_to_plot(self, job_name: str, **kwargs) -> None:
         self.push_to_queue(amf_plot_queue, job_name, **kwargs)
 
@@ -63,10 +75,10 @@ class JobScheduler(object):
 
     def setup_schedules(self):
         # Data sync jobs
-        schedule.every(17).seconds.do(lambda: self.push_to_amf("sync_cache_job"))
+        # schedule.every(17).seconds.do(lambda: self.push_to_amf("sync_cache_job"))
 
         # Save data jobs
-        schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kline_job"))
+        schedule.every(1).minutes.do(lambda: self.push_to_kline("save_kline_job"))
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_macd_job"))
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kdj_job"))
         # schedule.every(47).minutes.do(lambda: self.push_to_amf("save_ema_job"))

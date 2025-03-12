@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Callable, Any, Dict
 from kombu.simple import SimpleQueue
 
-from exts import queue_conn, amf_queue, amf_plot_queue, amf_msg_queue
+from exts import queue_conn, amf_queue, amf_plot_queue, amf_msg_queue, amf_kline_queue
 from msgqueue import deal_msg
 
 
@@ -103,6 +103,14 @@ class QueueConsumer(ABC):
 class AmfConsumer(QueueConsumer):
     def __init__(self):
         super().__init__(amf_queue, "amf_consumer")
+
+    async def process_message(self, message_body):
+        await deal_msg(message_body)
+
+
+class AmfKlineConsumer(QueueConsumer):
+    def __init__(self):
+        super().__init__(amf_kline_queue, "amf_kline_consumer")
 
     async def process_message(self, message_body):
         await deal_msg(message_body)
