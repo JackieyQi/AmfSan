@@ -56,6 +56,9 @@ async def deal_msg(msg):
     func = route_map[msg_bp]
     try:
         _ = await func(msg)
+        logger.debug(
+            "tasks deal_msg over, task:{}, start:{}, kwargs:{}".format(msg_bp, ts2fmt(), msg)
+        )
     except BaseException:
 
         error = traceback.format_exc()

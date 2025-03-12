@@ -3,8 +3,7 @@
 
 import logging
 import time
-from typing import Dict, Any, Callable, Optional
-
+import uuid
 import schedule
 import ujson as json
 from cache import AllCache
@@ -41,6 +40,7 @@ class JobScheduler(object):
             logger.info(f"Skipping job {job_name} due to Redis lock")
             return
 
+        kwargs.update({"uuid": uuid.uuid4().hex})
         self.push_to_queue(amf_queue, job_name, **kwargs)
 
     def push_to_plot(self, job_name: str, **kwargs) -> None:
