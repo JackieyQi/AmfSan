@@ -91,5 +91,5 @@ class JobScheduler(object):
         # schedule.every().day.at("15:17").do(save_account_balance_job)
         # server UTC time
         # Daily tasks
-        schedule.every().day.at("00:17").do(lambda: self.push_to_amf("save_fng_job"))
+        schedule.every().day.at("00:17").do(lambda: self.push_to_amf("save_fng_job", amf_queue))
 

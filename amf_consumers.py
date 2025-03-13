@@ -142,7 +142,7 @@ class AmfTmp1Consumer(QueueConsumer):
 
 class AmfTmp2Consumer(QueueConsumer):
     def __init__(self):
-        super().__init__(amf_msg_queue, "amf_tmp2_consumer")
+        super().__init__(amf_tmp2_queue, "amf_tmp2_consumer")
 
     async def process_message(self, message_body):
         await deal_msg(message_body)

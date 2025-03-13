@@ -211,6 +211,21 @@ class PlotGptHandle(BasePlotHandle):
                 return True
         return
 
+    def get_dynamic_threshold(self):
+        threshold_data = {
+            "kdj_death_cross": Decimal("85")
+        }
+
+        cache_data = FearAndGreedIndexCache.get()
+        if not cache_data:
+            return
+
+        fng_index = int(cache_data)
+        if 0 <= fng_index <= 49:
+            threshold_data["kdj_death_cross"] = Decimal("80")
+
+        return threshold_data
+
     def get_depth_prices(self, current_price):
         """
         根据当前深度信息，最大挂单量的价格，作为支撑位和阻力位。
@@ -311,11 +326,18 @@ class PlotGptHandle(BasePlotHandle):
 
     def _check_kdj_death_cross_by_threshold(self, kdj_list, threshold):
         """检查 KDJ当前高位死叉"""
-        return (kdj_list[1].k_val >= threshold and
-                kdj_list[1].d_val >= threshold and
-                kdj_list[1].j_val >= threshold and
-                kdj_list[1].k_val > kdj_list[1].d_val and
-                kdj_list[0].k_val < kdj_list[0].d_val)
+        current =  (kdj_list[1].k_val >= threshold and
+                    kdj_list[1].d_val >= threshold and
+                    kdj_list[1].j_val >= threshold and
+                    kdj_list[1].k_val > kdj_list[1].d_val and
+                    kdj_list[0].k_val < kdj_list[0].d_val)
+
+        last = (kdj_list[2].k_val >= threshold and
+                   kdj_list[2].d_val >= threshold and
+                   kdj_list[2].j_val >= threshold and
+                   kdj_list[2].k_val > kdj_list[2].d_val and
+                   kdj_list[0].k_val < kdj_list[0].d_val)
+        return current or last
 
     def _check_price_breakout(self, count, current_price, previous_high):
         """检查 是否有价格突破"""
@@ -419,7 +441,7 @@ class PlotGptHandle(BasePlotHandle):
                     3.2.3. (或)当前价格，在1小时布林带上轨且回落0.5%，表示出场信号加强。
                     3.2.4. (或)4小时MACD的最近2根柱状图，向下扩大，表示出场信号加强。
                     3.2.5. (或)4小时KDJ的最近2个时间段，K线和J线均下跌，表示出场信号加强。
-                    3.2.6. (或)1小时KDJ的高位值85死叉，表示出场信号加强。
+                    3.2.6. (或)1小时KDJ的附近(当前时间段处于死叉向下的2个时间段内)的高位值(85根据fng指数值动态调整)死叉，表示出场信号加强。
 
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
@@ -670,7 +692,7 @@ class PlotGptHandle(BasePlotHandle):
             check_kdj_4h_signal = False
         all_signals_dict["check_kdj_4h_signal"] = check_kdj_4h_signal
 
-        if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("85")):
+        if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, self.get_dynamic_threshold()["kdj_death_cross"]):
             all_signals_dict["overbought_death_cross_signal"] = True
 
         check_fng_signal = self.get_fng_signal(buy=False)
@@ -683,6 +705,7 @@ class PlotGptHandle(BasePlotHandle):
         signal_data = self.get_signal_count_data(*all_signals_dict.values())
         if signal_data["true_count"] == 1:
             return
+        #TODO: 是否根据持仓时间，来将减弱变增强
 
         # TODO: 增加历史信号->叠加增强
         from cache import AllCache
