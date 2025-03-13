@@ -425,6 +425,7 @@ class PlotGptHandle(BasePlotHandle):
         """
         close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
         set_limit_price_url = ""
+        direction, current_price = None, None
 
         # TODO: 全仓改分仓
         if not self.has_limit_price_check():
@@ -451,13 +452,12 @@ class PlotGptHandle(BasePlotHandle):
                 current_price = self.kline_list_1h[0].close_price
                 direction = f"🚔 持仓时间过长警告: 📉 建议卖出, 持仓时间：{hours_diff} 小时。"
 
-            elif self.kdj_list_1h[0].j_val <= Decimal("80"):
+            if self.kdj_list_1h[0].j_val <= Decimal("80"):
 
                 direction_info = self._get_sell_direction_sideways_or_downward(set_time, hours_diff)
-                if not direction_info:
-                    return
-                direction = direction_info["direction"]
-                current_price = direction_info["current_price"]
+                if direction_info:
+                    direction = direction_info["direction"]
+                    current_price = direction_info["current_price"]
 
             else:
                 direction_info = self._get_sell_direction_upward(hours_diff)
@@ -467,6 +467,9 @@ class PlotGptHandle(BasePlotHandle):
                 current_price = direction_info["current_price"]
 
         else:
+            return
+
+        if not direction:
             return
 
         email_msg_md5_str = (
