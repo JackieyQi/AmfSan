@@ -446,7 +446,7 @@ class KdjDataSaveHandle(object):
     def get_k_lines_from_db(self):
         try:
             db_last_kdj = (
-                KdjTable.select(KdjTable.open_ts)
+                KdjTable.select(KdjTable.open_ts, KdjTable.cfg)
                 .where(
                     KdjTable.symbol == self.symbol,
                     KdjTable.interval_val == self.interval,
