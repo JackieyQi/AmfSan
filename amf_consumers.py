@@ -10,7 +10,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Callable, Any, Dict
 from kombu.simple import SimpleQueue
 
-from exts import queue_conn, amf_queue, amf_plot_queue, amf_msg_queue, amf_kline_queue, amf_tmp1_queue, amf_tmp2_queue
+from exts import queue_conn_manager, amf_queue, amf_plot_queue, \
+    amf_msg_queue, amf_kline_queue, amf_tmp1_queue, amf_tmp2_queue
 from msgqueue import deal_msg
 
 
@@ -48,8 +49,14 @@ class QueueConsumer(ABC):
 
     async def run(self):
         """Main consumer loop"""
-        queue_conn.connect()
-        mq = queue_conn.SimpleQueue(self.queue)
+        connection_failures = 0
+        max_connection_failures = 5
+        processing_failures = 0
+        max_processing_failures = 10
+        backoff_time = 1
+
+        connection = None
+        mq = None
 
         self.logger.info("Consumer started")
         print(f"Consumer started: {self.__class__.__name__}")
@@ -59,6 +66,30 @@ class QueueConsumer(ABC):
                 self.logger.info("Consumer will quit")
                 sys.exit(0)
 
+            if mq is None:
+                try:
+                    connection = queue_conn_manager.get_connection()
+                    mq = connection.SimpleQueue(self.queue)
+                    self.logger.info("Successfully connected to queue")
+                    connection_failures = 0
+                    backoff_time = 1  # 重置退避时间
+                except Exception as e:
+                    connection_failures += 1
+                    self.logger.error(
+                        f"Connection attempt {connection_failures}/{max_connection_failures} failed: {str(e)}")
+
+                    # 计算退避时间 (指数退避)
+                    backoff_time = min(30, 2 ** (connection_failures - 1))
+                    self.logger.info(f"Waiting {backoff_time}s before next connection attempt")
+
+                    if connection_failures >= max_connection_failures:
+                        self.logger.critical("Max connection failures reached, waiting longer...")
+                        await asyncio.sleep(60)  # 长时间等待
+                        connection_failures = 0  # 重置错误计数
+                    else:
+                        await asyncio.sleep(backoff_time)
+                    continue  # 跳过本次循环的其余部分
+
             value = None
             try:
                 # Try to get a message with non-blocking behavior
@@ -66,25 +97,48 @@ class QueueConsumer(ABC):
                 if value:
                     value.ack()
             except mq.Empty:
-                # No messages in queue
-                pass
+                # 队列为空，正常情况
+                await asyncio.sleep(0.5)
+                continue
             except Exception as e:
-                # Handle connection issues
                 self.logger.error(f"Queue error: {str(e)}")
                 try:
-                    queue_conn.connect()
-                    mq = queue_conn.SimpleQueue(self.queue)
+                    try:
+                        if mq:
+                            mq.close()
+                    except:
+                        pass
+
+                    queue_conn_manager.connection = None
+                    connection = queue_conn_manager.get_connection()
+                    mq = connection.SimpleQueue(self.queue)
+                    self.logger.info("Successfully reconnected after queue error")
                 except Exception as conn_err:
                     self.logger.error(f"Failed to reconnect: {str(conn_err)}")
+                    mq = None
                     await asyncio.sleep(5)  # Wait before retry
+                continue
 
             if value:
                 try:
                     await self.process_message(value.body)
                 except Exception as e:
-                    self.logger.error(f"Error processing message: {str(e)}")
-            else:
-                await asyncio.sleep(0.5)
+                    processing_failures += 1
+                    self.logger.error(
+                        f"Error processing message ({processing_failures}/{max_processing_failures}): {str(e)}")
+
+                    if processing_failures >= max_processing_failures:
+                        self.logger.warning("Too many processing failures, reconnecting to queue...")
+                        try:
+                            if mq:
+                                mq.close()
+                        except:
+                            pass
+
+                        # 通知连接管理器重置连接
+                        queue_conn_manager.connection = None
+                        mq = None  # 强制重连
+                        processing_failures = 0  # 重置处理失败计数
 
     def start(self):
         """Start the consumer with asyncio event loop"""
