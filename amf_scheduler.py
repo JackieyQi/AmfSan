@@ -6,9 +6,10 @@ import time
 import uuid
 import schedule
 import ujson as json
+from concurrent.futures import ThreadPoolExecutor
 from kombu.simple import SimpleQueue
 from cache import AllCache
-from exts import amf_queue, amf_plot_queue, queue_conn, amf_kline_queue, amf_tmp1_queue, amf_tmp2_queue
+from exts import amf_queue, amf_plot_queue, queue_conn_manager, amf_kline_queue, amf_tmp1_queue, amf_tmp2_queue
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 class JobScheduler(object):
     def __init__(self):
         self.redis_client = AllCache.get_client()
+        self.executor = ThreadPoolExecutor(max_workers=3)
 
     def push_to_queue(self, queue, job_name: str, **kwargs) -> None:
         """Push a job to the specified queue with metadata"""
@@ -29,16 +31,28 @@ class JobScheduler(object):
             "ts": int(time.time()),
             **kwargs
         }
+        self.executor.submit(self._publish_message, queue, job_name, payload)
 
-        queue_conn.connect()
-        try:
-            with queue_conn.SimpleQueue(queue) as q:
-                q.put(json.dumps(payload))
-                logger.info(f"Scheduled job: {job_name}, kwargs: {kwargs}")
-        except Exception as e:
-            logger.error(f"Failed to push job {job_name} to queue: {str(e)}")
-        finally:
-            queue_conn.release()
+    def _publish_message(self, queue, job_name, payload):
+        max_attempts = 3
+        attempt = 0
+
+        while attempt <= max_attempts:
+            try:
+                connection = queue_conn_manager.get_connection()
+                with connection.SimpleQueue(queue) as q:
+                    q.put(json.dumps(payload), timeout=5)
+                    logger.info(f"Scheduled job: {job_name}, payload: {payload}")
+                return
+
+            except Exception as e:
+                attempt += 1
+                logger.error(f"Attempt {attempt}: Failed to publish job {job_name}: {str(e)}")
+                time.sleep(1 * attempt)  # 指数回退
+
+                if attempt >= max_attempts:
+                    logger.error(f"Max attempts reached for job {job_name}")
+                    # 考虑添加失败消息处理，如保存到本地队列或数据库
 
     def push_to_amf(self, job_name: str, queue: SimpleQueue, **kwargs) -> None:
         if self.redis_client.get(job_name):
