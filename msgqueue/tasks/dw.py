@@ -381,7 +381,7 @@ class MacdDataSaveHandle(object):
             now_ema_26 = last_macd.ema_26 * 25 / 27 + closing_price * 2 / 27
             now_dea = last_macd.dea * 8 / 10 + (now_ema_12 - now_ema_26) * 2 / 10
             # now_dif = now_ema_12 - now_ema_26
-            now_macd = D(decimal2str(now_ema_12 - now_ema_26 - now_dea))
+            now_macd_val = D(decimal2str(now_ema_12 - now_ema_26 - now_dea))
 
             if now_macd:
                 now_macd.opening_ts = opening_ts
@@ -390,7 +390,7 @@ class MacdDataSaveHandle(object):
                 now_macd.ema_12 = now_ema_12
                 now_macd.ema_26 = now_ema_26
                 now_macd.dea = now_dea
-                now_macd.macd = now_macd
+                now_macd.macd = now_macd_val
                 updated_macds.append(now_macd)
             else:
                 new_macds.append(MacdTable(
@@ -402,7 +402,7 @@ class MacdDataSaveHandle(object):
                     ema_12=now_ema_12,
                     ema_26=now_ema_26,
                     dea=now_dea,
-                    macd=now_macd,
+                    macd=now_macd_val,
                 ))
 
         if updated_macds:
@@ -456,15 +456,21 @@ class KdjDataSaveHandle(object):
                 .get()
             )
             last_kdj_ts = db_last_kdj.open_ts
+            kdj_cfg = json.loads(db_last_kdj.cfg)
+            period = kdj_cfg["period"]
+
+            # 计算 KDJ 所需的最小时间
+            min_start_ts = last_kdj_ts - period * self.interval_sec
+            # 确保查询 K 线数据的起始时间能够覆盖最小时间
+            start_ts = min(last_kdj_ts - self.k_interval, min_start_ts)
         except KdjTable.DoesNotExist:
             return []
 
         try:
-            _ts = last_kdj_ts - self.k_interval
             db_kline = KlineTable.select().where(
                 KlineTable.symbol == self.symbol,
                 KlineTable.interval_val == self.interval,
-                KlineTable.open_ts >= _ts,
+                KlineTable.open_ts >= start_ts,
             ).order_by(KlineTable.id)
             return list(db_kline)
         except KlineTable.DoesNotExist:
