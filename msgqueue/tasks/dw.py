@@ -16,7 +16,7 @@ from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
 from utils.common import decimal2str, str2decimal, locking, set_lock_latest
 from utils.hrequest import http_get_request
-from cache import AllCache
+from cache import AllCache, RedisPoolContext
 from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache, FearAndGreedIndexCache
 from msgqueue.queue import push_symbol_mq
 
@@ -24,10 +24,9 @@ from msgqueue.queue import push_symbol_mq
 logger = logging.getLogger(__name__)
 
 
-def get_plot_symbols_info():
+def get_plot_symbols_info(redis_client):
     symbols_info = {}
     redis_key = "symbol:cfg"
-    redis_client = AllCache.get_client()
 
     cache_data = redis_client.hgetall(redis_key)
     if not cache_data:
@@ -159,51 +158,72 @@ async def save_fng_job(*args, **kwargs):
 
 @locking("save_kline_job")
 async def save_kline_job(*args, **kwargs):
-    symbols_info = get_plot_symbols_info()
+    redis_client = AllCache.get_client()
+
+    symbols_info = get_plot_symbols_info(redis_client)
     for symbol in symbols_info.keys():
         for _interval in PLOT_INTERVAL_LIST:
             KlineDataSaveHandle(symbol, _interval).save_data()
+    redis_client.close()
 
 
-@locking("save_macd_job")
 async def save_macd_job(*args, **kwargs):
-    symbols_info = get_plot_symbols_info()
+    redis_client = AllCache.get_client()
+
+    symbols_info = get_plot_symbols_info(redis_client)
     for symbol, _info in symbols_info.items():
         for _interval in PLOT_INTERVAL_LIST:
             if f"macd:{_interval}" not in _info:
                 continue
+
+            if redis_client.get(f"s_macd:{symbol}:{_interval}"):
+                continue
+            redis_client.set(f"s_macd:{symbol}:{_interval}", 1, 1024)
 
             await push_symbol_mq({
                 "bp": "save_macd_job_by_symbol",
                 "symbol": symbol,
                 "interval": _interval
             })
+    redis_client.close()
 
 
-async def save_macd_job_by_symbol(**kwargs):
-    symbol = kwargs.get("symbol")
-    _interval = kwargs.get("interval")
+async def save_macd_job_by_symbol(msg):
+    symbol = msg.get("symbol")
+    _interval = msg.get("interval")
     MacdDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
 
+    with RedisPoolContext as r:
+        r.delete(f"s_macd:{symbol}:{_interval}")
 
-@locking("save_kdj_job")
+
 async def save_kdj_job(*args, **kwargs):
-    for symbol, _info in get_plot_symbols_info().items():
+    redis_client = AllCache.get_client()
+
+    for symbol, _info in get_plot_symbols_info(redis_client).items():
         for _interval in PLOT_INTERVAL_LIST:
             if f"kdj:{_interval}" not in _info:
                 continue
+
+            if redis_client.get(f"s_kdj:{symbol}:{_interval}"):
+                continue
+            redis_client.set(f"s_kdj:{symbol}:{_interval}", 1, 1024)
 
             await push_symbol_mq({
                 "bp": "save_kdj_job_by_symbol",
                 "symbol": symbol,
                 "interval": _interval
             })
+    redis_client.close()
 
 
-async def save_kdj_job_by_symbol(**kwargs):
-    symbol = kwargs.get("symbol")
-    _interval = kwargs.get("interval")
+async def save_kdj_job_by_symbol(msg):
+    symbol = msg.get("symbol")
+    _interval = msg.get("interval")
     KdjDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
+
+    with RedisPoolContext as r:
+        r.delete(f"s_kdj:{symbol}:{_interval}")
 
 
 @locking("save_ema_job")

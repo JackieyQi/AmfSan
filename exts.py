@@ -14,18 +14,19 @@ from settings.setting import cfgs
 debug = cfgs["debug"]
 
 
-redis_client = redis.Redis(
-    connection_pool=redis.ConnectionPool(
-        host=cfgs["redis"]["host"],
-        port=cfgs["redis"]["port"],
-        db=cfgs["redis"]["db"],
-        decode_responses=True,
-    )
-)
-try:
-    redis_client.get("test")
-except BaseException as e:
-    print("Error: Cant connect to redis, {}".format(e))
+class RedisClient:
+    _connection_pool = None
+
+    @classmethod
+    def get_connection_pool(cls):
+        if cls._connection_pool is None:
+            cls._connection_pool = redis.ConnectionPool(
+                host=cfgs["redis"]["host"],
+                port=cfgs["redis"]["port"],
+                db=cfgs["redis"]["db"],
+                decode_responses=True,
+            )
+        return cls._connection_pool
 
 
 """
