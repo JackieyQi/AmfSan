@@ -18,6 +18,7 @@ from utils.common import decimal2str, str2decimal, locking, set_lock_latest
 from utils.hrequest import http_get_request
 from cache import AllCache
 from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache, FearAndGreedIndexCache
+from msgqueue.queue import push_symbol_mq
 
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,18 @@ async def save_macd_job(*args, **kwargs):
         for _interval in PLOT_INTERVAL_LIST:
             if f"macd:{_interval}" not in _info:
                 continue
-            MacdDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
+
+            await push_symbol_mq({
+                "bp": "save_macd_job_by_symbol",
+                "symbol": symbol,
+                "interval": _interval
+            })
+
+
+async def save_macd_job_by_symbol(**kwargs):
+    symbol = kwargs.get("symbol")
+    _interval = kwargs.get("interval")
+    MacdDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
 
 
 @locking("save_kdj_job")
@@ -180,7 +192,18 @@ async def save_kdj_job(*args, **kwargs):
         for _interval in PLOT_INTERVAL_LIST:
             if f"kdj:{_interval}" not in _info:
                 continue
-            KdjDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
+
+            await push_symbol_mq({
+                "bp": "save_kdj_job_by_symbol",
+                "symbol": symbol,
+                "interval": _interval
+            })
+
+
+async def save_kdj_job_by_symbol(**kwargs):
+    symbol = kwargs.get("symbol")
+    _interval = kwargs.get("interval")
+    KdjDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
 
 
 @locking("save_ema_job")
