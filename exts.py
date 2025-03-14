@@ -12,6 +12,7 @@ from settings.setting import cfgs
 
 
 debug = cfgs["debug"]
+mycnf = cfgs["mysql"]
 
 
 class RedisClient:
@@ -29,25 +30,28 @@ class RedisClient:
         return cls._connection_pool
 
 
-"""
-Initialize Database:
-from exts import database
-from models import Table
-# database.connect()
-database.create_tables([Table, ])
+class MysqlClient:
+    _database = None
 
-"""
-mycnf = cfgs["mysql"]
-database = PooledMySQLDatabase(
-    mycnf["db"],
-    host=mycnf["host"],
-    port=mycnf["port"],
-    charset=mycnf["charset"],
-    user=mycnf["user"],
-    passwd=mycnf["pwd"],
-    max_connections=mycnf["connections"],
-    stale_timeout=mycnf["timeout"],
-)
+    @classmethod
+    def get_database(cls):
+        if cls._database is None:
+            try:
+                cls._database = PooledMySQLDatabase(
+                    mycnf["db"],
+                    host=mycnf["host"],
+                    port=mycnf["port"],
+                    charset=mycnf["charset"],
+                    user=mycnf["user"],
+                    passwd=mycnf["pwd"],
+                    max_connections=mycnf["connections"],
+                    stale_timeout=mycnf["timeout"],
+                )
+                cls._database.connect()  # 显式建立连接
+            except BaseException as e:
+                print(f"数据库连接失败: {e}")
+                return None  # 连接失败，返回 None
+        return cls._database
 
 
 amf_exchange = Exchange(cfgs["rabbitmq"]["amf_exchange"], "direct", durable=True)

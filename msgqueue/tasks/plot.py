@@ -6,6 +6,7 @@ import logging
 import time
 from decimal import Decimal
 
+from cache import AllCache
 from business.market import MarketPriceHandler
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     CheckKdjCrossGateCache, CheckKdjCvGateCache
@@ -24,7 +25,9 @@ from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
 from utils.common import decimal2str, str2decimal, ts2bjfmt, check_lock_latest
 from utils.templates import (template_asset_notice, template_macd_cross_notice,
                              template_macd_trend_notice, template_kdj_cross_notice, template_ema_cross_notice)
-from .base import BasePlotHandle
+from msgqueue.queue import push_plot_mq
+
+from .base import BasePlotHandle, get_plot_symbols_info
 from .plot_gpt import PlotGptHandle
 
 logger = logging.getLogger(__name__)
@@ -80,18 +83,19 @@ async def check_ema_cross(*args, **kwargs):
 
 
 async def check_gpt_plot(*args, **kwargs):
-    from msgqueue.queue import push_plotmq
-
     logger.debug("check_gpt_plot")
-    query = SymbolPlotTable.select()
-    for row in query:
-        if row.symbol.lower() == "btcusdt":
+
+    redis_client = AllCache.get_client()
+
+    symbols_info = get_plot_symbols_info(redis_client)
+    for symbol in symbols_info.keys():
+        if symbol.lower() == "btcusdt":
             continue
-        await push_plotmq({
+        await push_plot_mq({
             "bp": "check_single_gpt_plot_job",
-            "symbol": row.symbol,
+            "symbol": symbol,
         })
-        # await PlotGptHandle(row.symbol).check()
+    redis_client.close()
 
 
 async def check_single_gpt_plot(val):

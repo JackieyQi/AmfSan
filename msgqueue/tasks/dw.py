@@ -20,35 +20,10 @@ from cache import AllCache, RedisPoolContext
 from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache, FearAndGreedIndexCache
 from msgqueue.queue import push_symbol_mq
 
+from .base import get_plot_symbols_info
+
 
 logger = logging.getLogger(__name__)
-
-
-def get_plot_symbols_info(redis_client):
-    symbols_info = {}
-    redis_key = "symbol:cfg"
-
-    cache_data = redis_client.hgetall(redis_key)
-    if not cache_data:
-        query = SymbolPlotTable.select()
-        for row in query:
-            symbols_info[row.symbol.lower()] = {"valid": int(row.is_valid)}
-
-        query = MacdTable.select(MacdTable.symbol, MacdTable.interval_val).distinct()
-        for row in query:
-            symbols_info[row.symbol.lower()][f"macd:{row.interval_val}"] = 1
-
-        query = KdjTable.select(KdjTable.symbol, KdjTable.interval_val).distinct()
-        for row in query:
-            symbols_info[row.symbol.lower()][f"kdj:{row.interval_val}"] = 1
-
-        for k, v in symbols_info.items():
-            redis_client.hset(redis_key, k, json.dumps(v))
-
-    else:
-        for k, v in cache_data.items():
-            symbols_info[k] = json.loads(v)
-    return symbols_info
 
 
 async def save_trade_history_job(*args, **kwargs):
@@ -193,7 +168,7 @@ async def save_macd_job_by_symbol(msg):
     _interval = msg.get("interval")
     MacdDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
 
-    with RedisPoolContext as r:
+    with RedisPoolContext() as r:
         r.delete(f"s_macd:{symbol}:{_interval}")
 
 
@@ -222,7 +197,7 @@ async def save_kdj_job_by_symbol(msg):
     _interval = msg.get("interval")
     KdjDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
 
-    with RedisPoolContext as r:
+    with RedisPoolContext() as r:
         r.delete(f"s_kdj:{symbol}:{_interval}")
 
 
@@ -356,67 +331,69 @@ class MacdDataSaveHandle(object):
                 .limit(1)
                 .get()
             )
+            last_macd_ts = db_last_macd.opening_ts
         except MacdTable.DoesNotExist:
-            return
+            return []
 
         try:
+            _ts = last_macd_ts - self.k_interval
             db_kline = KlineTable.select().where(
                 KlineTable.symbol == self.symbol,
                 KlineTable.interval_val == self.interval,
-                KlineTable.open_ts >= db_last_macd.opening_ts - self.k_interval,
+                KlineTable.open_ts >= _ts,
             ).order_by(KlineTable.id)
+            return list(db_kline)
         except KlineTable.DoesNotExist:
-            return
-        return db_kline
+            return []
 
-    def parsed_k_lines_data(self, data):
-        opening_ts = data.open_ts
-        opening_price = data.open_price
-        closing_price = data.close_price
+    def parsed_k_lines_data(self, k_lines):
+        if not k_lines:
+            return None
 
-        _db_rs = (
-            MacdTable.select()
-            .where(
+        opening_tss = [k.open_ts for k in k_lines]
+        all_macd_tss = list(set([ts - self.interval_sec for ts in opening_tss] + opening_tss))
+
+        macd_data_dict = {
+            (macd.symbol, macd.opening_ts): macd
+            for macd in MacdTable.select().where(
                 MacdTable.symbol == self.symbol,
                 MacdTable.interval_val == self.interval,
-                MacdTable.opening_ts.in_([opening_ts - self.interval_sec, opening_ts]),
+                MacdTable.opening_ts.in_(all_macd_tss),
             )
-            .order_by(MacdTable.id)
-        )
-        _db_rs = list(_db_rs)
+        }
 
-        if not _db_rs:
-            return
+        updated_macds = []
+        new_macds = []
+        last_macd = None
 
-        last_macd_data = _db_rs[0]
-        if len(_db_rs) == 2:
-            now_macd_data = _db_rs[1]
-        elif last_macd_data.opening_ts != opening_ts - self.interval_sec:
-            return
-        else:
-            now_macd_data = None
+        for k in k_lines:
+            opening_ts = k.open_ts
+            opening_price = k.open_price
+            closing_price = k.close_price
 
-        now_ema_12 = last_macd_data.ema_12 * 11 / 13 + closing_price * 2 / 13
-        now_ema_26 = last_macd_data.ema_26 * 25 / 27 + closing_price * 2 / 27
-        now_dea = last_macd_data.dea * 8 / 10 + (now_ema_12 - now_ema_26) * 2 / 10
-        # now_dif = now_ema_12 - now_ema_26
-        now_macd = D(decimal2str(now_ema_12 - now_ema_26 - now_dea))
-        if now_macd_data:
-            now_macd_data.opening_ts = opening_ts
-            now_macd_data.opening_price = opening_price
-            now_macd_data.closing_price = closing_price
-            now_macd_data.ema_12 = now_ema_12
-            now_macd_data.ema_26 = now_ema_26
-            now_macd_data.dea = now_dea
-            now_macd_data.macd = now_macd
-            now_macd_data.save()
-        else:
-            if not MacdTable.select().where(
-                    MacdTable.symbol == self.symbol,
-                    MacdTable.opening_ts == opening_ts,
-                    MacdTable.interval_val == self.interval,
-            ):
-                _ = MacdTable.create(
+            last_macd = macd_data_dict.get((self.symbol, opening_ts - self.interval_sec))
+            now_macd = macd_data_dict.get((self.symbol, opening_ts))
+
+            if not last_macd:
+                continue
+
+            now_ema_12 = last_macd.ema_12 * 11 / 13 + closing_price * 2 / 13
+            now_ema_26 = last_macd.ema_26 * 25 / 27 + closing_price * 2 / 27
+            now_dea = last_macd.dea * 8 / 10 + (now_ema_12 - now_ema_26) * 2 / 10
+            # now_dif = now_ema_12 - now_ema_26
+            now_macd = D(decimal2str(now_ema_12 - now_ema_26 - now_dea))
+
+            if now_macd:
+                now_macd.opening_ts = opening_ts
+                now_macd.opening_price = opening_price
+                now_macd.closing_price = closing_price
+                now_macd.ema_12 = now_ema_12
+                now_macd.ema_26 = now_ema_26
+                now_macd.dea = now_dea
+                now_macd.macd = now_macd
+                updated_macds.append(now_macd)
+            else:
+                new_macds.append(MacdTable(
                     symbol=self.symbol,
                     interval_val=self.interval,
                     opening_ts=opening_ts,
@@ -426,8 +403,18 @@ class MacdDataSaveHandle(object):
                     ema_26=now_ema_26,
                     dea=now_dea,
                     macd=now_macd,
-                )
-        return opening_ts
+                ))
+
+        if updated_macds:
+            MacdTable.bulk_update(updated_macds,
+                                  fields=[MacdTable.opening_ts, MacdTable.opening_price, MacdTable.closing_price,
+                                          MacdTable.ema_12, MacdTable.ema_26, MacdTable.dea, MacdTable.macd])
+        if new_macds:
+            MacdTable.bulk_create(new_macds)
+
+        if k_lines:
+            return k_lines[-1].open_ts
+        return
 
     def __init_macd_cache_data(self):
         cache_data = MarketMacdCache(self.symbol, self.interval).get()
@@ -445,12 +432,7 @@ class MacdDataSaveHandle(object):
         self.__init_macd_cache_data()
 
         k_data = self.get_k_lines_from_db()
-        if not k_data:
-            return
-
-        open_ts = None
-        for _data in k_data:
-            open_ts = self.parsed_k_lines_data(_data)
+        open_ts = self.parsed_k_lines_data(k_data)
         return open_ts
 
 
@@ -464,7 +446,7 @@ class KdjDataSaveHandle(object):
     def get_k_lines_from_db(self):
         try:
             db_last_kdj = (
-                KdjTable.select()
+                KdjTable.select(KdjTable.open_ts)
                 .where(
                     KdjTable.symbol == self.symbol,
                     KdjTable.interval_val == self.interval,
@@ -473,100 +455,114 @@ class KdjDataSaveHandle(object):
                 .limit(1)
                 .get()
             )
+            last_kdj_ts = db_last_kdj.open_ts
         except KdjTable.DoesNotExist:
-            return
+            return []
 
         try:
+            _ts = last_kdj_ts - self.k_interval
             db_kline = KlineTable.select().where(
                 KlineTable.symbol == self.symbol,
                 KlineTable.interval_val == self.interval,
-                KlineTable.open_ts >= db_last_kdj.open_ts - self.k_interval,
+                KlineTable.open_ts >= _ts,
             ).order_by(KlineTable.id)
+            return list(db_kline)
         except KlineTable.DoesNotExist:
-            return
-        return db_kline
+            return []
 
-    def __calculate_kdj(self, last_k, open_ts, close_price, period):
-        db_query = KlineTable.select().where(
-            KlineTable.symbol == self.symbol,
-            KlineTable.interval_val == self.interval,
-            KlineTable.open_ts > open_ts - self.interval_sec * period,
-            KlineTable.open_ts <= open_ts,
-        ).order_by(KlineTable.id)
-        db_query_list = list(db_query)
-        if len(db_query_list) < period:
-            return
+    def __calculate_kdj(self, k_lines, last_k, period):
+        if len(k_lines) < period:
+            return None
 
         low_price_list = []
         high_price_list = []
-        for _row in db_query_list:
+        for _row in k_lines:
             low_price_list.append(_row.low_price)
             high_price_list.append(_row.high_price)
         min_price = min(low_price_list)
         max_price = max(high_price_list)
+        close_price = k_lines[-1].close_price
 
         rsv = (close_price - min_price) / (max_price - min_price) * 100
         last_k_val = last_k.k_val
         last_d_val = last_k.d_val
+
         if not last_k_val or not last_d_val:
             return
+
         k_val = D(2 / 3) * last_k_val + D(1 / 3) * rsv
         d_val = D(2 / 3) * last_d_val + D(1 / 3) * k_val
         j_val = D(3) * k_val - D(2) * d_val
         return k_val, d_val, j_val
 
-    def parsed_k_lines_data(self, data):
-        open_ts = data.open_ts
-        close_price = data.close_price
+    def parsed_k_lines_data(self, k_lines):
+        if not k_lines:
+            return
 
-        db_query = (
-            KdjTable.select()
-            .where(
+        opening_tss = [k.open_ts for k in k_lines]
+        all_kdj_tss = list(set([ts - self.interval_sec for ts in opening_tss] + opening_tss))
+
+        kdj_data_dict = {
+            (kdj.symbol, kdj.open_ts): kdj
+            for kdj in KdjTable.select().where(
                 KdjTable.symbol == self.symbol,
                 KdjTable.interval_val == self.interval,
-                KdjTable.open_ts.in_([open_ts - self.interval_sec, open_ts]),
+                KdjTable.open_ts.in_(all_kdj_tss),
             )
-            .order_by(KdjTable.id)
-        )
-        db_query_list = list(db_query)
-        if not db_query_list:
-            logger.error(f"KdjDataSaveHandle, no db_query_list, {self.symbol}, {self.interval}, {open_ts}")
-            return
+        }
 
-        last_kdj_data = db_query_list[0]
-        if last_kdj_data.open_ts != open_ts - self.interval_sec:
-            return
+        updated_kdjs = []
+        new_kdjs = []
+        last_kdj = None
 
-        kdj_cfg = json.loads(last_kdj_data.cfg)
-        period = kdj_cfg["period"]
-        kdj_result = self.__calculate_kdj(last_kdj_data, open_ts, close_price, period)
-        if not kdj_result:
-            logger.error(f"KdjDataSaveHandle, no kdj_result, {self.symbol}, {self.interval}, {open_ts}")
-            return
-        k_val, d_val, j_val = kdj_result
+        for k in k_lines:
+            open_ts = k.open_ts
+            close_price = k.close_price
 
-        if len(db_query_list) == 2:
-            now_kdj_data = db_query_list[1]
-            now_kdj_data.k_val = k_val
-            now_kdj_data.d_val = d_val
-            now_kdj_data.j_val = j_val
-            now_kdj_data.save()
-        else:
-            if not KdjTable.select().where(
-                    KdjTable.symbol == self.symbol,
-                    KdjTable.open_ts == open_ts,
-                    KdjTable.interval_val == self.interval,
-            ):
-                _ = KdjTable.create(
+            last_kdj = kdj_data_dict.get((self.symbol, open_ts - self.interval_sec))
+            now_kdj = kdj_data_dict.get((self.symbol, open_ts))
+
+            if not last_kdj:
+                logger.error(f"KdjDataSaveHandle, no last_kdj, {self.symbol}, {self.interval}, {open_ts}")
+                continue
+
+            kdj_cfg = json.loads(last_kdj.cfg)
+            period = kdj_cfg["period"]
+
+            period_k_lines = [kl for kl in k_lines if
+                              kl.open_ts <= open_ts and kl.open_ts > open_ts - period * self.interval_sec]
+
+            kdj_result = self.__calculate_kdj(period_k_lines, last_kdj, period)
+            if not kdj_result:
+                logger.error(f"KdjDataSaveHandle, no kdj_result, {self.symbol}, {self.interval}, {open_ts}")
+                continue
+
+            k_val, d_val, j_val = kdj_result
+
+            if now_kdj:
+                now_kdj.k_val = k_val
+                now_kdj.d_val = d_val
+                now_kdj.j_val = j_val
+                updated_kdjs.append(now_kdj)
+            else:
+                new_kdjs.append(KdjTable(
                     symbol=self.symbol,
                     interval_val=self.interval,
                     open_ts=open_ts,
                     k_val=k_val,
                     d_val=d_val,
                     j_val=j_val,
-                    cfg=last_kdj_data.cfg,
-                )
-        return open_ts
+                    cfg=last_kdj.cfg,
+                ))
+
+        if updated_kdjs:
+            KdjTable.bulk_update(updated_kdjs, fields=[KdjTable.k_val, KdjTable.d_val, KdjTable.j_val])
+        if new_kdjs:
+            KdjTable.bulk_create(new_kdjs)
+
+        if k_lines:
+            return k_lines[-1].open_ts
+        return None
 
     def __init_kdj_cache_data(self):
         cache_data = MarketKdjCache(self.symbol, self.interval).get()
@@ -584,13 +580,7 @@ class KdjDataSaveHandle(object):
         self.__init_kdj_cache_data()
 
         k_data = self.get_k_lines_from_db()
-        if not k_data:
-            logger.error(f"KdjDataSaveHandle, no k_data, {self.symbol}, {self.interval}")
-            return
-
-        open_ts = None
-        for _data in k_data:
-            open_ts = self.parsed_k_lines_data(_data)
+        open_ts = self.parsed_k_lines_data(k_data)
         return open_ts
 
 

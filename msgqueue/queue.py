@@ -21,12 +21,13 @@ async def push_msg(value):
     return True
 
 
-async def push_plotmq(value):
+async def push_plot_mq(value):
     value.update({"ts": int(time.time())})
 
-    connection = queue_conn_manager.get_connection()
+    connection = kombu_conn_manager.get_connection()
     with connection.SimpleQueue(amf_plot_queue) as q:
         q.put(json.dumps(value), timeout=5)
+    kombu_conn_manager.release_connection(connection)
 
 
 async def push_symbol_mq(value):
