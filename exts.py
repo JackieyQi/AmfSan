@@ -59,7 +59,7 @@ amf_tmp1_queue = Queue("amf_tmp1_msg", exchange=amf_exchange, routing_key="amf_t
 amf_tmp2_queue = Queue("amf_tmp2_msg", exchange=amf_exchange, routing_key="amf_tmp2_msg")
 
 
-class QueueConnectionManager(object):
+class QueueLongConnectionManager(object):
     def __init__(self, url):
         self.url = url
         self.connection = None
@@ -87,7 +87,52 @@ class QueueConnectionManager(object):
             raise
 
 
-queue_conn_manager = QueueConnectionManager(
+class QueueKombuConnectionManager(object):
+    def __init__(self, url, pool_size=10):
+        self.url = url
+        self.pool_size = pool_size
+        self.connections = []
+        self.lock = threading.Lock()
+        self.initialize()
+
+    def initialize(self):
+        with self.lock:
+            for _ in range(self.pool_size):
+                connection = Connection(self.url)
+                self.connections.append(connection)
+
+    def get_connection(self):
+        with self.lock:
+            if not self.connections:
+                return Connection(self.url)
+            return self.connections.pop()
+
+    def release_connection(self, connection):
+        with self.lock:
+            if len(self.connections) < self.pool_size:
+                self.connections.append(connection)
+            else:
+                connection.release()
+
+    def close(self):
+        with self.lock:
+            for connection in self.connections:
+                connection.release()
+            self.connections.clear()
+
+
+queue_conn_manager = QueueLongConnectionManager(
+    "amqp://{}:{}@{}:{}/{}".format(
+        cfgs["rabbitmq"]["user"],
+        cfgs["rabbitmq"]["pwd"],
+        cfgs["rabbitmq"]["host"],
+        cfgs["rabbitmq"]["port"],
+        cfgs["rabbitmq"]["vhost"],
+    )
+)
+
+
+kombu_conn_manager = QueueKombuConnectionManager(
     "amqp://{}:{}@{}:{}/{}".format(
         cfgs["rabbitmq"]["user"],
         cfgs["rabbitmq"]["pwd"],
