@@ -218,7 +218,7 @@ class PlotGptHandle(BasePlotHandle):
 
         cache_data = FearAndGreedIndexCache.get()
         if not cache_data:
-            return
+            return threshold_data
 
         fng_index = int(cache_data)
         if 0 <= fng_index <= 49:
@@ -792,6 +792,7 @@ class PlotGptHandle(BasePlotHandle):
                     return
 
         # TODO: 是否只判断价格破新高
+        # 其他的普通报警太多了
 
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
             direction += "信号增强：日线KDJ金叉"

@@ -16,10 +16,39 @@ from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
 from utils.common import decimal2str, str2decimal, locking, set_lock_latest
 from utils.hrequest import http_get_request
+from cache import AllCache
 from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache, FearAndGreedIndexCache
 
 
 logger = logging.getLogger(__name__)
+
+
+def get_plot_symbols_info():
+    symbols_info = {}
+    redis_key = "symbol:cfg"
+    redis_client = AllCache.get_client()
+
+    cache_data = redis_client.hgetall(redis_key)
+    if not cache_data:
+        query = SymbolPlotTable.select()
+        for row in query:
+            symbols_info[row.symbol.lower()] = {"valid": int(row.is_valid)}
+
+        query = MacdTable.select(MacdTable.symbol, MacdTable.interval_val).distinct()
+        for row in query:
+            symbols_info[row.symbol.lower()][f"macd:{row.interval_val}"] = 1
+
+        query = KdjTable.select(KdjTable.symbol, KdjTable.interval_val).distinct()
+        for row in query:
+            symbols_info[row.symbol.lower()][f"kdj:{row.interval_val}"] = 1
+
+        for k, v in symbols_info.items():
+            redis_client.hset(redis_key, k, json.dumps(v))
+
+    else:
+        for k, v in cache_data.items():
+            symbols_info[k] = json.loads(v)
+    return symbols_info
 
 
 async def save_trade_history_job(*args, **kwargs):
@@ -129,29 +158,29 @@ async def save_fng_job(*args, **kwargs):
 
 @locking("save_kline_job")
 async def save_kline_job(*args, **kwargs):
-    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
-    query = SymbolPlotTable.select()
-    for row in query:
+    symbols_info = get_plot_symbols_info()
+    for symbol in symbols_info.keys():
         for _interval in PLOT_INTERVAL_LIST:
-            KlineDataSaveHandle(row.symbol, _interval).save_data()
+            KlineDataSaveHandle(symbol, _interval).save_data()
 
 
 @locking("save_macd_job")
 async def save_macd_job(*args, **kwargs):
-    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
-    query = SymbolPlotTable.select()
-    for row in query:
+    symbols_info = get_plot_symbols_info()
+    for symbol, _info in symbols_info.items():
         for _interval in PLOT_INTERVAL_LIST:
-            MacdDataSaveHandle(row.symbol, _interval).save_data(row.symbol, _interval)
+            if f"macd:{_interval}" not in _info:
+                continue
+            MacdDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
 
 
 @locking("save_kdj_job")
 async def save_kdj_job(*args, **kwargs):
-    # query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
-    query = SymbolPlotTable.select()
-    for row in query:
+    for symbol, _info in get_plot_symbols_info().items():
         for _interval in PLOT_INTERVAL_LIST:
-            KdjDataSaveHandle(row.symbol, _interval).save_data(row.symbol, _interval)
+            if f"kdj:{_interval}" not in _info:
+                continue
+            KdjDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
 
 
 @locking("save_ema_job")
@@ -172,7 +201,7 @@ class KlineDataSaveHandle(object):
     def get_k_lines_by_innerapi(self):
         try:
             db_last_k = (
-                KlineTable.select()
+                KlineTable.select(KlineTable.open_ts)
                 .where(
                     KlineTable.symbol == self.symbol,
                     KlineTable.interval_val == self.interval,
@@ -237,8 +266,6 @@ class KlineDataSaveHandle(object):
             )
             if query:
                 last_db_k = query.get()
-                last_db_k.open_ts = open_ts
-                last_db_k.open_price = open_price
                 last_db_k.high_price = high_price
                 last_db_k.low_price = low_price
                 last_db_k.close_price = close_price
@@ -277,7 +304,7 @@ class MacdDataSaveHandle(object):
     def get_k_lines_from_db(self):
         try:
             db_last_macd = (
-                MacdTable.select()
+                MacdTable.select(MacdTable.opening_ts)
                 .where(
                     MacdTable.symbol == self.symbol,
                     MacdTable.interval_val == self.interval,
