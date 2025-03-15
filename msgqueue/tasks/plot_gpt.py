@@ -14,6 +14,7 @@ import time
 import json
 from decimal import Decimal
 
+from exts import async_database
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
 from models.market import KlineTable
 from models.order import MacdTable, KdjTable
@@ -49,6 +50,68 @@ class PlotGptHandle(BasePlotHandle):
         for interval in required_intervals:
             if interval not in PLOT_INTERVAL_CONFIG:
                 raise ValueError(f"Required interval {interval} is missing in configuration")
+
+    async def initialize_data(self):
+        async with async_database.aio_atomic():
+            _query = self.get_kline_query("4h", limit_count=4)
+            _kline_list_4h = await _query.aio_execute()
+            self._kline_list_4h = list(_kline_list_4h)
+
+            _query = self.get_kline_query("1h", limit_count=30)
+            _kline_list_1h = await _query.aio_execute()
+            self._kline_list_1h = list(_kline_list_1h)
+
+            _query = self.get_macd_query("1d", limit_count=30)
+            _macd_list_1d = await _query.aio_execute()
+            self._macd_list_1d = list(_macd_list_1d)
+
+            _query = self.get_macd_query("4h", limit_count=30)
+            _macd_list_4h = await _query.aio_execute()
+            self._macd_list_4h = list(_macd_list_4h)
+
+            _query = self.get_macd_query("1h", limit_count=30)
+            _macd_list_1h = await _query.aio_execute()
+            self._macd_list_1h = list(_macd_list_1h)
+
+            _query = self.get_kdj_query("1d", limit_count=2)
+            _kdj_list_1d = await _query.aio_execute()
+            self._kdj_list_1d = list(_kdj_list_1d)
+
+            _query = self.get_kdj_query("4h", limit_count=8)
+            _kdj_list_4h = await _query.aio_execute()
+            self._kdj_list_4h = list(_kdj_list_4h)
+
+            _query = self.get_kdj_query("1h", limit_count=8)
+            _kdj_list_1h = await _query.aio_execute()
+            self._kdj_list_1h = list(_kdj_list_1h)
+
+    def get_kline_query(self, interval, limit_count=18):
+        query = (
+            KlineTable.select().where(
+                KlineTable.symbol == self.symbol,
+                KlineTable.interval_val == interval,
+            ).order_by(KlineTable.id.desc()).limit(limit_count)
+        )
+        return query
+
+    def get_macd_query(self, interval, limit_count=18):
+        query = (
+            MacdTable.select().where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == interval,
+            ).order_by(MacdTable.id.desc()).limit(limit_count)
+        )
+        return query
+
+    def get_kdj_query(self, interval, limit_count=18):
+        query = (
+            KdjTable.select().where(
+                KdjTable.symbol == self.symbol,
+                KdjTable.interval_val == interval,
+            ).order_by(KdjTable.id.desc()).limit(limit_count)
+        )
+        return query
+
 
     @property
     def kline_list_4h(self):
@@ -382,6 +445,8 @@ class PlotGptHandle(BasePlotHandle):
         return False
 
     async def check(self, limit_count=7):
+        await self.initialize_data()
+
         for interval, macd_list in (("1d", self.macd_list_1d), ("4h", self.macd_list_4h)):
             now_ts = int(time.time())
             interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
