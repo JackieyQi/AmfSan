@@ -48,13 +48,30 @@ class MysqlClient:
                 passwd=mycnf["pwd"],
                 max_connections=mycnf["connections"],
                 stale_timeout=mycnf["timeout"],
-                timeout=10,
+                timeout=30,
             )
             cls._database.connect(reuse_if_open=True)  # 显式建立连接
         except BaseException as e:
             print(f"数据库连接失败: {e}")
             cls._database = None  # 避免使用错误的连接
         return cls._database
+
+
+try:
+    database = PooledMySQLDatabase(
+        mycnf["db"],
+        host=mycnf["host"],
+        port=mycnf["port"],
+        charset=mycnf["charset"],
+        user=mycnf["user"],
+        passwd=mycnf["pwd"],
+        max_connections=mycnf["connections"],
+        stale_timeout=mycnf["timeout"],
+        timeout=30,
+    )
+    database.connect(reuse_if_open=True)  # 显式建立连接
+except BaseException as e:
+    print(f"数据库连接失败: {e}")
 
 
 amf_exchange = Exchange(cfgs["rabbitmq"]["amf_exchange"], "direct", durable=True)

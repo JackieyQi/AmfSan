@@ -1,11 +1,12 @@
 #! /usr/bin/env python
 # coding:utf8
 
-from exts import MysqlClient
-from peewee import Model
+import peewee
+from exts import MysqlClient, database
 
 
-class Base(Model):
+class Base(peewee.Model):
     class Meta:
-        database = MysqlClient.get_database()
+        # database = MysqlClient.get_database()
+        database = database
         only_save_dirty = True

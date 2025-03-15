@@ -4,6 +4,7 @@
 import asyncio
 import logging
 import sys
+import time
 import signal
 import uvloop
 from abc import ABC, abstractmethod
@@ -11,8 +12,10 @@ from typing import Optional, List, Callable, Any, Dict
 from kombu.simple import SimpleQueue
 
 from exts import queue_conn_manager, amf_queue, amf_plot_queue, \
-    amf_msg_queue, amf_kline_queue, amf_tmp1_queue, amf_tmp2_queue
+    amf_msg_queue, amf_kline_queue, amf_tmp1_queue, amf_tmp2_queue, database
 from msgqueue import deal_msg
+
+last_keep_alive = time.time()
 
 
 class QueueConsumer(ABC):
@@ -167,7 +170,21 @@ class AmfKlineConsumer(QueueConsumer):
         super().__init__(amf_kline_queue, "amf_kline_consumer")
 
     async def process_message(self, message_body):
+        global last_keep_alive
+
         await deal_msg(message_body)
+
+        if time.time() - last_keep_alive > 37:
+            try:
+                database.execute_sql('SELECT 1;')
+                self.logger.info("AmfKlineConsumer, MySQL connection keep-alive query executed.")
+                print("MySQL connection keep-alive query executed.")
+                last_keep_alive = time.time()
+            # except pymysql.err.OperationalError as e:
+            except Exception as e:
+                self.logger.error(f"AmfKlineConsumer, Keep-alive query failed: {e}")
+                print(f"Keep-alive query failed: {e}")
+                # 进行重连数据库等操作
 
 
 class AmfPlotConsumer(QueueConsumer):
@@ -175,7 +192,21 @@ class AmfPlotConsumer(QueueConsumer):
         super().__init__(amf_plot_queue, "amf_plot_consumer")
 
     async def process_message(self, message_body):
+        global last_keep_alive
+
         await deal_msg(message_body)
+
+        if time.time() - last_keep_alive > 37:
+            try:
+                database.execute_sql('SELECT 1;')
+                self.logger.info("AmfPlotConsumer, MySQL connection keep-alive query executed.")
+                print("MySQL connection keep-alive query executed.")
+                last_keep_alive = time.time()
+            # except pymysql.err.OperationalError as e:
+            except Exception as e:
+                self.logger.error(f"AmfPlotConsumer, Keep-alive query failed: {e}")
+                print(f"Keep-alive query failed: {e}")
+                # 进行重连数据库等操作
 
 
 class AmfMsgConsumer(QueueConsumer):
