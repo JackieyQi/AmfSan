@@ -1,7 +1,7 @@
 #! /usr/bin/python
 # coding:utf8
 
-from sanic import Sanic
+from sanic import Sanic, response
 import ujson as json
 from sanic.response import json as json_view
 from sanic.handlers import ErrorHandler
@@ -9,10 +9,11 @@ from sanic.handlers import ErrorHandler
 app = Sanic(name=__name__)
 
 from settings.setting import cfgs
+from cache import AllCache
 from cache.plot import APIRequestCountCache
 
 app.config.update(cfgs)
-
+redis_client = AllCache.get_client()
 
 # from exts import database
 # @app.middleware('request')
@@ -25,6 +26,25 @@ app.config.update(cfgs)
 # async def handle_response(request, response):
 #     if not database.is_closed():
 #         database.close()
+
+
+banned_ips_key = "banned_ips"
+
+
+@app.exception(Exception)
+async def handle_404s(request, exception):
+    if exception.status_code == 404:
+        client_ip = request.ip
+        redis_client.sadd(banned_ips_key, client_ip)
+        return response.text("MAGA", status=200)
+    return response.text("MAGA", status=200)
+
+
+@app.middleware("request")
+async def check_banned_ips(request):
+    client_ip = request.ip
+    if redis_client.sismember(banned_ips_key, client_ip):
+        return response.text("MAGA", status=200)
 
 
 @app.middleware("request")
