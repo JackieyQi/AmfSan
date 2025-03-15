@@ -79,8 +79,8 @@ class OrderTradeHistoryTable(Base):
 
 class MacdTable(Base):
     id = AutoField()
-    symbol = CharField(db_column="symbol", index=True)
-    interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔")
+    symbol = CharField(db_column="symbol", index=True, max_length=10)
+    interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔", max_length=5)
     opening_ts = IntegerField(default=0, db_column="opening_ts", help_text="开盘时间")
     opening_price = DecimalField(
         db_column="opening_price", default=0, max_digits=20, decimal_places=8
@@ -108,8 +108,8 @@ class MacdTable(Base):
 
 class KdjTable(Base):
     id = AutoField()
-    symbol = CharField(db_column="symbol", index=True)
-    interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔")
+    symbol = CharField(db_column="symbol", index=True, max_length=10)
+    interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔", max_length=5)
     open_ts = IntegerField(default=0, db_column="open_ts", help_text="开盘时间")
     k_val = DecimalField(
         db_column="k_val", default=0, max_digits=20, decimal_places=8
