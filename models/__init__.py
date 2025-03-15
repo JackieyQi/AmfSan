@@ -1,12 +1,12 @@
 #! /usr/bin/env python
 # coding:utf8
 
-import peewee
-from exts import MysqlClient, database
+import peewee_async
+from exts import MysqlClient, async_database
 
 
-class Base(peewee.Model):
+class Base(peewee_async.AioModel):
     class Meta:
         # database = MysqlClient.get_database()
-        database = database
+        database = async_database
         only_save_dirty = True

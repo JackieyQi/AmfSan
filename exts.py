@@ -6,6 +6,7 @@ import threading
 import logging.config
 from kombu import Connection, Exchange, Queue
 from playhouse.pool import PooledMySQLDatabase
+from peewee_async import PooledMySQLDatabase as AsyncPooledMySQLDatabase
 
 from settings import log
 from settings.setting import cfgs
@@ -58,7 +59,7 @@ class MysqlClient:
 
 
 try:
-    database = PooledMySQLDatabase(
+    async_database = AsyncPooledMySQLDatabase(
         mycnf["db"],
         host=mycnf["host"],
         port=mycnf["port"],
@@ -66,10 +67,8 @@ try:
         user=mycnf["user"],
         passwd=mycnf["pwd"],
         max_connections=mycnf["connections"],
-        stale_timeout=mycnf["timeout"],
-        timeout=30,
+        connect_timeout=mycnf["timeout"],
     )
-    database.connect(reuse_if_open=True)  # 显式建立连接
 except BaseException as e:
     print(f"数据库连接失败: {e}")
 
