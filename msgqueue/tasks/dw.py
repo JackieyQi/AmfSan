@@ -529,7 +529,7 @@ class KdjDataSaveHandle(object):
             now_kdj = kdj_data_dict.get((self.symbol, open_ts))
 
             if not last_kdj:
-                logger.error(f"KdjDataSaveHandle, no last_kdj, {self.symbol}, {self.interval}, {open_ts}")
+                # logger.error(f"KdjDataSaveHandle, no last_kdj, {self.symbol}, {self.interval}, {open_ts}")
                 continue
 
             kdj_cfg = json.loads(last_kdj.cfg)

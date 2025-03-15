@@ -35,22 +35,25 @@ class MysqlClient:
 
     @classmethod
     def get_database(cls):
-        if cls._database is None:
-            try:
-                cls._database = PooledMySQLDatabase(
-                    mycnf["db"],
-                    host=mycnf["host"],
-                    port=mycnf["port"],
-                    charset=mycnf["charset"],
-                    user=mycnf["user"],
-                    passwd=mycnf["pwd"],
-                    max_connections=mycnf["connections"],
-                    stale_timeout=mycnf["timeout"],
-                )
-                cls._database.connect()  # 显式建立连接
-            except BaseException as e:
-                print(f"数据库连接失败: {e}")
-                return None  # 连接失败，返回 None
+        if cls._database and not cls._database.is_closed():
+            return cls._database
+
+        try:
+            cls._database = PooledMySQLDatabase(
+                mycnf["db"],
+                host=mycnf["host"],
+                port=mycnf["port"],
+                charset=mycnf["charset"],
+                user=mycnf["user"],
+                passwd=mycnf["pwd"],
+                max_connections=mycnf["connections"],
+                stale_timeout=mycnf["timeout"],
+                timeout=10,
+            )
+            cls._database.connect(reuse_if_open=True)  # 显式建立连接
+        except BaseException as e:
+            print(f"数据库连接失败: {e}")
+            cls._database = None  # 避免使用错误的连接
         return cls._database
 
 

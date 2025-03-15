@@ -4,7 +4,7 @@
 import time
 
 from peewee import (BooleanField, CharField, DecimalField, IntegerField,
-                    TextField)
+                    TextField, AutoField)
 
 from . import Base
 
@@ -78,7 +78,7 @@ class OrderTradeHistoryTable(Base):
 
 
 class MacdTable(Base):
-    # id = IntegerField(primary_key=True)
+    id = AutoField()
     symbol = CharField(db_column="symbol", index=True)
     interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔")
     opening_ts = IntegerField(default=0, db_column="opening_ts", help_text="开盘时间")
@@ -101,9 +101,13 @@ class MacdTable(Base):
 
     class Meta:
         table_name = "macd_table"
+        indexes = (
+            (("symbol", "interval_val"), False),  # False 代表普通索引（不是唯一索引）
+        )
 
 
 class KdjTable(Base):
+    id = AutoField()
     symbol = CharField(db_column="symbol", index=True)
     interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔")
     open_ts = IntegerField(default=0, db_column="open_ts", help_text="开盘时间")
@@ -127,6 +131,9 @@ class KdjTable(Base):
 
     class Meta:
         table_name = "kdj_table"
+        indexes = (
+            (("symbol", "interval_val"), False),  # False 代表普通索引（不是唯一索引）
+        )
 
 
 class EmaTable(Base):
