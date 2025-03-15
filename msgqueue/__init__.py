@@ -32,11 +32,13 @@ route_map = {
     "check_balance_job": plot.check_balance,
     "check_price_job": plot.check_price,
     "check_macd_cross_job": plot.check_macd_cross,
+    "check_macd_cross_by_symbol": plot.check_macd_cross_by_symbol,
     "check_macd_trend_job": plot.check_macd_trend,
     "check_kdj_cross_job": plot.check_kdj_cross,
+    "check_kdj_cross_by_symbol": plot.check_kdj_cross_by_symbol,
     "check_ema_cross_job": plot.check_ema_cross,
     "check_gpt_plot_job": plot.check_gpt_plot,
-    "check_single_gpt_plot_job": plot.check_single_gpt_plot,
+    "check_gpt_plot_job_by_symbol": plot.check_gpt_plot_job_by_symbol,
     #
 }
 
