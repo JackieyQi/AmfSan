@@ -564,15 +564,13 @@ class PlotGptHandle(BasePlotHandle):
         )
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
-            return EmailMsgHistoryTable.get(
-                EmailMsgHistoryTable.msg_md5 == email_msg_md5
-            )
+            return await EmailMsgHistoryTable.aio_get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
         except EmailMsgHistoryTable.DoesNotExist:
             self.result[self.symbol] = self.short_term_strategy_reformat_notice(
                 direction, self.kdj_list_1h[0], current_price, int(time.time()), close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
-        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
 
         logger.info(
             f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
@@ -882,7 +880,7 @@ class PlotGptHandle(BasePlotHandle):
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
 
         try:
-            return EmailMsgHistoryTable.get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
+            return await EmailMsgHistoryTable.aio_get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
         except EmailMsgHistoryTable.DoesNotExist:
             counter.increment()
 
@@ -896,7 +894,7 @@ class PlotGptHandle(BasePlotHandle):
             direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
-        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
 
         logger.info(
             f"PlotGptHandle.bull_run_strategy finish, start end_msg, symbol:{self.symbol}, ts:{send_ts}")
