@@ -540,7 +540,7 @@ class KdjDataSaveHandle(object):
 
             kdj_result = self.__calculate_kdj(period_k_lines, last_kdj, period)
             if not kdj_result:
-                logger.error(f"KdjDataSaveHandle, no kdj_result, {self.symbol}, {self.interval}, {open_ts}")
+                # logger.error(f"KdjDataSaveHandle, no kdj_result, {self.symbol}, {self.interval}, {open_ts}")
                 continue
 
             k_val, d_val, j_val = kdj_result
