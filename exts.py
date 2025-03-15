@@ -65,7 +65,7 @@ try:
         port=mycnf["port"],
         charset=mycnf["charset"],
         user=mycnf["user"],
-        passwd=mycnf["pwd"],
+        password=mycnf["pwd"],
         max_connections=mycnf["connections"],
         connect_timeout=mycnf["timeout"],
     )

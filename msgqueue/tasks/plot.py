@@ -87,7 +87,7 @@ async def check_gpt_plot(*args, **kwargs):
 
     redis_client = AllCache.get_client()
 
-    symbols_info = get_plot_symbols_info(redis_client)
+    symbols_info = await get_plot_symbols_info(redis_client)
     for symbol in symbols_info.keys():
         if symbol.lower() == "btcusdt":
             continue

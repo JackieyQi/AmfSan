@@ -279,18 +279,18 @@ class MacdInitData(object):
     def __init__(self, macd_init_data):
         self.macd_init_data = macd_init_data
 
-    def start(self, interval):
+    async def start(self, interval):
         data = self.macd_init_data.get(interval)
         for i in data:
 
-            if MacdTable.select().where(
+            if await MacdTable.select().where(
                 MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
                 MacdTable.interval_val == i["interval"].lower(),
-            ):
+            ).aio_execute():
                 print("already")
             else:
-                r = MacdTable(
+                r = await MacdTable(
                     symbol=i["symbol"].lower(),
                     interval_val=i["interval"].lower(),
                     opening_ts=i["opening_ts"],
@@ -301,17 +301,17 @@ class MacdInitData(object):
                     dea=Decimal(i["dea"]),
                     macd=Decimal(i["macd"]) if "macd" in i else 0,
                     create_ts=int(time.time()),
-                ).save()
+                ).aio_save()
 
         db_last_macd = (
-            MacdTable.select()
+            await MacdTable.select()
             .where(
                 MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.interval_val == i["interval"].lower(),
             )
             .order_by(MacdTable.create_ts.desc())
             .limit(1)
-            .get()
+            .aio_get()
         )
         return db_last_macd.id
 
@@ -320,7 +320,7 @@ class KdjInitData(object):
     def __init__(self, kdj_init_data):
         self.kdj_init_data = kdj_init_data
 
-    def start(self, interval):
+    async def start(self, interval):
         interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
 
         data = self.kdj_init_data.get(interval)
@@ -328,14 +328,14 @@ class KdjInitData(object):
             _cfg = i["cfg"]
             _period = _cfg["period"]
 
-            if KdjTable.select().where(
+            if await KdjTable.select().where(
                 KdjTable.symbol == i["symbol"].lower(),
                 KdjTable.open_ts == i["open_ts"],
                 KdjTable.interval_val == i["interval"].lower(),
-            ):
+            ).aio_execute():
                 print("already")
             else:
-                _ = KdjTable(
+                _ = await KdjTable(
                     symbol=i["symbol"].lower(),
                     interval_val=i["interval"].lower(),
                     open_ts=i["open_ts"],
@@ -344,17 +344,17 @@ class KdjInitData(object):
                     j_val=Decimal(i["j"]),
                     cfg=json.dumps(_cfg),
                     create_ts=int(time.time()),
-                ).save()
+                ).aio_save()
 
         db_row = (
-            KdjTable.select()
+            await KdjTable.select()
             .where(
                 KdjTable.symbol == i["symbol"].lower(),
                 KdjTable.interval_val == i["interval"].lower(),
             )
             .order_by(KdjTable.create_ts.desc())
             .limit(1)
-            .get()
+            .aio_get()
         )
         return db_row.id
 

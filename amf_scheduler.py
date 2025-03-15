@@ -6,10 +6,9 @@ import time
 import uuid
 import schedule
 import ujson as json
-from concurrent.futures import ThreadPoolExecutor
 from kombu.simple import SimpleQueue
 from cache import AllCache
-from exts import amf_queue, amf_plot_queue, kombu_conn_manager, amf_kline_queue, amf_tmp1_queue, amf_tmp2_queue
+from exts import amf_queue, amf_plot_queue, kombu_conn_manager, amf_kline_queue
 
 logging.basicConfig(
     level=logging.INFO,

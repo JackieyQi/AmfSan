@@ -35,21 +35,21 @@ class BasePlotHandle(object):
         )
 
 
-def get_plot_symbols_info(redis_client):
+async def get_plot_symbols_info(redis_client):
     symbols_info = {}
     redis_key = "symbol:cfg"
 
     cache_data = redis_client.hgetall(redis_key)
     if not cache_data:
-        query = SymbolPlotTable.select()
+        query = await SymbolPlotTable.select().aio_execute()
         for row in query:
             symbols_info[row.symbol.lower()] = {"valid": int(row.is_valid)}
 
-        query = MacdTable.select(MacdTable.symbol, MacdTable.interval_val).distinct()
+        query = await MacdTable.select(MacdTable.symbol, MacdTable.interval_val).distinct().aio_execute()
         for row in query:
             symbols_info[row.symbol.lower()][f"macd:{row.interval_val}"] = 1
 
-        query = KdjTable.select(KdjTable.symbol, KdjTable.interval_val).distinct()
+        query = await KdjTable.select(KdjTable.symbol, KdjTable.interval_val).distinct().aio_execute()
         for row in query:
             symbols_info[row.symbol.lower()][f"kdj:{row.interval_val}"] = 1
 
