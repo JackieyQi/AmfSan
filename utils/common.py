@@ -92,7 +92,7 @@ def set_lock_latest(key):
 
     def decorate(func):
         @functools.wraps(func)
-        def wrapper(self, symbol, interval):
+        async def wrapper(self, symbol, interval):
             latest_open_ts = await func(self, symbol, interval)
             new_key = f"{key}:{symbol}:{interval}"
 
