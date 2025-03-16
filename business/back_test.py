@@ -7,6 +7,7 @@ from exts import async_database
 from models.order import PlotBackTestTable
 from cache.order import MarketPriceLimitCache
 from utils.common import str2decimal
+from .market import MarketPriceHandler
 
 
 class BackTestHandler(object):
@@ -54,15 +55,18 @@ class BackTestHandler(object):
 
     async def update_real_ticket(self, all_curr_prices):
         curr_ts = int(time.time())
+        market_price_handler = MarketPriceHandler()
 
         async with async_database.aio_atomic():
             db_data = await PlotBackTestTable.select().where(PlotBackTestTable.status.in_([0, 3])).aio_execute()
 
             for _d in db_data:
-                _cache_price = all_curr_prices.get(_d.symbol)
-                if not _cache_price:
+                # TODO: 优化实时价格获取
+                curr_price = market_price_handler.get_current_price(_d.symbol).get("price")
+
+                if not curr_price:
                     continue
-                curr_price = str2decimal(_cache_price)
+                curr_price = str2decimal(curr_price)
 
                 if _d.status == 0:
                     if curr_price <= _d.bid_price:
@@ -71,12 +75,14 @@ class BackTestHandler(object):
                         _d.status = 1
                         await _d.aio_save()
 
-                        MarketPriceLimitCache.hset(
-                            self.symbol,
-                            "{}:{}:{}".format(
-                                curr_ts, curr_price * Decimal("0.95"), curr_price * Decimal("1.05")
-                            ),
-                        )
+                        # MarketPriceLimitCache.hset(
+                        #     self.symbol,
+                        #     "{}:{}:{}".format(
+                        #         curr_ts, curr_price * Decimal("0.95"), curr_price * Decimal("1.05")
+                        #     ),
+                        # )
+                        market_price_handler.set_limit_price(
+                            self.symbol, curr_price * Decimal("0.95"), curr_price * Decimal("1.05"), curr_ts)
 
                     elif _d.bid_ts < (curr_ts - 3888):
                         _d.buy_ts = curr_ts
