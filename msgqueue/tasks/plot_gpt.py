@@ -17,7 +17,7 @@ from decimal import Decimal
 from exts import async_database
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
 from models.market import KlineTable
-from models.order import MacdTable, KdjTable
+from models.order import MacdTable, KdjTable, PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt
@@ -26,6 +26,7 @@ from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calc
     enhanced_analyze_by_groups, RollingCounter, check_near_support
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
+from business.back_test import BackTestHandler
 from .base import BasePlotHandle
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class PlotGptHandle(BasePlotHandle):
     def __init__(self, symbol):
         super().__init__()
         self.symbol = symbol
+        self.check_time = int(time.time())
         self.email_title = f"{symbol} GPT Plot Notice"
 
         self._kline_list_4h = None
@@ -161,13 +163,24 @@ class PlotGptHandle(BasePlotHandle):
             self._kdj_list_1h = self.get_kdj_list("1h", limit_count=8)
         return self._kdj_list_1h
 
-    def has_limit_price_check(self):
+    async def has_limit_price_check(self, statuses):
         all_limit_prices = MarketPriceLimitCache.hgetall()
         if not all_limit_prices:
             return False
 
-        all_limit_prices.pop("btcusdt", None)
-        return bool(all_limit_prices)
+        has_limit = all_limit_prices.get(self.symbol)
+
+        try:
+            last_ticket = await PlotBackTestTable.select().where(
+                PlotBackTestTable.symbol == self.symbol,
+            ).order_by(PlotBackTestTable.id.desc()).aio_get()
+            has_ask_ticket = last_ticket.status in statuses
+        except PlotBackTestTable.DoesNotExist:
+            has_ask_ticket = False
+        return has_limit or has_ask_ticket
+
+        # all_limit_prices.pop("btcusdt", None)
+        # return all_limit_prices.get(self.symbol)
 
     def get_bollinger_bands(self, interval):
         """
@@ -448,15 +461,14 @@ class PlotGptHandle(BasePlotHandle):
         await self.initialize_data()
 
         for interval, macd_list in (("1d", self.macd_list_1d), ("4h", self.macd_list_4h)):
-            now_ts = int(time.time())
             interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
-            if macd_list[0].opening_ts < (now_ts - interval_sec * limit_count):
+            if macd_list[0].opening_ts < (self.check_time - interval_sec * limit_count):
                 self.result[
                     self.symbol
                 ] = f"""
                         <br><a>Error: no lastest macd data, {self.symbol}:{interval}</a>
                         <br><a>opening_ts:{ts2bjfmt(macd_list[0].opening_ts)}</a>
-                        <br><a>now_ts:{ts2bjfmt(now_ts)}</a>
+                        <br><a>now_ts:{ts2bjfmt(self.check_time)}</a>
                         """
 
                 return await self.send_msg(self.email_title, "".join(self.result.values()))
@@ -515,7 +527,7 @@ class PlotGptHandle(BasePlotHandle):
         direction, current_price = None, None
 
         # TODO: 全仓改分仓
-        if not self.has_limit_price_check():
+        if not await self.has_limit_price_check((0, 1, 3)):
             direction_info = self._get_buy_direction()
             if not direction_info:
                 return
@@ -523,7 +535,16 @@ class PlotGptHandle(BasePlotHandle):
             set_limit_price_url = direction_info["set_limit_price_url"]
             current_price = direction_info["current_price"]
 
-        elif MarketPriceLimitCache.hget(self.symbol):
+            await BackTestHandler(self.symbol).add_bid_ticket(
+                current_price,
+                direction_info["recommend_bid_price"],
+                self.check_time,
+                1,
+                direction
+            )
+
+        # elif MarketPriceLimitCache.hget(self.symbol):
+        elif await self.has_limit_price_check((1, )):
             limit_price = MarketPriceLimitCache.hget(self.symbol)
             if not limit_price:
                 set_time, limit_low_price, limit_high_price = 0, "", ""
@@ -533,7 +554,7 @@ class PlotGptHandle(BasePlotHandle):
             if not set_time:
                 hours_diff = None
             else:
-                hours_diff = round((int(time.time()) - set_time) / 3600, 1)
+                hours_diff = round((self.check_time - set_time) / 3600, 1)
 
             if hours_diff and hours_diff >= 7.5:
                 current_price = self.kline_list_1h[0].close_price
@@ -546,12 +567,28 @@ class PlotGptHandle(BasePlotHandle):
                     direction = direction_info["direction"]
                     current_price = direction_info["current_price"]
 
+                    await BackTestHandler(self.symbol).update_ask_ticket(
+                        current_price,
+                        current_price,
+                        self.check_time,
+                        2,
+                        direction
+                    )
+
             else:
                 direction_info = self._get_sell_direction_upward(hours_diff)
                 if not direction_info:
                     return
                 direction = direction_info["direction"]
                 current_price = direction_info["current_price"]
+
+                await BackTestHandler(self.symbol).update_ask_ticket(
+                    current_price,
+                    direction_info["recommend_ask_price"],
+                    self.check_time,
+                    3,
+                    direction
+                )
 
         else:
             return
@@ -567,13 +604,13 @@ class PlotGptHandle(BasePlotHandle):
             return await EmailMsgHistoryTable.aio_get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
         except EmailMsgHistoryTable.DoesNotExist:
             self.result[self.symbol] = self.short_term_strategy_reformat_notice(
-                direction, self.kdj_list_1h[0], current_price, int(time.time()), close_monitor_url, set_limit_price_url)
+                direction, self.kdj_list_1h[0], current_price, self.check_time, close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
         await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
 
         logger.info(
-            f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{int(time.time())}")
+            f"PlotGptHandle.short_term_strategy finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
         await self.send_msg(self.email_title, email_content)
 
     def _get_buy_direction(self):
@@ -676,7 +713,7 @@ class PlotGptHandle(BasePlotHandle):
                               f"&high_price={tp_price}"
 
         return {"direction": direction, "set_limit_price_url": set_limit_price_url,
-                "current_price": current_price}
+                "current_price": current_price, "recommend_bid_price": recommend_bid_price}
 
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
         current_price, direction = "", ""
@@ -794,7 +831,7 @@ class PlotGptHandle(BasePlotHandle):
                     f"<br><br>{history_signals_msg}<br><br><br>" \
                     f"<br>总信号：{all_signals_dict}" \
                     f"<br>持仓时间：{hours_diff} 小时"
-        return {"direction": direction, "current_price": current_price}
+        return {"direction": direction, "current_price": current_price, "recommend_ask_price": recommend_ask_price}
 
     async def bull_run_strategy(self):
         """
@@ -814,6 +851,8 @@ class PlotGptHandle(BasePlotHandle):
             若不触发当前报警：
             则判断：24小时内有历史报警+当前价格大于历史20根线的最高价，触发报警
         """
+        if await self.has_limit_price_check((0, 1, 3)):
+            return
         if self._check_kdj_death_cross(self.kdj_list_1d):
             return
 
@@ -876,6 +915,14 @@ class PlotGptHandle(BasePlotHandle):
         <br><br><br>
         """
 
+        await BackTestHandler(self.symbol).add_bid_ticket(
+            current_price,
+            recommend_bid_price,
+            self.check_time,
+            4,
+            direction
+        )
+
         email_msg_md5_str = f"plotGpt:bull_run_strategy:{self.symbol}:{open_ts}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
 
@@ -888,14 +935,13 @@ class PlotGptHandle(BasePlotHandle):
         set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
                               f"symbol={self.symbol}&low_price={sl_price}" \
                               f"&high_price={tp_price}"
-        send_ts = int(time.time())
 
         self.result[self.symbol] = self.bull_run_strategy_reformat_notice(
-            direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
+            direction, open_ts, current_price, self.check_time, close_monitor_url, set_limit_price_url)
 
         email_content = "".join(self.result.values())
         await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
 
         logger.info(
-            f"PlotGptHandle.bull_run_strategy finish, start end_msg, symbol:{self.symbol}, ts:{send_ts}")
+            f"PlotGptHandle.bull_run_strategy finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
         await self.send_msg(self.email_title, email_content)

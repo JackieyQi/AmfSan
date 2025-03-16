@@ -4,8 +4,10 @@
 import json
 from decimal import Decimal as D
 
-from exts import database
+from exts import MysqlClient
 from models import order, user, wallet, market
+
+database = MysqlClient.get_database()
 
 
 def command_create_tables():
@@ -18,6 +20,7 @@ def command_create_tables():
                 order.SymbolPlotTable,
                 order.MacdTable,
                 order.KdjTable,
+                order.PlotBackTestTable,
                 wallet.BalanceHistoryTable,
                 wallet.TotalBalanceHistoryTable,
                 user.EmailMsgHistoryTable,

@@ -6,11 +6,13 @@ import logging
 import time
 from decimal import Decimal
 
+from exts import async_database
 from cache import AllCache
 from business.market import MarketPriceHandler
+from business.back_test import BackTestHandler
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.order import MacdTable, SymbolPlotTable, KdjTable, EmaTable
+from models.order import MacdTable, SymbolPlotTable, KdjTable, EmaTable, PlotBackTestTable
 from models.market import KlineTable
 from models.user import EmailMsgHistoryTable
 from models.wallet import TotalBalanceHistoryTable
@@ -35,6 +37,10 @@ logger = logging.getLogger(__name__)
 
 async def check_price(*args, **kwargs):
     market_price_handler = MarketPriceHandler()
+
+    all_curr_prices = market_price_handler.get_current_price_by_cache()
+    await BackTestHandler().update_real_ticket(all_curr_prices)
+
     for symbol, price in market_price_handler.get_all_limit_price().items():
         await PlotPriceHandle(symbol, price).check_limit_price()
 

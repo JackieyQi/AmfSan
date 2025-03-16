@@ -27,6 +27,43 @@ class SymbolPlotTable(Base):
         table_name = "symbol_plot_table"
 
 
+class PlotBackTestTable(Base):
+    id = AutoField()
+    symbol = CharField(db_column="symbol", index=True, max_length=10)
+    bid_curr_price = DecimalField(
+        db_column="bid_curr_price", default=0, max_digits=20, decimal_places=8
+    )
+    bid_price = DecimalField(
+        db_column="bid_price", default=0, max_digits=20, decimal_places=8
+    )
+    bid_ts = IntegerField(db_column="bid_ts", default=0)
+    bid_plot_type = IntegerField(db_column="bid_plot_type", default=0)
+    bid_plot_msg = TextField(db_column="bid_plot_msg")
+    buy_price = DecimalField(
+        db_column="buy_price", default=0, max_digits=20, decimal_places=8
+    )
+    buy_ts = IntegerField(db_column="buy_ts", default=0)
+    ask_curr_price = DecimalField(
+        db_column="ask_curr_price", default=0, max_digits=20, decimal_places=8
+    )
+    ask_price = DecimalField(
+        db_column="ask_price", default=0, max_digits=20, decimal_places=8
+    )
+    ask_ts = IntegerField(db_column="ask_ts", default=0)
+    ask_plot_type = IntegerField(db_column="ask_plot_type", default=0)
+    ask_plot_msg = TextField(db_column="ask_plot_msg")
+    sell_price = DecimalField(
+        db_column="sell_price", default=0, max_digits=20, decimal_places=8
+    )
+    sell_ts = IntegerField(db_column="sell_ts", default=0)
+    hold_time = IntegerField(db_column="hold_time", default=0)
+    profit_percent = DecimalField(db_column="profit_percent", max_digits=5, decimal_places=1, default=0)
+    status = IntegerField(db_column="status", default=0) # 0:bid;1:buy;2:buyFail;3:ask;4:sell;5:sellFail
+
+    class Meta:
+        table_name = "plot_back_test_table"
+
+
 class SymbolPriceChangeHistoryTable(Base):
     symbol = CharField(db_column="symbol", index=True)
     current_price = DecimalField(
