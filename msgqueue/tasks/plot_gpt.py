@@ -20,7 +20,7 @@ from models.market import KlineTable
 from models.order import MacdTable, KdjTable, PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
-from utils.common import ts2bjfmt
+from utils.common import ts2bjfmt, str2decimal
 from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
     enhanced_analyze_by_groups, RollingCounter, check_near_support
@@ -329,8 +329,8 @@ class PlotGptHandle(BasePlotHandle):
         return {
             "bid_price": bid_price,
             "ask_price": ask_price,
-            "recommend_bid_price": recommend_bid_price,
-            "recommend_ask_price": recommend_ask_price,
+            "recommend_bid_price": str2decimal(recommend_bid_price),
+            "recommend_ask_price": str2decimal(recommend_ask_price),
         }
 
     def get_tp_and_sl(self, depth_bid_price, depth_ask_price, bb_upper_4h_price):
@@ -349,7 +349,7 @@ class PlotGptHandle(BasePlotHandle):
 
         sl_price = (bb_lower_1h_price + depth_bid_price + min(ema12_price, ema26_price)) / Decimal("3")
         tp_price = (bb_upper_4h_price + depth_ask_price + previous_high_price) / Decimal("3")
-        return {"sl_price": sl_price, "tp_price": tp_price}
+        return {"sl_price": str2decimal(sl_price), "tp_price": str2decimal(tp_price)}
 
     def get_previous_high_price(self, kline_list, window_size=3):
         """
@@ -773,7 +773,7 @@ class PlotGptHandle(BasePlotHandle):
         current_price = self.macd_list_1h[0].closing_price
         bb_upper_1h, bb_lower_1h = self.get_bollinger_bands("1h")
         if current_price > bb_upper_1h \
-                and (high_prices_list[0] - current_price) / high_prices_list[0] >= Decimal("0.005"):
+                and ((high_prices_list[0] - current_price) / high_prices_list[0]) >= Decimal("0.005"):
             check_boll_resistance_signal = True
         else:
             check_boll_resistance_signal = False
