@@ -82,7 +82,7 @@ class BackTestHandler(object):
                         #     ),
                         # )
                         market_price_handler.set_limit_price(
-                            self.symbol, curr_price * Decimal("0.95"), curr_price * Decimal("1.05"), curr_ts)
+                            _d.symbol, curr_price * Decimal("0.95"), curr_price * Decimal("1.05"), curr_ts)
 
                     elif _d.bid_ts < (curr_ts - 3888):
                         _d.buy_ts = curr_ts
