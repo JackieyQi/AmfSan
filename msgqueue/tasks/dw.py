@@ -391,9 +391,9 @@ class MacdDataSaveHandle(object):
                     now_macd.opening_ts = opening_ts
                     now_macd.opening_price = opening_price
                     now_macd.closing_price = closing_price
-                    now_macd.ema_12 = now_ema_12
-                    now_macd.ema_26 = now_ema_26
-                    now_macd.dea = now_dea
+                    now_macd.ema_12 = str2decimal(now_ema_12)
+                    now_macd.ema_26 = str2decimal(now_ema_26)
+                    now_macd.dea = str2decimal(now_dea)
                     now_macd.macd = now_macd_val
                     await now_macd.aio_save()
                     # updated_macds.append(now_macd)
@@ -404,9 +404,9 @@ class MacdDataSaveHandle(object):
                         opening_ts=opening_ts,
                         opening_price=opening_price,
                         closing_price=closing_price,
-                        ema_12=now_ema_12,
-                        ema_26=now_ema_26,
-                        dea=now_dea,
+                        ema_12=str2decimal(now_ema_12),
+                        ema_26=str2decimal(now_ema_26),
+                        dea=str2decimal(now_dea),
                         macd=now_macd_val,
                     )
 
@@ -548,18 +548,18 @@ class KdjDataSaveHandle(object):
                 k_val, d_val, j_val = kdj_result
 
                 if now_kdj:
-                    now_kdj.k_val = k_val
-                    now_kdj.d_val = d_val
-                    now_kdj.j_val = j_val
+                    now_kdj.k_val = str2decimal(k_val)
+                    now_kdj.d_val = str2decimal(d_val)
+                    now_kdj.j_val = str2decimal(j_val)
                     await now_kdj.aio_save()
                 else:
                     await KdjTable.aio_create(
                         symbol=self.symbol,
                         interval_val=self.interval,
                         open_ts=open_ts,
-                        k_val=k_val,
-                        d_val=d_val,
-                        j_val=j_val,
+                        k_val=str2decimal(k_val),
+                        d_val=str2decimal(d_val),
+                        j_val=str2decimal(j_val),
                         cfg=last_kdj.cfg,
                     )
 
