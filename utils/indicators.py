@@ -100,10 +100,10 @@ def enhanced_analyze_list_trend(decimal_array, previous_trends=None, num=8):
 
         # 设定安全值，避免分母为负数。
         epsilon = np.mean(abs(float(avg_historical_slope))) * 0.001
-        # epsilon = Decimal("0.0001")
+        epsilon = max(str2decimal(epsilon), Decimal("0.00000001"))
 
         # 计算当前斜率与历史斜率的相对值
-        relative_slope = (slope - avg_historical_slope) / max(std_historical_slope, str2decimal(epsilon))
+        relative_slope = (slope - avg_historical_slope) / max(std_historical_slope, epsilon)
 
         # 计算历史方差的均值
         avg_historical_variance = np.mean(historical_variances)
