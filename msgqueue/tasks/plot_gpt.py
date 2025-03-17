@@ -512,6 +512,7 @@ class PlotGptHandle(BasePlotHandle):
                 2.2.1. 1小时的最新3条线的J值均小于50，表示市场没有上涨动能，考虑挂买入价卖出。
                 2.2.2. 1小时的最新2根线的J值向上，表示可能存在反弹，不考虑挂单卖出。
                 2.2.3. 1小时的K线的最新2根线，价格区间没有上涨，表示下跌信号增强，考虑挂单卖出。
+                2.2.4. 4小时的KDJ的J值连续3根持续向上，表情中行情仍上涨，不考虑挂单卖出。
 
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
                 3.1. 1小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
@@ -742,6 +743,10 @@ class PlotGptHandle(BasePlotHandle):
                     return
                 if self.kline_list_1h[i].close_price > self.kline_list_1h[i + 1].close_price:
                     return
+
+            j_val_4h_list = [i.j_val for i in self.kdj_list_4h[:3]]
+            if all(x > y for x, y in zip(j_val_4h_list, j_val_4h_list[1:])) is True:
+                return
 
             current_price = self.kline_list_1h[0].close_price
 
