@@ -516,7 +516,7 @@ class PlotGptHandle(BasePlotHandle):
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
                 3.1. 1小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
                 3.2. 4小时MACD的当前时间段的值处于金叉，表示持续上涨，考虑持仓观望。
-                    3.2.1. (或)1小时MACD：最近7根线MACD柱状图的上行趋势减弱，表示上涨趋势减缓，表示出场信号加强。
+                    3.2.1. (或)1小时MACD：最近7根线(不包含当前线)(结合历史18根线的趋势进行相对判断)MACD柱状图的上行趋势减弱，表示上涨趋势减缓，表示出场信号加强。
                     3.2.2. (或)当前1小时最高价，小于前面3根1小时线的最高价，表示价格受阻，超买回调趋势加强，表示出场信号加强。
                     3.2.3. (或)当前价格，在1小时布林带上轨且回落0.5%，表示出场信号加强。
                     3.2.4. (或)4小时MACD的最近2根柱状图，向下扩大，表示出场信号加强。
@@ -765,7 +765,7 @@ class PlotGptHandle(BasePlotHandle):
         if self.macd_list_4h[1].macd < 0 and self.macd_list_4h[0].macd >= 0:
             return
 
-        current_trend_macd_1h = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[:18]][::-1])
+        current_trend_macd_1h = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[1:19]][::-1])
         check_trend_stalled_signal = current_trend_macd_1h not in ["parabolic_move", ]
         all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
 
