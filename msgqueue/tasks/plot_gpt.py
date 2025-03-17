@@ -357,18 +357,21 @@ class PlotGptHandle(BasePlotHandle):
         :return:
         """
         high_list = []
-        for i in range(window_size, len(kline_list) - window_size):
-            left = kline_list[i-window_size: i]
-            left_prices = [v.high_price for v in left]
+        # for i in range(window_size, len(kline_list) - window_size):
+        #     left = kline_list[i-window_size: i]
+        #     left_prices = [v.high_price for v in left]
+        #
+        #     if not high_list:
+        #         high_list.append(max(left_prices))
+        #
+        #     right = kline_list[i+1: i+window_size+1]
+        #     right_prices = [v.high_price for v in right]
+        #
+        #     if kline_list[i].high_price > max(left_prices) and kline_list[i].high_price > max(right_prices):
+        #         high_list.append(kline_list[i].high_price)
 
-            if not high_list:
-                high_list.append(max(left_prices))
-
-            right = kline_list[i+1: i+window_size+1]
-            right_prices = [v.high_price for v in right]
-
-            if kline_list[i].high_price > max(left_prices) and kline_list[i].high_price > max(right_prices):
-                high_list.append(kline_list[i].high_price)
+        for i in kline_list:
+            high_list.append(i.high_price)
 
         # TODO: 优化前高点的对比策略->是否考虑趋势判断
         return max(high_list)
@@ -838,10 +841,11 @@ class PlotGptHandle(BasePlotHandle):
         牛市大涨策略：
             主要工具：4小时K线图
         📈 买入信号
-            1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
+            4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
+
             1. 日线KDJ刚形成死叉，不再考虑买入。
             2. 1小时KDJ不是80高位死叉位置，继续向下判断。
-            2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线有金叉)
+            2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前根)有金叉)
             3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
 
             新增待回测验证：4. 4小时K线连续4根线KDJ的J值超100，不再考虑。
@@ -866,7 +870,7 @@ class PlotGptHandle(BasePlotHandle):
         final_count = counter.get_last_count()
 
         kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3])
-        kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[:3])
+        kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[1:4])
 
         if (kdj_4h_up_signal or kdj_4h_cross_signal) is False:
             if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
