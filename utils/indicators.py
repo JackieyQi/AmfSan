@@ -152,10 +152,10 @@ def enhanced_analyze_list_trend(decimal_array, previous_trends=None, num=8):
 
 
 def enhanced_analyze_by_groups(data, group_size=7):
-    zeros_count = leading_zeros(data[0])
-    if zeros_count:
+    scale_factor = leading_zeros(data[0])
+    if scale_factor:
         for i, val in enumerate(data):
-            data[i] = val * Decimal(f"{zeros_count}")
+            data[i] = val * scale_factor
 
     results = []
     for i in range(0, len(data) - group_size + 1):

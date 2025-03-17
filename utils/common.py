@@ -44,16 +44,24 @@ def str2decimal(val: str, num=8):
 
 def leading_zeros(val: Decimal):
     """获取小数位前导零的个数"""
-    val_str = str(val)
-    if "." not in val_str:
-        return 0
+    decimal_str = str(val)
+    if "E-" in decimal_str:
+        # 处理科学计数法
+        base, exponent = decimal_str.split("E-")
+        num_zeros = int(exponent) - 1
+        scale_factor = Decimal(10 ** num_zeros)
+        return scale_factor
 
-    int_part, decimal_part = val_str.split(".")
-    if int(decimal_part) == 0:
-        return 0
-    no_zero_decimal_part = decimal_part.lstrip("0")
-    leading_zeros = len(decimal_part) - len(no_zero_decimal_part)
-    return leading_zeros
+    elif "." not in decimal_str:
+        return
+
+    else:
+        int_part, decimal_part = decimal_str.split(".")
+        if int(decimal_part) == 0:
+            return
+        no_zero_decimal_part = decimal_part.lstrip("0")
+        num_zeros = len(decimal_part) - len(no_zero_decimal_part)
+        return Decimal(10 ** num_zeros)
 
 
 def usdt2busd(val: str):
