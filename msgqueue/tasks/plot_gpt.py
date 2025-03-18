@@ -695,6 +695,7 @@ class PlotGptHandle(BasePlotHandle):
 
         signal_data = self.get_signal_count_data(*all_signals_dict.values())
         if signal_data["true_count"] == 1:
+        # if signal_data["true_count"] <= 2: TODO: 等待回测验证
             return
 
         depth_prices_data = self.get_depth_prices(current_price)
@@ -717,19 +718,26 @@ class PlotGptHandle(BasePlotHandle):
                               f"&low_price={sl_price}" \
                               f"&high_price={tp_price}"
 
+        logger.info(f"plot_gpt, _get_buy_direction, current_price:{current_price}")
+
         return {"direction": direction, "set_limit_price_url": set_limit_price_url,
                 "current_price": current_price, "recommend_bid_price": recommend_bid_price}
 
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
         current_price, direction = "", ""
 
-        recent_kdj_list_1h = [i for i in self.kdj_list_1h if i.open_ts >= set_time]
-        recent_macd_list_1h = [i for i in self.macd_list_1h if i.opening_ts >= set_time]
+        recent_kdj_list_1h = [i for i in self.kdj_list_1h
+                              if ((0 <= (set_time - i.open_ts) < 3600) or (i.open_ts >= set_time))]
+        recent_macd_list_1h = [i for i in self.macd_list_1h
+                               if ((0 <= (set_time - i.opening_ts) < 3600) or (i.opening_ts >= set_time))]
         if (len(recent_kdj_list_1h) >= 5 and
                 all(Decimal("30") <= i.j_val < Decimal("70") for i in recent_kdj_list_1h) and
                 all(i.macd < 0 for i in recent_macd_list_1h)):
             current_price = self.kline_list_1h[0].close_price
             direction = f"🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, 横盘震荡向下。"
+
+            logger.info(f"plot_gpt, _get_sell_direction_sideways_or_downward, "
+                        f"sideways and downward, set_time:{set_time}")
 
         if not direction:
 
@@ -758,6 +766,11 @@ class PlotGptHandle(BasePlotHandle):
                         f"<br>持仓时间：{hours_diff} 小时" \
                         f"<br>建议卖出价：{recommend_ask_price}" \
                         f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
+
+            logger.info(f"plot_gpt, _get_sell_direction_sideways_or_downward, rising blocked, "
+                        f"curr 1h j_val:{self.kdj_list_1h[0].j_val}, "
+                        f"curr 1h close_price:{self.kline_list_1h[0].close_price},"
+                        f"curr 4h j_val:{self.kdj_list_4h[0].j_val}")
         return {
             "current_price": current_price,
             "direction": direction,
@@ -842,6 +855,11 @@ class PlotGptHandle(BasePlotHandle):
                     f"<br><br>{history_signals_msg}<br><br><br>" \
                     f"<br>总信号：{all_signals_dict}" \
                     f"<br>持仓时间：{hours_diff} 小时"
+
+        logger.info(f"plot_gpt, _get_sell_direction_upward, sell upward,"
+                    f"curr 1h j_val:{self.kdj_list_1h[0].j_val}, "
+                    f"curr 1h close_price:{self.kline_list_1h[0].close_price},"
+                    f"curr 4h j_val:{self.kdj_list_4h[0].j_val}")
         return {"direction": direction, "current_price": current_price, "recommend_ask_price": recommend_ask_price}
 
     async def bull_run_strategy(self):
@@ -926,6 +944,8 @@ class PlotGptHandle(BasePlotHandle):
         <br>建议买入价: {recommend_bid_price}
         <br><br><br>
         """
+
+        logger.info(f"plot_gpt, bull_run_strategy, ")
 
         await BackTestHandler(self.symbol).add_bid_ticket(
             current_price,
