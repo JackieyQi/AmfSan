@@ -495,7 +495,7 @@ class PlotGptHandle(BasePlotHandle):
             5. 1小时级别击穿前低价：当前1小时的最低价，小于前10根1小时线的最低价，下跌趋势延续，不要向下考虑。
                 5.1. (或)当前价格 **靠近 4小时布林带下轨值**，未击穿支撑位，增强买入信号。
                 5.2. (或)1小时KDJ **最近8条线，有接近死叉或金叉**，增强买入信号。
-                5.3. (或)1小时K线的 **近三条的最高价没有逐步下降**，表示下跌压力减缓，1小时KDJ均值小于20附近，增强买入信号。
+                5.3. (或)1小时K线的 **近三条的最高价没有逐步下降**(或者**日线MACD大于0**)，表示下跌压力减缓，1小时KDJ均值小于20附近，增强买入信号。
                 5.4. (或)1小时成交量 **高于过去10根均值**，资金流入，增强买入信号。
                 5.5. (或)4小时成交量 **高于过去3根均值**，资金持续流入，增强买入信号。
                 5.6. (增)1小时K线，**最近5根线出现连续卖出3根**，表示下跌压力过大，减弱买入信号。
@@ -574,7 +574,7 @@ class PlotGptHandle(BasePlotHandle):
 
                     await BackTestHandler(self.symbol).update_ask_ticket(
                         current_price,
-                        current_price,
+                        direction_info["recommend_ask_price"],
                         self.check_time,
                         2,
                         direction
@@ -656,7 +656,8 @@ class PlotGptHandle(BasePlotHandle):
 
         check_kdj_20_signal = False
         high_prices_1h_list = [i.high_price for i in self.kline_list_1h[:3]]
-        if all(x < y for x, y in zip(high_prices_1h_list, high_prices_1h_list[1:])) is False:
+        if all(x < y for x, y in zip(high_prices_1h_list, high_prices_1h_list[1:])) is False \
+                or self.macd_list_1d[0].macd > 0:
             if current_kdj_1h.k_val < Decimal("20") and current_kdj_1h.d_val < Decimal("20") \
                     and current_kdj_1h.j_val < Decimal("20"):
                 check_kdj_20_signal = True
@@ -694,8 +695,8 @@ class PlotGptHandle(BasePlotHandle):
             return
 
         signal_data = self.get_signal_count_data(*all_signals_dict.values())
-        if signal_data["true_count"] == 1:
-        # if signal_data["true_count"] <= 2: TODO: 等待回测验证
+        # if signal_data["true_count"] == 1:
+        if signal_data["true_count"] <= 2: #TODO: 等待回测验证
             return
 
         depth_prices_data = self.get_depth_prices(current_price)
@@ -725,6 +726,7 @@ class PlotGptHandle(BasePlotHandle):
 
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
         current_price, direction = "", ""
+        recommend_ask_price = 0
 
         recent_kdj_list_1h = [i for i in self.kdj_list_1h
                               if ((0 <= (set_time - i.open_ts) < 3600) or (i.open_ts >= set_time))]
@@ -774,6 +776,7 @@ class PlotGptHandle(BasePlotHandle):
         return {
             "current_price": current_price,
             "direction": direction,
+            "recommend_ask_price": recommend_ask_price,
         }
 
     def _get_sell_direction_upward(self, hours_diff):
