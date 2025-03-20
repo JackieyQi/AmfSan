@@ -491,7 +491,7 @@ class PlotGptHandle(BasePlotHandle):
             1. 4小时MACD：DIF上穿DEA；或者 日线MACD：DIF上穿DEA。确认趋势反转后，再考虑买入。
             2. 日线KDJ刚形成死叉，说明趋势向下，不要向下考虑买入。
             3. 1小时KDJ的值均大于35，表示超卖反弹，增强买入信号，接着考虑第4点。
-            4. 1小时MACD：最近7根线MACD柱状图的下行趋势减弱，表示下跌趋势减缓，接着考虑买入的辅助信号。
+            4. 1小时MACD：最近7根线MACD柱状图的相对下行趋势(基于18根线计算相对值)减弱，表示下跌趋势减缓，接着考虑买入的辅助信号。
             5. 1小时级别击穿前低价：当前1小时的最低价，小于前10根1小时线的最低价，下跌趋势延续，不要向下考虑。
                 5.1. (或)当前价格 **靠近 4小时布林带下轨值**，未击穿支撑位，增强买入信号。
                 5.2. (或)1小时KDJ **最近8条线，有接近死叉或金叉**，增强买入信号。
@@ -790,7 +790,7 @@ class PlotGptHandle(BasePlotHandle):
             return
 
         current_trend_macd_1h = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[1:19]][::-1])
-        check_trend_stalled_signal = current_trend_macd_1h not in ["parabolic_move", ]
+        check_trend_stalled_signal = current_trend_macd_1h["trend"] not in ["parabolic_move", ]
         all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
 
         high_prices_list = [i.high_price for i in self.kline_list_1h[:4]]
@@ -874,8 +874,8 @@ class PlotGptHandle(BasePlotHandle):
 
             1. 日线KDJ刚形成死叉，不再考虑买入。
             2. 1小时KDJ不是80高位死叉位置，继续向下判断。
-            2. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前根)有金叉)
-            3. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
+            3. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前线)有金叉 <--信号背离-- 4小时MACD(不包含当前线)趋近死叉)
+            4. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
 
             新增待回测验证：4. 4小时K线连续4根线KDJ的J值超100，不再考虑。
 
@@ -900,6 +900,16 @@ class PlotGptHandle(BasePlotHandle):
 
         kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3])
         kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[1:4])
+
+        # 4小时MACD(不包含当前线)趋近死叉). 设置小窗口值为3, 拟合计算相对趋势. 斜率绝对值<0.001时, 判断趋于0.
+        # TODO: 斜率值需要回测调整。斜率绝对值<0.001时, 判断趋于0
+        current_trend_macd_4h = enhanced_analyze_by_groups(
+            [i.macd for i in self.macd_list_4h[1:19]][::-1], group_size=3)
+
+        if current_trend_macd_4h["trend"] in ["downward_spiral", "modest_decline"] \
+                and current_trend_macd_4h["slope"] < Decimal("0.001"):
+            # 触发信号背离
+            kdj_4h_cross_signal = False
 
         if (kdj_4h_up_signal or kdj_4h_cross_signal) is False:
             if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
@@ -948,7 +958,8 @@ class PlotGptHandle(BasePlotHandle):
         <br><br><br>
         """
 
-        logger.info(f"plot_gpt, bull_run_strategy, ")
+        logger.info(f"plot_gpt, bull_run_strategy, "
+                    f"curr_k_4h:{self.kdj_list_4h[0].k_val}, curr_d_4h:{self.kdj_list_4h[0].d_val}")
 
         await BackTestHandler(self.symbol).add_bid_ticket(
             current_price,

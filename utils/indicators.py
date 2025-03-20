@@ -148,7 +148,8 @@ def enhanced_analyze_list_trend(decimal_array, previous_trends=None, num=8):
             else:
                 trend = "range_bound"
 
-    return trend, trend_stats
+    trend_stats["trend"] = trend
+    return trend_stats
 
 
 def enhanced_analyze_by_groups(data, group_size=7):
@@ -166,15 +167,14 @@ def enhanced_analyze_by_groups(data, group_size=7):
         if i > 0:
             previous_trends = [r["stats"] for r in results]
 
-        trend, stats = enhanced_analyze_list_trend(group, previous_trends)
+        stats = enhanced_analyze_list_trend(group, previous_trends)
         results.append({
             "group": i + 1,
             "data": group,
-            "trend": trend,
             "stats": stats
         })
 
-    return results[-1]["trend"]
+    return results[-1]["stats"]
 
 
 def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, ema_window=26):
