@@ -422,16 +422,19 @@ class PlotGptHandle(BasePlotHandle):
         """检查 是否有价格突破"""
         return count > 0 and current_price >= previous_high
 
-    def _check_increasing_highs(self, kline_list):
+    def _check_increasing_highs(self, kline_list, rate=Decimal("0.001")):
         """检查 最高价是否逐步递增"""
-        last_high_price = None
+        for i in range(1, len(kline_list)):
+            last_price = kline_list[i].high_price
+            curr_price = kline_list[i-1].high_price
+            if curr_price < last_price:
+                return False
 
-        for row in kline_list:
-            if last_high_price and last_high_price < row.high_price:
-                return False, row.open_ts
-            last_high_price = row.high_price
+            growth = (curr_price - last_price) / last_price
+            if growth <= rate:
+                return False
 
-        return True, kline_list[0].open_ts
+        return True
 
     def _check_continuous_selling(self, kline_list, threshold=3):
         """
@@ -875,7 +878,7 @@ class PlotGptHandle(BasePlotHandle):
             1. 日线KDJ刚形成死叉，不再考虑买入。
             2. 1小时KDJ不是80高位死叉位置，继续向下判断。
             3. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前线)有金叉 <--信号背离-- 4小时MACD(不包含当前线)趋近死叉)
-            4. 4小时k线：最近3条的最高价逐步递增，初步判断趋势大涨。
+            4. 4小时k线：最近3条的最高价逐步递增(增长率大于阀值)，初步判断趋势大涨。
 
             新增待回测验证：4. 4小时K线连续4根线KDJ的J值超100，不再考虑。
 
@@ -921,7 +924,8 @@ class PlotGptHandle(BasePlotHandle):
                 return
 
         else:
-            high_price_up_4h_signal, open_ts = self._check_increasing_highs(self.kline_list_4h[:3])
+            high_price_up_4h_signal = self._check_increasing_highs(self.kline_list_4h[:3])
+            open_ts = self.kline_list_1h[0].open_ts
 
             if not high_price_up_4h_signal:
                 if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
