@@ -377,8 +377,17 @@ class PlotGptHandle(BasePlotHandle):
         return max(high_list)
 
     def _check_kdj_uptrend(self, kdj_list):
-        """检查KDJ是否处于上升趋势(K>D)"""
-        return all(row.k_val >= row.d_val for row in kdj_list)
+        """检查KDJ是否处于递增趋势(基于每一组数据的离散值->离散值的数组)"""
+
+        for i in range(1, len(kdj_list)):
+            curr_kdj = kdj_list[i]
+            last_kdj = kdj_list[i-1]
+
+            curr_cv = calculate_cv([curr_kdj.k_val, curr_kdj.d_val, curr_kdj.j_val], num=8)
+            last_cv = calculate_cv([last_kdj.k_val, last_kdj.d_val, last_kdj.j_val], num=8)
+            if curr_cv <= last_cv:
+                return False
+        return True
 
     def _check_kdj_golden_cross_count(self, kdj_list, threshold=0):
         """检查 KDJ历史金叉数量"""
@@ -901,7 +910,7 @@ class PlotGptHandle(BasePlotHandle):
         counter = RollingCounter(self.symbol, "BullRun")
         final_count = counter.get_last_count()
 
-        kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3])
+        kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3][::-1])
         kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[1:4])
 
         # 4小时MACD(不包含当前线)趋近死叉). 设置小窗口值为3, 拟合计算相对趋势. 斜率绝对值<0.001时, 判断趋于0.
