@@ -61,7 +61,7 @@ class BackTestHandler(object):
             db_data = await PlotBackTestTable.select().where(PlotBackTestTable.status.in_([0, 3])).aio_execute()
 
             for _d in db_data:
-                # TODO: 优化实时价格获取
+                # TODO: 优化实时价格获取->需要单独起 循环任务，根据k线价格范围，但是又没有1分钟k线
                 curr_price = market_price_handler.get_current_price(_d.symbol).get("price")
 
                 if not curr_price:
@@ -98,7 +98,8 @@ class BackTestHandler(object):
                         _d.status = 4
                         await _d.aio_save()
 
-                    elif _d.ask_ts < (curr_ts - 3888):
+                    # TODO: 挂卖单->延迟挂单时间
+                    elif _d.ask_ts < (curr_ts - 7200):
                         _d.sell_price = curr_price
                         _d.sell_ts = curr_ts
                         _d.hold_time = curr_ts - _d.buy_ts
