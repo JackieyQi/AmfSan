@@ -472,6 +472,19 @@ class PlotGptHandle(BasePlotHandle):
 
         return False
 
+    def _get_holding_time(self):
+        limit_price = MarketPriceLimitCache.hget(self.symbol)
+        if not limit_price:
+            set_time, limit_low_price, limit_high_price = 0, "", ""
+        else:
+            set_time, limit_low_price, limit_high_price = limit_price.split(":")
+        set_time = int(set_time)
+        if not set_time:
+            hours_diff = None
+        else:
+            hours_diff = round((self.check_time - set_time) / 3600, 1)
+        return {"set_time": set_time, "hours_diff": hours_diff}
+
     async def check(self, limit_count=7):
         await self.initialize_data()
 
@@ -515,7 +528,6 @@ class PlotGptHandle(BasePlotHandle):
 
         📉 卖出信号
             1. 4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
-                1.1. 持仓时间超过7.5小时，报警离场。
 
             2. 1小时KDJ的J值小于80时，判断是否趋势向下。
                 2.1. 1小时KDJ值30到70区间，1小时MACD负值，横盘震荡下行，提示离场。
@@ -536,6 +548,7 @@ class PlotGptHandle(BasePlotHandle):
                     3.2.4. (或)4小时MACD的最近2根柱状图，向下扩大，表示出场信号加强。
                     3.2.5. (或)4小时KDJ的最近2个时间段，K线和J线均下跌，表示出场信号加强。
                     3.2.6. (或)1小时KDJ的附近(当前时间段处于死叉向下的2个时间段内)的高位值(85根据fng指数值动态调整)死叉，表示出场信号加强。
+                    3.2.7. (或)持仓时间超过8小时，增强出场信号。
 
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
@@ -562,20 +575,9 @@ class PlotGptHandle(BasePlotHandle):
 
         # elif MarketPriceLimitCache.hget(self.symbol):
         elif await self.has_limit_price_check((1, )):
-            limit_price = MarketPriceLimitCache.hget(self.symbol)
-            if not limit_price:
-                set_time, limit_low_price, limit_high_price = 0, "", ""
-            else:
-                set_time, limit_low_price, limit_high_price = limit_price.split(":")
-            set_time = int(set_time)
-            if not set_time:
-                hours_diff = None
-            else:
-                hours_diff = round((self.check_time - set_time) / 3600, 1)
-
-            if hours_diff and hours_diff >= 7.5:
-                current_price = self.kline_list_1h[0].close_price
-                direction = f"🚔 持仓时间过长警告: 📉 建议卖出, 持仓时间：{hours_diff} 小时。"
+            holding_time_info = self._get_holding_time()
+            set_time = holding_time_info["set_time"]
+            hours_diff = holding_time_info["hours_diff"]
 
             if self.kdj_list_1h[0].j_val <= Decimal("80"):
 
@@ -838,13 +840,15 @@ class PlotGptHandle(BasePlotHandle):
         if check_fng_signal is not None:
             all_signals_dict["check_fng_signal"] = check_fng_signal
 
+        if hours_diff and hours_diff >= 8:
+            all_signals_dict["holding_time_too_long"] = True
+
         if any(list(all_signals_dict.values())) is not True:
             return
 
         signal_data = self.get_signal_count_data(*all_signals_dict.values())
         if signal_data["true_count"] == 1:
             return
-        #TODO: 是否根据持仓时间，来将减弱变增强
 
         # TODO: 增加历史信号->叠加增强
         from cache import AllCache
@@ -910,6 +914,7 @@ class PlotGptHandle(BasePlotHandle):
         counter = RollingCounter(self.symbol, "BullRun")
         final_count = counter.get_last_count()
 
+        # 趋势已确立的行情：如果MACD已经明确表明趋势方向（如DIF和DEA持续分离），则KDJ可能会在趋势中反复震荡，容易导致误判
         kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3][::-1])
         kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[1:4])
 
