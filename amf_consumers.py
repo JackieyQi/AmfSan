@@ -12,7 +12,7 @@ from typing import Optional, List, Callable, Any, Dict
 from kombu.simple import SimpleQueue
 
 from exts import queue_conn_manager, amf_queue, amf_plot_queue, \
-    amf_msg_queue, amf_kline_queue, amf_tmp1_queue, amf_tmp2_queue
+    amf_msg_queue, amf_kline_queue
 from msgqueue import deal_msg
 
 
@@ -182,22 +182,6 @@ class AmfPlotConsumer(QueueConsumer):
 class AmfMsgConsumer(QueueConsumer):
     def __init__(self):
         super().__init__(amf_msg_queue, "amf_msg_consumer")
-
-    async def process_message(self, message_body):
-        await deal_msg(message_body)
-
-
-class AmfTmp1Consumer(QueueConsumer):
-    def __init__(self):
-        super().__init__(amf_tmp1_queue, "amf_tmp1_consumer")
-
-    async def process_message(self, message_body):
-        await deal_msg(message_body)
-
-
-class AmfTmp2Consumer(QueueConsumer):
-    def __init__(self):
-        super().__init__(amf_tmp2_queue, "amf_tmp2_consumer")
 
     async def process_message(self, message_body):
         await deal_msg(message_body)

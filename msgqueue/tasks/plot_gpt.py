@@ -414,17 +414,17 @@ class PlotGptHandle(BasePlotHandle):
 
     def _check_kdj_death_cross_by_threshold(self, kdj_list, threshold):
         """检查 KDJ当前高位死叉"""
-        current =  (kdj_list[1].k_val >= threshold and
-                    kdj_list[1].d_val >= threshold and
-                    kdj_list[1].j_val >= threshold and
-                    kdj_list[1].k_val > kdj_list[1].d_val and
-                    kdj_list[0].k_val < kdj_list[0].d_val)
+        current = (kdj_list[1].k_val >= threshold and
+                   kdj_list[1].d_val >= threshold and
+                   kdj_list[1].j_val >= threshold and
+                   kdj_list[1].k_val > kdj_list[1].d_val and
+                   kdj_list[0].k_val < kdj_list[0].d_val)
 
         last = (kdj_list[2].k_val >= threshold and
-                   kdj_list[2].d_val >= threshold and
-                   kdj_list[2].j_val >= threshold and
-                   kdj_list[2].k_val > kdj_list[2].d_val and
-                   kdj_list[0].k_val < kdj_list[0].d_val)
+                kdj_list[2].d_val >= threshold and
+                kdj_list[2].j_val >= threshold and
+                kdj_list[2].k_val > kdj_list[2].d_val and
+                kdj_list[0].k_val < kdj_list[0].d_val)
         return current or last
 
     def _check_price_breakout(self, count, current_price, previous_high):
@@ -977,7 +977,9 @@ class PlotGptHandle(BasePlotHandle):
         """
 
         logger.info(f"plot_gpt, bull_run_strategy, "
-                    f"curr_k_4h:{self.kdj_list_4h[0].k_val}, curr_d_4h:{self.kdj_list_4h[0].d_val}")
+                    f"curr_k_4h:{self.kdj_list_4h[0].k_val}, curr_d_4h:{self.kdj_list_4h[0].d_val}"
+                    f"curr_k_1h:{self.kdj_list_1h[0].k_val}, curr_d_1h:{self.kdj_list_1h[0].d_val}, "
+                    f"curr_j_1h:{self.kdj_list_1h[0].j_val}")
 
         await BackTestHandler(self.symbol).add_bid_ticket(
             current_price,

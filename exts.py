@@ -79,9 +79,6 @@ amf_kline_queue = Queue("amf_kline", exchange=amf_exchange, routing_key="amf_kli
 amf_plot_queue = Queue("amf_plot", exchange=amf_exchange, routing_key="amf_plot")
 amf_msg_queue = Queue("amf_msg", exchange=amf_exchange, routing_key="amf_msg")
 
-amf_tmp1_queue = Queue("amf_tmp1_msg", exchange=amf_exchange, routing_key="amf_tmp1_msg")
-amf_tmp2_queue = Queue("amf_tmp2_msg", exchange=amf_exchange, routing_key="amf_tmp2_msg")
-
 
 class QueueLongConnectionManager(object):
     def __init__(self, url):
