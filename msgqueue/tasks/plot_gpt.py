@@ -32,6 +32,85 @@ from .base import BasePlotHandle
 logger = logging.getLogger(__name__)
 
 
+TMP_STAR_TOP10 = ["pnutusdt", "eigenusdt", "wifusdt", "beamxusdt", "dogeusdt", "peopleusdt", "fetusdt", "shibusdt", "opusdt"]
+
+
+class CandlestickStrategy:
+    def __init__(self, kline_list, macd_list):
+        # 时间倒序
+        self.kline_list = kline_list
+        self.macd_list = macd_list
+
+    def get_donchian_channel(self, window_size=6):
+        """
+        突破策略: 唐奇安通道策略（Donchian Channel）:
+            价格突破过去 20 天最高价，买入
+            价格跌破过去 20 天最低价，卖出
+        """
+        high_list, low_list = [], []
+        for i in self.kline_list[1:window_size+1]:
+            high_list.append(i.high_price)
+            low_list.append(i.low_price)
+        return {"max_price": max(high_list[:window_size]), "min_price": min(low_list[:window_size])}
+
+    def get_engulfing_pattern_strategy(self):
+        """
+        形态策略: 吞没形态（Engulfing Pattern）:
+            看涨吞没：当前 K 线阳线，实体部分完全包住前一根阴线 → 买入信号
+            看跌吞没：当前 K 线阴线，实体部分完全包住前一根阳线 → 卖出信号
+        :return:
+        """
+        has_bullish_engulfing, has_bearish_engulfing = False, False
+        if (self.kline_list[0].open_price < self.kline_list[1].close_price) \
+                and (self.kline_list[0].close_price > self.kline_list[1].open_price):
+            has_bullish_engulfing = True
+
+        if (self.kline_list[0].open_price > self.kline_list[1].close_price) \
+                and (self.kline_list[0].close_price < self.kline_list[1].open_price):
+            has_bearish_engulfing = True
+        return {"has_bullish_engulfing": has_bullish_engulfing, "has_bearish_engulfing": has_bearish_engulfing}
+
+    def get_rsi(self):
+        """
+        动量策略:
+            RSI（相对强弱指数）策略:
+                RSI > 70，超买，考虑做空
+                RSI < 30，超卖，考虑做多
+        """
+        pass
+
+    def get_bollinger_bands(self, interval):
+        """
+        布林带策略：
+            买入：价格突破上轨，趋势延续
+            卖出：价格跌破下轨，趋势反转
+        """
+
+        macd_list = self.macd_list[1:27]
+        close_prices = [row.closing_price for row in macd_list]
+        ema_values = [row.ema_26 for row in macd_list]
+
+        bb_upper, bb_lower = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
+        return {"bb_upper": bb_upper, "bb_lower": bb_lower}
+
+    def get_ema_strategy(self):
+        """
+        双均线策略（Golden Cross & Death Cross）:
+            计算 短期均线（如 5 日均线）和 长期均线（如 20 日均线）
+            短期均线上穿长期均线，买入（金叉）
+            短期均线下穿长期均线，卖出（死叉）
+        """
+        has_golden_cross, has_death_cross = False, False
+        if (self.macd_list[0].ema_12 >= self.macd_list[0].ema_26) \
+                and (self.macd_list[1].ema_12 < self.macd_list[1].ema_26):
+            has_golden_cross = True
+
+        if (self.macd_list[0].ema_12 <= self.macd_list[0].ema_26) \
+                and (self.macd_list[1].ema_12 > self.macd_list[1].ema_26):
+            has_death_cross = True
+        return {"has_golden_cross": has_golden_cross, "has_death_cross": has_death_cross}
+
+
 class PlotGptHandle(BasePlotHandle):
     def __init__(self, symbol):
         super().__init__()
@@ -351,30 +430,12 @@ class PlotGptHandle(BasePlotHandle):
         tp_price = (bb_upper_4h_price + depth_ask_price + previous_high_price) / Decimal("3")
         return {"sl_price": str2decimal(sl_price), "tp_price": str2decimal(tp_price)}
 
-    def get_previous_high_price(self, kline_list, window_size=3):
+    def get_previous_high_price(self, kline_list, window_size=6):
         """
-        根据局部极大值算法，计算前高点。
-        :return:
+        Donchian Channel: 唐奇安通道策略
         """
-        high_list = []
-        # for i in range(window_size, len(kline_list) - window_size):
-        #     left = kline_list[i-window_size: i]
-        #     left_prices = [v.high_price for v in left]
-        #
-        #     if not high_list:
-        #         high_list.append(max(left_prices))
-        #
-        #     right = kline_list[i+1: i+window_size+1]
-        #     right_prices = [v.high_price for v in right]
-        #
-        #     if kline_list[i].high_price > max(left_prices) and kline_list[i].high_price > max(right_prices):
-        #         high_list.append(kline_list[i].high_price)
-
-        for i in kline_list:
-            high_list.append(i.high_price)
-
-        # TODO: 优化前高点的对比策略->是否考虑趋势判断
-        return max(high_list)
+        high_list = [i.high_price for i in kline_list]
+        return max(high_list[:window_size])
 
     def _check_kdj_uptrend(self, kdj_list):
         """检查KDJ是否处于递增趋势(基于每一组数据的离散值->离散值的数组)"""
@@ -728,6 +789,9 @@ class PlotGptHandle(BasePlotHandle):
                     f"<br><b>挂单失败，严禁追涨，十追九败</b><br><br><br>" \
                     f"<br>总信号：{all_signals_dict}"
 
+        if self.symbol in TMP_STAR_TOP10:
+            direction += "<br>🌟 🌟 🌟 🌟 🌟 </br>"
+
         set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
                               f"symbol={self.symbol}" \
                               f"&low_price={sl_price}" \
@@ -975,6 +1039,9 @@ class PlotGptHandle(BasePlotHandle):
         <br>建议买入价: {recommend_bid_price}
         <br><br><br>
         """
+
+        if self.symbol in TMP_STAR_TOP10:
+            direction += "<br>🌟 🌟 🌟 🌟 🌟 </br>"
 
         logger.info(f"plot_gpt, bull_run_strategy, "
                     f"curr_k_4h:{self.kdj_list_4h[0].k_val}, curr_d_4h:{self.kdj_list_4h[0].d_val}"

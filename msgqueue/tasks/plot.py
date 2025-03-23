@@ -315,14 +315,14 @@ class PlotPriceHandle(BasePlotHandle):
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
             # 当前限价检查存在时，不再推送消息
-            return EmailMsgHistoryTable.get(
+            return await EmailMsgHistoryTable.aio_get(
                 EmailMsgHistoryTable.msg_md5 == email_msg_md5
             )
         except EmailMsgHistoryTable.DoesNotExist:
             pass
 
         email_content = "".join(self.result.values())
-        EmailMsgHistoryTable.create(msg_md5=email_msg_md5, msg_content=email_content)
+        await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
         await self.send_msg(email_title, email_content)
 
 
