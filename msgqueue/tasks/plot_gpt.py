@@ -23,7 +23,7 @@ from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRIC
 from utils.common import ts2bjfmt, str2decimal
 from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
-    enhanced_analyze_by_groups, RollingCounter, check_near_support
+    enhanced_analyze_list_trend_by_groups, RollingCounter, check_near_support
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
 from business.back_test import BackTestHandler
@@ -79,7 +79,7 @@ class CandlestickStrategy:
         """
         pass
 
-    def get_bollinger_bands(self, interval):
+    def get_bollinger_bands(self):
         """
         布林带策略：
             买入：价格突破上轨，趋势延续
@@ -93,22 +93,156 @@ class CandlestickStrategy:
         bb_upper, bb_lower = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
         return {"bb_upper": bb_upper, "bb_lower": bb_lower}
 
-    def get_ema_strategy(self):
+    def get_ema_strategy(self, is_bullish=False, is_bearish=False):
         """
-        双均线策略（Golden Cross & Death Cross）:
-            计算 短期均线（如 5 日均线）和 长期均线（如 20 日均线）
-            短期均线上穿长期均线，买入（金叉）
-            短期均线下穿长期均线，卖出（死叉）
+        1. 双均线策略（Golden Cross & Death Cross）:
+            *计算 短期均线（如 5 日均线）和 长期均线（如 20 日均线）
+                短期均线上穿长期均线，买入（金叉）
+                短期均线下穿长期均线，卖出（死叉）
+        2. 均线上升趋势策略:
+            * 短周期均线递增（趋势确认）
+            * 均线多头排列（短期均线在上，长期均线在下）
+            * 当前价格位于均线区间内（防止价格过高）
+        3. 均线上升趋势策略:
+            * 最低价跌破短周期均线（趋势转空）
         """
-        has_golden_cross, has_death_cross = False, False
-        if (self.macd_list[0].ema_12 >= self.macd_list[0].ema_26) \
-                and (self.macd_list[1].ema_12 < self.macd_list[1].ema_26):
-            has_golden_cross = True
+        strategies = {}
+        curr_price = self.macd_list[0].closing_price
 
-        if (self.macd_list[0].ema_12 <= self.macd_list[0].ema_26) \
-                and (self.macd_list[1].ema_12 > self.macd_list[1].ema_26):
-            has_death_cross = True
-        return {"has_golden_cross": has_golden_cross, "has_death_cross": has_death_cross}
+        if is_bullish is True:
+            if (self.macd_list[0].ema_12 >= self.macd_list[0].ema_26) \
+                    and (self.macd_list[1].ema_12 < self.macd_list[1].ema_26):
+                strategies["has_ema_golden_cross"] = True
+
+            if self.macd_list[0].ema_12 >= self.macd_list[1].ema_12:
+                strategies["has_ema_uptrend"] = True
+            if (self.macd_list[0].ema_12 >= self.macd_list[0].ema_26) \
+                    and (self.macd_list[1].ema_12 >= self.macd_list[0].ema_26):
+                strategies["has_ema_stack"] = True
+            if self.macd_list[0].ema_12 >= curr_price > self.macd_list[0].ema_26:
+                strategies["has_nice_price"] = True
+
+            return strategies
+
+        if is_bearish is True:
+            if (self.macd_list[0].ema_12 <= self.macd_list[0].ema_26) \
+                    and (self.macd_list[1].ema_12 > self.macd_list[1].ema_26):
+                strategies["has_death_cross"] = True
+
+            if self.kline_list[0].open_ts == self.macd_list[0].opening_ts:
+                if self.kline_list[0].low_price <= min(self.macd_list[0].ema_12, self.macd_list[0].ema_26):
+                    strategies["has_break_price"] = True
+
+            return strategies
+        return strategies
+
+    def get_vol_strategy(self, window_size, rate_threshold=Decimal("1.3")):
+        """
+        交易量策略:
+            1小时成交量 **高于过去10根均值**，资金流入，增强信号。
+            4小时成交量 **高于过去3根均值**，资金持续流入，增强信号。
+        :return:
+        """
+        strategies = {}
+        curr_volume = self.kline_list[0].volume
+
+        volume_list = [i.volume for i in self.kline_list[1:window_size+1]]
+        last_mean_volume = sum(volume_list) / Decimal(len(volume_list))
+
+        if curr_volume > last_mean_volume:
+            strategies["has_spike_volume"] = True
+
+        if curr_volume > last_mean_volume * rate_threshold:
+            strategies["has_enhance_spike_volume"] = True
+        return strategies
+
+
+class MacdStrategy:
+    def __init__(self, macd_list):
+        # 时间倒序
+        self.macd_lit = macd_list
+
+    def get_golden_cross(self):
+        """
+        macd滞后性强，短线交易中不考虑死叉
+        """
+        return self.macd_lit[0].macd >= 0 and self.macd_lit[1].macd < 0
+
+    def get_bullish_stack(self):
+        """
+        多头排列
+        """
+        return all(i.macd >= 0 for i in self.macd_lit)
+
+    def get_bearish_stack(self):
+        """
+        空头排列
+        """
+        return all(i.macd < 0 for i in self.macd_lit)
+
+    def get_downtrend(self):
+        """
+        更大周期趋势->增强短线交易的离场信号
+        """
+        return self.macd_lit[0].macd <= self.macd_lit[1].macd
+
+    def get_enhance_trend_strategy(self, group_size=7):
+        """
+        增强版趋势分析，结合历史趋势进行相对判断
+        """
+        trend_info = enhanced_analyze_list_trend_by_groups(
+            [i.macd for i in self.macd_lit[1:19]][::-1], group_size=group_size)
+        return trend_info
+
+    def get_trend_strategy(self):
+        """
+        趋势分析，基于最小二乘多项式拟合，使用线性回归计算趋势
+        """
+        trend_str, _ = analyze_list_trend([i.macd for i in self.macd_lit[:7]][::-1])
+        return {"trend": trend_str, }
+
+
+class KdjStrategy:
+    def __init__(self, kdj_list):
+        # 时间倒序
+        self.kdj_list = kdj_list
+
+    def get_uptrend(self, window_size):
+        """检查KDJ是否处于递增趋势(基于每一组数据的离散值->离散值的数组)"""
+        kdj_list = self.kdj_list[:window_size][::-1]
+
+        for i in range(1, len(kdj_list)):
+            curr_kdj = kdj_list[i]
+            last_kdj = kdj_list[i-1]
+
+            curr_cv = calculate_cv([curr_kdj.k_val, curr_kdj.d_val, curr_kdj.j_val], num=8)
+            last_cv = calculate_cv([last_kdj.k_val, last_kdj.d_val, last_kdj.j_val], num=8)
+            if curr_cv <= last_cv:
+                return False
+        return True
+
+    def get_history_golden_cross_count(self, window_size, threshold=0):
+        """检查 KDJ历史金叉数量"""
+        crossovers_data = analyze_crossovers(self.kdj_list[1:window_size])
+        return crossovers_data["golden_cross"] > threshold
+
+    def get_golden_cross(self):
+        """检查 KDJ当前金叉"""
+        return (self.kdj_list[1].k_val < self.kdj_list[1].d_val and
+                self.kdj_list[0].k_val > self.kdj_list[0].d_val)
+
+    def get_death_cross(self):
+        """检查 KDJ当前死叉"""
+        return (self.kdj_list[1].k_val > self.kdj_list[1].d_val and
+                self.kdj_list[0].k_val < self.kdj_list[0].d_val)
+
+    def get_golden_cross_by_threshold(self, threshold):
+        """检查 KDJ当前低位金叉"""
+        return (self.kdj_list[1].k_val <= threshold and
+                self.kdj_list[1].d_val <= threshold and
+                self.kdj_list[1].j_val <= threshold and
+                self.kdj_list[1].k_val < self.kdj_list[1].d_val and
+                self.kdj_list[0].k_val > self.kdj_list[0].d_val)
 
 
 class PlotGptHandle(BasePlotHandle):
@@ -797,7 +931,7 @@ class PlotGptHandle(BasePlotHandle):
                               f"&low_price={sl_price}" \
                               f"&high_price={tp_price}"
 
-        logger.info(f"plot_gpt, _get_buy_direction, current_price:{current_price}")
+        logger.info(f"plot_gpt, _get_buy_direction, symbol:{self.symbol}, current_price:{current_price}")
 
         return {"direction": direction, "set_limit_price_url": set_limit_price_url,
                 "current_price": current_price, "recommend_bid_price": recommend_bid_price}
@@ -817,7 +951,7 @@ class PlotGptHandle(BasePlotHandle):
             direction = f"🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, 横盘震荡向下。"
 
             logger.info(f"plot_gpt, _get_sell_direction_sideways_or_downward, "
-                        f"sideways and downward, set_time:{set_time}")
+                        f"sideways and downward, symbol:{self.symbol}, set_time:{set_time}")
 
         if not direction:
 
@@ -847,7 +981,7 @@ class PlotGptHandle(BasePlotHandle):
                         f"<br>建议卖出价：{recommend_ask_price}" \
                         f"<br>新增优化：结合15分钟MACD是否金叉->判断出场"
 
-            logger.info(f"plot_gpt, _get_sell_direction_sideways_or_downward, rising blocked, "
+            logger.info(f"plot_gpt, _get_sell_direction_sideways_or_downward, rising blocked, symbol:{self.symbol},"
                         f"curr 1h j_val:{self.kdj_list_1h[0].j_val}, "
                         f"curr 1h close_price:{self.kline_list_1h[0].close_price},"
                         f"curr 4h j_val:{self.kdj_list_4h[0].j_val}")
@@ -867,7 +1001,7 @@ class PlotGptHandle(BasePlotHandle):
         if self._check_kdj_golden_cross(self.kdj_list_4h):
             return
 
-        current_trend_macd_1h = enhanced_analyze_by_groups([i.macd for i in self.macd_list_1h[1:19]][::-1])
+        current_trend_macd_1h = enhanced_analyze_list_trend_by_groups([i.macd for i in self.macd_list_1h[1:19]][::-1])
         check_trend_stalled_signal = current_trend_macd_1h["trend"] not in ["parabolic_move", ]
         all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
 
@@ -939,7 +1073,7 @@ class PlotGptHandle(BasePlotHandle):
                     f"<br>总信号：{all_signals_dict}" \
                     f"<br>持仓时间：{hours_diff} 小时"
 
-        logger.info(f"plot_gpt, _get_sell_direction_upward, sell upward,"
+        logger.info(f"plot_gpt, _get_sell_direction_upward, sell upward, symbol:{self.symbol}"
                     f"curr 1h j_val:{self.kdj_list_1h[0].j_val}, "
                     f"curr 1h close_price:{self.kline_list_1h[0].close_price},"
                     f"curr 4h j_val:{self.kdj_list_4h[0].j_val}")
@@ -961,8 +1095,8 @@ class PlotGptHandle(BasePlotHandle):
 
             增加辅助信号：日线kdj金叉位置
 
-            若不触发当前报警：
-            则判断：24小时内有历史报警+当前价格大于历史20根线的最高价，触发报警
+            若不触发当前报警 且未触发信号背离：
+                则判断：24小时内有历史报警+当前价格大于历史20根线的最高价，触发报警
         """
         if await self.has_limit_price_check((0, 1, 3)):
             return
@@ -982,17 +1116,20 @@ class PlotGptHandle(BasePlotHandle):
         kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3][::-1])
         kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[1:4])
 
-        # 4小时MACD(不包含当前线)趋近死叉). 设置小窗口值为3, 拟合计算相对趋势. 斜率绝对值<0.001时, 判断趋于0.
-        # TODO: 斜率值需要回测调整。斜率绝对值<0.001时, 判断趋于0
-        current_trend_macd_4h = enhanced_analyze_by_groups(
-            [i.macd for i in self.macd_list_4h[1:19]][::-1], group_size=3)
-
-        if current_trend_macd_4h["trend"] in ["downward_spiral", "modest_decline"] \
-                and current_trend_macd_4h["slope"] < Decimal("0.001"):
-            # 触发信号背离
-            kdj_4h_cross_signal = False
-
         if (kdj_4h_up_signal or kdj_4h_cross_signal) is False:
+            # 4小时MACD(不包含当前线)趋近死叉). 设置小窗口值为3, 拟合计算相对趋势. 斜率绝对值<0.001时, 判断趋于0.
+            # TODO: 斜率值需要回测调整。斜率绝对值<0.001时, 判断趋于0
+            current_trend_macd_4h = enhanced_analyze_list_trend_by_groups(
+                [i.macd for i in self.macd_list_4h[1:19]][::-1], group_size=3)
+
+            if current_trend_macd_4h["trend"] in ["downward_spiral", "modest_decline"] \
+                    and current_trend_macd_4h["slope"] < Decimal("0.001"):
+                # 触发信号背离
+                logger.info(f"plot_gpt, bull_run_strategy, symbol:{self.symbol}, "
+                            f"signals diff, kdj_4h_up_signal:{kdj_4h_up_signal}, "
+                            f"kdj_4h_cross_signal:{kdj_4h_cross_signal}, trend_info:{current_trend_macd_4h}")
+                return
+
             if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
                 direction = f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
 
@@ -1043,8 +1180,8 @@ class PlotGptHandle(BasePlotHandle):
         if self.symbol in TMP_STAR_TOP10:
             direction += "<br>🌟 🌟 🌟 🌟 🌟 </br>"
 
-        logger.info(f"plot_gpt, bull_run_strategy, "
-                    f"curr_k_4h:{self.kdj_list_4h[0].k_val}, curr_d_4h:{self.kdj_list_4h[0].d_val}"
+        logger.info(f"plot_gpt, bull_run_strategy, symbol:{self.symbol}, "
+                    f"curr_k_4h:{self.kdj_list_4h[0].k_val}, curr_d_4h:{self.kdj_list_4h[0].d_val}, "
                     f"curr_k_1h:{self.kdj_list_1h[0].k_val}, curr_d_1h:{self.kdj_list_1h[0].d_val}, "
                     f"curr_j_1h:{self.kdj_list_1h[0].j_val}")
 

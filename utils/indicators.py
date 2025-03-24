@@ -152,7 +152,7 @@ def enhanced_analyze_list_trend(decimal_array, previous_trends=None, num=8):
     return trend_stats
 
 
-def enhanced_analyze_by_groups(data, group_size=7):
+def enhanced_analyze_list_trend_by_groups(data, group_size=7):
     scale_factor = leading_zeros(data[0])
     if scale_factor:
         for i, val in enumerate(data):
