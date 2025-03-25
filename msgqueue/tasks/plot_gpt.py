@@ -54,20 +54,23 @@ class CandlestickStrategy:
             low_list.append(i.low_price)
         return {"max_price": max(high_list[:window_size]), "min_price": min(low_list[:window_size])}
 
-    def get_engulfing_pattern_strategy(self):
+    def get_engulfing_pattern_strategy(self, window_index=0):
         """
         形态策略: 吞没形态（Engulfing Pattern）:
             看涨吞没：当前 K 线阳线，实体部分完全包住前一根阴线 → 买入信号
             看跌吞没：当前 K 线阴线，实体部分完全包住前一根阳线 → 卖出信号
         :return:
         """
+        curr_index = window_index
+        last_index = window_index + 1
         has_bullish_engulfing, has_bearish_engulfing = False, False
-        if (self.kline_list[0].open_price < self.kline_list[1].close_price) \
-                and (self.kline_list[0].close_price > self.kline_list[1].open_price):
+
+        if (self.kline_list[curr_index].open_price < self.kline_list[last_index].close_price) \
+                and (self.kline_list[curr_index].close_price > self.kline_list[last_index].open_price):
             has_bullish_engulfing = True
 
-        if (self.kline_list[0].open_price > self.kline_list[1].close_price) \
-                and (self.kline_list[0].close_price < self.kline_list[1].open_price):
+        if (self.kline_list[curr_index].open_price >= self.kline_list[last_index].close_price) \
+                and (self.kline_list[curr_index].close_price < self.kline_list[last_index].open_price):
             has_bearish_engulfing = True
         return {"has_bullish_engulfing": has_bullish_engulfing, "has_bearish_engulfing": has_bearish_engulfing}
 
@@ -163,7 +166,7 @@ class MacdStrategy:
         # 时间倒序
         self.macd_lit = macd_list
 
-    def get_golden_cross(self):
+    def get_curr_golden_cross(self):
         """
         macd滞后性强，短线交易中不考虑死叉
         """
@@ -227,23 +230,38 @@ class KdjStrategy:
         crossovers_data = analyze_crossovers(self.kdj_list[1:window_size])
         return crossovers_data["golden_cross"] > threshold
 
-    def get_golden_cross(self):
+    def get_curr_golden_cross(self):
         """检查 KDJ当前金叉"""
         return (self.kdj_list[1].k_val < self.kdj_list[1].d_val and
                 self.kdj_list[0].k_val > self.kdj_list[0].d_val)
 
-    def get_death_cross(self):
+    def get_curr_death_cross(self):
         """检查 KDJ当前死叉"""
         return (self.kdj_list[1].k_val > self.kdj_list[1].d_val and
                 self.kdj_list[0].k_val < self.kdj_list[0].d_val)
 
-    def get_golden_cross_by_threshold(self, threshold):
+    def get_curr_golden_cross_by_threshold(self, threshold):
         """检查 KDJ当前低位金叉"""
         return (self.kdj_list[1].k_val <= threshold and
                 self.kdj_list[1].d_val <= threshold and
                 self.kdj_list[1].j_val <= threshold and
                 self.kdj_list[1].k_val < self.kdj_list[1].d_val and
                 self.kdj_list[0].k_val > self.kdj_list[0].d_val)
+
+    def get_curr_death_cross_by_threshold(self, threshold):
+        """检查 KDJ当前(或者最近)高位死叉"""
+        current = (self.kdj_list[1].k_val >= threshold and
+                   self.kdj_list[1].d_val >= threshold and
+                   self.kdj_list[1].j_val >= threshold and
+                   self.kdj_list[1].k_val > self.kdj_list[1].d_val and
+                   self.kdj_list[0].k_val < self.kdj_list[0].d_val)
+
+        last = (self.kdj_list[2].k_val >= threshold and
+                self.kdj_list[2].d_val >= threshold and
+                self.kdj_list[2].j_val >= threshold and
+                self.kdj_list[2].k_val > self.kdj_list[2].d_val and
+                self.kdj_list[0].k_val < self.kdj_list[0].d_val)
+        return current or last
 
 
 class PlotGptHandle(BasePlotHandle):
@@ -766,7 +784,7 @@ class PlotGptHandle(BasePlotHandle):
         if not await self.has_limit_price_check((0, 1, 3)):
             if self._check_trade_interval_time() is False:
                 return
-            
+
             direction_info = self._get_buy_direction()
             if not direction_info:
                 return
@@ -1099,10 +1117,14 @@ class PlotGptHandle(BasePlotHandle):
         📈 买入信号
             4小时MACD上行：DIF上穿DEA；或者 日线MACD上行：DIF上穿DEA（多头排列或者底背离）。
 
-            1. 日线KDJ刚形成死叉，不再考虑买入。
-            2. 1小时KDJ不是80高位死叉位置，继续向下判断。
-            3. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前线)有金叉 <--信号背离-- 4小时MACD(不包含当前线)趋近死叉)
-            4. 4小时k线：最近3条的最高价逐步递增(增长率大于阀值)，初步判断趋势大涨。
+            1. 从更大周期判断对当前周期段的影响：
+                    1.1. 日线KDJ刚形成死叉，不再向下判断。
+            2. 从更小周期判断对当前周期段的影响：
+                    2.1. 1小时KDJ处于80高位死叉位置，不再向下判断。
+
+            5. 4小时K线前2根线，处于吞没形态，不再向下判断。
+            7. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前线)有金叉 <--信号背离-- 4小时MACD(不包含当前线)趋近死叉)
+            9. 4小时k线：最近3条的最高价逐步递增(增长率大于阀值)，初步判断趋势大涨。
 
             新增待回测验证：4. 4小时K线连续4根线KDJ的J值超100，不再考虑。
 
@@ -1115,10 +1137,17 @@ class PlotGptHandle(BasePlotHandle):
             return
         if await self.has_limit_price_check((0, 1, 3)):
             return
-        if self._check_kdj_death_cross(self.kdj_list_1d):
+
+        kdj_1d_strategies = KdjStrategy(self.kdj_list_1d)
+        if kdj_1d_strategies.get_curr_death_cross():
             return
 
-        if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, Decimal("80")):
+        kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
+        if kdj_1h_strategies.get_curr_death_cross_by_threshold(Decimal("80")):
+            return
+
+        kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
+        if kline_4h_strategies.get_engulfing_pattern_strategy(window_index=1)["has_bearish_engulfing"] is True:
             return
 
         current_price = self.macd_list_1h[0].closing_price
@@ -1131,19 +1160,23 @@ class PlotGptHandle(BasePlotHandle):
         kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3][::-1])
         kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[1:4])
 
-        if (kdj_4h_up_signal or kdj_4h_cross_signal) is False:
-            # 4小时MACD(不包含当前线)趋近死叉). 设置小窗口值为3, 拟合计算相对趋势. 斜率绝对值<0.001时, 判断趋于0.
-            # TODO: 斜率值需要回测调整。斜率绝对值<0.001时, 判断趋于0
-            current_trend_macd_4h = enhanced_analyze_list_trend_by_groups(
-                [i.macd for i in self.macd_list_4h[1:19]][::-1], group_size=3)
+        # 4小时MACD(不包含当前线)趋近死叉). 设置小窗口值为3, 拟合计算相对趋势. 斜率绝对值<0.001时, 判断趋于0.
+        # TODO: 斜率值需要回测调整。斜率绝对值<0.001时, 判断趋于0
+        current_trend_macd_4h = enhanced_analyze_list_trend_by_groups(
+            [i.macd for i in self.macd_list_4h[1:19]][::-1], group_size=3)
 
-            if current_trend_macd_4h["trend"] in ["downward_spiral", "modest_decline"] \
-                    and current_trend_macd_4h["slope"] < Decimal("0.001"):
-                # 触发信号背离
-                logger.info(f"plot_gpt, bull_run_strategy, symbol:{self.symbol}, "
-                            f"signals diff, kdj_4h_up_signal:{kdj_4h_up_signal}, "
-                            f"kdj_4h_cross_signal:{kdj_4h_cross_signal}, trend_info:{current_trend_macd_4h}")
-                return
+        if current_trend_macd_4h["trend"] in ["downward_spiral", "modest_decline"] \
+                and current_trend_macd_4h["slope"] < Decimal("0.001"):
+            # 触发信号背离
+            logger.info(f"plot_gpt, bull_run_strategy, symbol:{self.symbol}, "
+                        f"signals diff, kdj_4h_up_signal:{kdj_4h_up_signal}, "
+                        f"kdj_4h_cross_signal:{kdj_4h_cross_signal}, trend_info:{current_trend_macd_4h}")
+            # return
+            kdj_4h_up_signal = False
+
+        # TODO: 策略需要回测优化
+        if (kdj_4h_up_signal or kdj_4h_cross_signal) is False:
+
 
             if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
                 direction = f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
