@@ -221,7 +221,11 @@ class KdjStrategy:
 
             curr_cv = calculate_cv([curr_kdj.k_val, curr_kdj.d_val, curr_kdj.j_val], num=8)
             last_cv = calculate_cv([last_kdj.k_val, last_kdj.d_val, last_kdj.j_val], num=8)
-            if curr_cv <= last_cv:
+            if (last_kdj.k_val >= last_kdj.d_val) and (curr_kdj.k_val >= curr_kdj.d_val) and (curr_cv <= last_cv):
+                return False
+            elif (last_kdj.k_val <= last_kdj.d_val) and (curr_kdj.k_val <= curr_kdj.d_val) and (curr_cv > last_cv):
+                return False
+            elif (last_kdj.k_val >= last_kdj.d_val) and (curr_kdj.k_val <= curr_kdj.d_val):
                 return False
         return True
 
@@ -1123,7 +1127,7 @@ class PlotGptHandle(BasePlotHandle):
                     2.1. 1小时KDJ处于80高位死叉位置，不再向下判断。
 
             5. 4小时K线前2根线，处于吞没形态，不再向下判断。
-            7. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前线)有金叉 <--信号背离-- 4小时MACD(不包含当前线)趋近死叉)
+            7. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前线)有金叉 <--信号背离-- 4小时MACD(不包含当前线)趋近死叉粘合)
             9. 4小时k线：最近3条的最高价逐步递增(增长率大于阀值)，初步判断趋势大涨。
 
             新增待回测验证：4. 4小时K线连续4根线KDJ的J值超100，不再考虑。
@@ -1150,15 +1154,15 @@ class PlotGptHandle(BasePlotHandle):
         if kline_4h_strategies.get_engulfing_pattern_strategy(window_index=1)["has_bearish_engulfing"] is True:
             return
 
+        kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
+        kdj_4h_up_signal = kdj_4h_strategies.get_uptrend(3)
+        kdj_4h_cross_signal = kdj_4h_strategies.get_history_golden_cross_count(4)
+
         current_price = self.macd_list_1h[0].closing_price
         previous_high_price_1h = self.get_previous_high_price(self.kline_list_1h[1:21])
 
         counter = RollingCounter(self.symbol, "BullRun")
         final_count = counter.get_last_count()
-
-        # 趋势已确立的行情：如果MACD已经明确表明趋势方向（如DIF和DEA持续分离），则KDJ可能会在趋势中反复震荡，容易导致误判
-        kdj_4h_up_signal = self._check_kdj_uptrend(self.kdj_list_4h[:3][::-1])
-        kdj_4h_cross_signal = self._check_kdj_golden_cross_count(self.kdj_list_4h[1:4])
 
         # 4小时MACD(不包含当前线)趋近死叉). 设置小窗口值为3, 拟合计算相对趋势. 斜率绝对值<0.001时, 判断趋于0.
         # TODO: 斜率值需要回测调整。斜率绝对值<0.001时, 判断趋于0
@@ -1166,17 +1170,18 @@ class PlotGptHandle(BasePlotHandle):
             [i.macd for i in self.macd_list_4h[1:19]][::-1], group_size=3)
 
         if current_trend_macd_4h["trend"] in ["downward_spiral", "modest_decline"] \
-                and current_trend_macd_4h["slope"] < Decimal("0.001"):
+                and abs(current_trend_macd_4h["slope"]) < Decimal("0.001"):
             # 触发信号背离
             logger.info(f"plot_gpt, bull_run_strategy, symbol:{self.symbol}, "
                         f"signals diff, kdj_4h_up_signal:{kdj_4h_up_signal}, "
                         f"kdj_4h_cross_signal:{kdj_4h_cross_signal}, trend_info:{current_trend_macd_4h}")
-            # return
+
+            # 趋势已确立的行情：如果MACD已经明确表明趋势方向（如DIF和DEA持续分离），则KDJ可能会在趋势中反复震荡，容易导致误判
             kdj_4h_up_signal = False
+            kdj_4h_cross_signal = False
 
         # TODO: 策略需要回测优化
         if (kdj_4h_up_signal or kdj_4h_cross_signal) is False:
-
 
             if self._check_price_breakout(final_count, current_price, previous_high_price_1h):
                 direction = f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
@@ -1202,9 +1207,6 @@ class PlotGptHandle(BasePlotHandle):
                 direction = ""
                 if all([i.j_val >= Decimal("100") for i in self.kdj_list_4h[:4]]):
                     return
-
-        # TODO: 是否只判断价格破新高
-        # 其他的普通报警太多了
 
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
             direction += "信号增强：日线KDJ金叉"
