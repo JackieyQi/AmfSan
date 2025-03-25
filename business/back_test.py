@@ -7,12 +7,18 @@ from exts import async_database
 from models.order import PlotBackTestTable
 from cache.order import MarketPriceLimitCache
 from utils.common import str2decimal
+from cache import AllCache
 from .market import MarketPriceHandler
 
 
 class BackTestHandler(object):
     def __init__(self, symbol=None):
         self.symbol = symbol
+
+    def set_last_trade_time(self, ts):
+        redis_client = AllCache.get_client()
+        key = "lastTradeTs"
+        redis_client.set(key, ts)
 
     async def add_bid_ticket(self, curr_price, bid_price, bid_ts, bid_plot_type, bid_plot_msg):
         async with async_database.aio_atomic():
@@ -98,6 +104,8 @@ class BackTestHandler(object):
                         _d.status = 4
                         await _d.aio_save()
 
+                        self.set_last_trade_time(curr_ts)
+
                     # TODO: 挂卖单->延迟挂单时间
                     elif _d.ask_ts < (curr_ts - 7200):
                         _d.sell_price = curr_price
@@ -106,4 +114,7 @@ class BackTestHandler(object):
                         _d.profit_percent = str2decimal(((curr_price - _d.buy_price) / _d.buy_price)*Decimal("100"), 1)
                         _d.status = 5
                         await _d.aio_save()
+
+                        self.set_last_trade_time(curr_ts)
+
 

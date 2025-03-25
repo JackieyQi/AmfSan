@@ -15,6 +15,7 @@ import json
 from decimal import Decimal
 
 from exts import async_database
+from cache import AllCache
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
 from models.market import KlineTable
 from models.order import MacdTable, KdjTable, PlotBackTestTable
@@ -680,6 +681,16 @@ class PlotGptHandle(BasePlotHandle):
             hours_diff = round((self.check_time - set_time) / 3600, 1)
         return {"set_time": set_time, "hours_diff": hours_diff}
 
+    def _check_trade_interval_time(self):
+        redis_client = AllCache.get_client()
+        last_ts = redis_client.get("lastTradeTs")
+        if not last_ts:
+            return True
+        if self.check_time - int(last_ts) > 3600:
+            return True
+        else:
+            return False
+
     async def check(self, limit_count=7):
         await self.initialize_data()
 
@@ -753,6 +764,9 @@ class PlotGptHandle(BasePlotHandle):
 
         # TODO: 全仓改分仓
         if not await self.has_limit_price_check((0, 1, 3)):
+            if self._check_trade_interval_time() is False:
+                return
+            
             direction_info = self._get_buy_direction()
             if not direction_info:
                 return
@@ -1049,7 +1063,6 @@ class PlotGptHandle(BasePlotHandle):
             return
 
         # TODO: 增加历史信号->叠加增强
-        from cache import AllCache
         redis_client = AllCache.get_client()
         key = f"shortSignals:{self.symbol}"
         history_signals_str = redis_client.get(key)
@@ -1098,6 +1111,8 @@ class PlotGptHandle(BasePlotHandle):
             若不触发当前报警 且未触发信号背离：
                 则判断：24小时内有历史报警+当前价格大于历史20根线的最高价，触发报警
         """
+        if self._check_trade_interval_time() is False:
+            return
         if await self.has_limit_price_check((0, 1, 3)):
             return
         if self._check_kdj_death_cross(self.kdj_list_1d):
