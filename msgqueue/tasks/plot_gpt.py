@@ -824,6 +824,17 @@ class PlotGptHandle(BasePlotHandle):
 
         # elif MarketPriceLimitCache.hget(self.symbol):
         elif await self.has_limit_price_check((1, )):
+            if self.macd_list_1h[1].macd < 0 and self.macd_list_1h[0].macd >= 0:
+                return
+            if self.macd_list_4h[1].macd < 0 and self.macd_list_4h[0].macd >= 0:
+                return
+            if self._check_kdj_golden_cross(self.kdj_list_4h):
+                return
+
+            if self.check_time >= (self.macd_list_1h[0].opening_ts + PLOT_INTERVAL_CONFIG["1h"]["interval_sec"]):
+                # 当前检查时间>=最新时间段的收盘时间，表明最新的MACD数据还未写入，暂停判断.
+                return
+
             holding_time_info = self._get_holding_time()
             set_time = holding_time_info["set_time"]
             hours_diff = holding_time_info["hours_diff"]
@@ -1049,17 +1060,6 @@ class PlotGptHandle(BasePlotHandle):
 
     def _get_sell_direction_upward(self, hours_diff):
         all_signals_dict = {}
-
-        if self.macd_list_1h[1].macd < 0 and self.macd_list_1h[0].macd >= 0:
-            return
-        if self.macd_list_4h[1].macd < 0 and self.macd_list_4h[0].macd >= 0:
-            return
-        if self._check_kdj_golden_cross(self.kdj_list_4h):
-            return
-
-        if self.check_time <= (self.macd_list_1h[0].opening_ts + PLOT_INTERVAL_CONFIG["1h"]["interval_sec"]):
-            # 最新的MACD数据还未写入，暂停判断.
-            return
 
         current_trend_macd_1h = enhanced_analyze_list_trend_by_groups([i.macd for i in self.macd_list_1h[1:19]][::-1])
         check_trend_stalled_signal = current_trend_macd_1h["trend"] not in ["parabolic_move", ]
