@@ -229,6 +229,24 @@ class KdjStrategy:
                 return False
         return True
 
+    def get_downtrend(self, window_size):
+        """检查KDJ是否处于递减趋势(基于每一组数据的离散值->离散值的数组)"""
+        kdj_list = self.kdj_list[:window_size][::-1]
+
+        for i in range(1, len(kdj_list)):
+            curr_kdj = kdj_list[i]
+            last_kdj = kdj_list[i-1]
+
+            curr_cv = calculate_cv([curr_kdj.k_val, curr_kdj.d_val, curr_kdj.j_val], num=8)
+            last_cv = calculate_cv([last_kdj.k_val, last_kdj.d_val, last_kdj.j_val], num=8)
+            if (last_kdj.k_val >= last_kdj.d_val) and (curr_kdj.k_val >= curr_kdj.d_val) and (curr_cv > last_cv):
+                return False
+            elif (last_kdj.k_val <= last_kdj.d_val) and (curr_kdj.k_val <= curr_kdj.d_val) and (curr_cv <= last_cv):
+                return False
+            elif (last_kdj.k_val <= last_kdj.d_val) and (curr_kdj.k_val >= curr_kdj.d_val):
+                return False
+        return True
+
     def get_history_golden_cross_count(self, window_size, threshold=0):
         """检查 KDJ历史金叉数量"""
         crossovers_data = analyze_crossovers(self.kdj_list[1:window_size])
@@ -761,9 +779,9 @@ class PlotGptHandle(BasePlotHandle):
                 2.1. 1小时KDJ值30到70区间，1小时MACD负值，横盘震荡下行，提示离场。
 
                 2.2. 没有触发(2.1)条件时。
-                2.2.1. 1小时的最新3条线的J值均小于50，表示市场没有上涨动能，考虑挂买入价卖出。
+                2.2.1. 1小时的最新3条线的J值存在大于50且不递减，表示市场仍有上涨动能，不考虑挂买入价卖出。
                 2.2.2. 1小时的最新2根线的J值向上，表示可能存在反弹，不考虑挂单卖出。
-                2.2.3. 1小时的K线的最新2根线，价格区间没有上涨，表示下跌信号增强，考虑挂单卖出。
+                2.2.3. 1小时的K线的最新2根线，价格区间上涨，表示下跌信号不强，不考虑挂单卖出。
                 2.2.4. 4小时的KDJ的J值连续3根持续向上，表情中行情仍上涨，不考虑挂单卖出。
 
             3. 1小时KDJ的J值在80附近，表示超买出现，开始考虑出场。
@@ -991,7 +1009,9 @@ class PlotGptHandle(BasePlotHandle):
 
         if not direction:
 
-            if any(_kdj.j_val >= Decimal("50") for _kdj in self.kdj_list_1h[:3]):
+            kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
+            if any(_kdj.j_val >= Decimal("50") for _kdj in self.kdj_list_1h[:3]) \
+                    and not kdj_1h_strategies.get_downtrend(3):
                 return
 
             if self.kdj_list_1h[0].j_val > self.kdj_list_1h[1].j_val:
