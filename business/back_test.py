@@ -90,7 +90,7 @@ class BackTestHandler(object):
                         market_price_handler.set_limit_price(
                             _d.symbol, curr_price * Decimal("0.95"), curr_price * Decimal("1.05"), curr_ts)
 
-                    elif _d.bid_ts < (curr_ts - 3888):
+                    elif _d.bid_ts < (curr_ts - 5400):
                         _d.buy_ts = curr_ts
                         _d.status = 2
                         await _d.aio_save()

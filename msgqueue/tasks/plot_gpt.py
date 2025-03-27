@@ -97,7 +97,7 @@ class CandlestickStrategy:
         bb_upper, bb_lower = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
         return {"bb_upper": bb_upper, "bb_lower": bb_lower}
 
-    def get_ema_strategy(self, is_bullish=False, is_bearish=False):
+    def get_ema_strategy(self, is_bid=False, is_ask=False):
         """
         1. 双均线策略（Golden Cross & Death Cross）:
             *计算 短期均线（如 5 日均线）和 长期均线（如 20 日均线）
@@ -113,7 +113,7 @@ class CandlestickStrategy:
         strategies = {}
         curr_price = self.macd_list[0].closing_price
 
-        if is_bullish is True:
+        if is_bid is True:
             if (self.macd_list[0].ema_12 >= self.macd_list[0].ema_26) \
                     and (self.macd_list[1].ema_12 < self.macd_list[1].ema_26):
                 strategies["has_ema_golden_cross"] = True
@@ -121,14 +121,14 @@ class CandlestickStrategy:
             if self.macd_list[0].ema_12 >= self.macd_list[1].ema_12:
                 strategies["has_ema_uptrend"] = True
             if (self.macd_list[0].ema_12 >= self.macd_list[0].ema_26) \
-                    and (self.macd_list[1].ema_12 >= self.macd_list[0].ema_26):
+                    and (self.macd_list[1].ema_12 >= self.macd_list[1].ema_26):
                 strategies["has_ema_stack"] = True
             if self.macd_list[0].ema_12 >= curr_price > self.macd_list[0].ema_26:
                 strategies["has_nice_price"] = True
 
             return strategies
 
-        if is_bearish is True:
+        if is_ask is True:
             if (self.macd_list[0].ema_12 <= self.macd_list[0].ema_26) \
                     and (self.macd_list[1].ema_12 > self.macd_list[1].ema_26):
                 strategies["has_death_cross"] = True
@@ -1037,6 +1037,10 @@ class PlotGptHandle(BasePlotHandle):
         if self._check_kdj_golden_cross(self.kdj_list_4h):
             return
 
+        if self.check_time <= (self.macd_list_1h[0].opening_ts + PLOT_INTERVAL_CONFIG["1h"]["interval_sec"]):
+            # 最新的MACD数据还未写入，暂停判断.
+            return
+
         current_trend_macd_1h = enhanced_analyze_list_trend_by_groups([i.macd for i in self.macd_list_1h[1:19]][::-1])
         check_trend_stalled_signal = current_trend_macd_1h["trend"] not in ["parabolic_move", ]
         all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
@@ -1127,6 +1131,7 @@ class PlotGptHandle(BasePlotHandle):
                     2.1. 1小时KDJ处于80高位死叉位置，不再向下判断。
 
             5. 4小时K线前2根线，处于吞没形态，不再向下判断。
+            6. 4小时和1小时的双均线策略，策略因子都只有1个达标，不再向下判断。
             7. 4小时KDJ最近3根线持续上行，K值大于D值。(或 4小时KDJ最近3根线(不包含当前线)有金叉 <--信号背离-- 4小时MACD(不包含当前线)趋近死叉粘合)
             9. 4小时k线：最近3条的最高价逐步递增(增长率大于阀值)，初步判断趋势大涨。
 
@@ -1152,6 +1157,12 @@ class PlotGptHandle(BasePlotHandle):
 
         kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
         if kline_4h_strategies.get_engulfing_pattern_strategy(window_index=1)["has_bearish_engulfing"] is True:
+            return
+
+        ema_4h_strategy = kline_4h_strategies.get_ema_strategy(is_bid=True)
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_bid=True)
+        if sum(ema_4h_strategy.values()) == 1 and sum(ema_1h_strategy.values()) == 1:
             return
 
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)

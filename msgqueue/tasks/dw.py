@@ -285,7 +285,7 @@ class KlineDataSaveHandle(object):
                         KlineTable.open_ts == open_ts,
                         KlineTable.interval_val == self.interval,
                 )
-                if query:
+                if await query.aio_exists():
                     last_db_k = await query.aio_get()
                     last_db_k.high_price = high_price
                     last_db_k.low_price = low_price
