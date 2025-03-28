@@ -1035,6 +1035,8 @@ class PlotGptHandle(BasePlotHandle):
                 all(Decimal("30") <= i.j_val < Decimal("70") for i in recent_kdj_list_1h) and
                 all(i.macd < 0 for i in recent_macd_list_1h)):
             current_price = self.kline_list_1h[0].close_price
+            depth_prices_data = self.get_depth_prices(current_price)
+            recommend_ask_price = depth_prices_data["recommend_ask_price"]
             direction = f"🔴⚠️🔴短线高频交易(策略待优化): 📉 卖出信号, 横盘震荡向下。"
 
             logger.info(f"plot_gpt, _get_sell_direction_sideways_or_downward, "
