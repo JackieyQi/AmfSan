@@ -47,11 +47,13 @@ async def get_plot_symbols_info(redis_client):
 
         query = await MacdTable.select(MacdTable.symbol, MacdTable.interval_val).distinct().aio_execute()
         for row in query:
-            symbols_info[row.symbol.lower()][f"macd:{row.interval_val}"] = 1
+            if row.symbol.lower() in symbols_info:
+                symbols_info[row.symbol.lower()][f"macd:{row.interval_val}"] = 1
 
         query = await KdjTable.select(KdjTable.symbol, KdjTable.interval_val).distinct().aio_execute()
         for row in query:
-            symbols_info[row.symbol.lower()][f"kdj:{row.interval_val}"] = 1
+            if row.symbol.lower() in symbols_info:
+                symbols_info[row.symbol.lower()][f"kdj:{row.interval_val}"] = 1
 
         for k, v in symbols_info.items():
             redis_client.hset(redis_key, k, json.dumps(v))
