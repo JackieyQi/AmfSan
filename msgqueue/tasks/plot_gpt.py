@@ -805,9 +805,11 @@ class PlotGptHandle(BasePlotHandle):
         close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
         set_limit_price_url = ""
         direction, current_price = None, None
+        direction_type = None
 
         # TODO: 全仓改分仓
         if not await self.has_limit_price_check((0, 1, 3)):
+            direction_type = "is_bid"
             if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
                 return
 
@@ -831,6 +833,7 @@ class PlotGptHandle(BasePlotHandle):
 
         # elif MarketPriceLimitCache.hget(self.symbol):
         elif await self.has_limit_price_check((1, )):
+            direction_type = "is_ask"
             if self.check_time >= (self.macd_list_1h[0].opening_ts + PLOT_INTERVAL_CONFIG["1h"]["interval_sec"]):
                 # 当前检查时间>=最新时间段的收盘时间，表明最新的MACD数据还未写入，暂停判断.
                 return
@@ -898,7 +901,7 @@ class PlotGptHandle(BasePlotHandle):
             return
 
         email_msg_md5_str = (
-            f"plotGpt:short_term_strategy:{self.symbol}:{self.kdj_list_1h[0].open_ts}"
+            f"plotGpt:short_term_strategy:{self.symbol}:{self.kdj_list_1h[0].open_ts}:{direction_type}"
         )
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
