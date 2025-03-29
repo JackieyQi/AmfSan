@@ -314,7 +314,7 @@ class PlotGptHandle(BasePlotHandle):
 
     async def initialize_data(self):
         async with async_database.aio_atomic():
-            _query = self.get_kline_query("4h", limit_count=4)
+            _query = self.get_kline_query("4h", limit_count=30)
             _kline_list_4h = await _query.aio_execute()
             self._kline_list_4h = list(_kline_list_4h)
 
@@ -377,7 +377,7 @@ class PlotGptHandle(BasePlotHandle):
     @property
     def kline_list_4h(self):
         if self._kline_list_4h is None:
-            self._kline_list_4h = self.get_kline_list("4h", limit_count=4)
+            self._kline_list_4h = self.get_kline_list("4h", limit_count=30)
         return self._kline_list_4h
 
     @property
@@ -773,6 +773,7 @@ class PlotGptHandle(BasePlotHandle):
                 5.5. (或)4小时成交量 **高于过去3根均值**，资金持续流入，增强买入信号。
                 5.6. (增)1小时K线，**最近5根线出现连续卖出3根**，表示下跌压力过大，减弱买入信号。
                 5.7. (增)贪婪指数小于20值时，表示卖方市场，增加买入信号。
+                5.8. (增)1小时K线，**看涨吞没**，增强买入信号。
 
         📉 卖出信号
             1. 关键信号判断:
@@ -920,8 +921,11 @@ class PlotGptHandle(BasePlotHandle):
     def _get_buy_direction(self):
         all_signals_dict = {}
 
-        if self._check_kdj_death_cross(self.kdj_list_1d):
+        kdj_1d_strategies = KdjStrategy(self.kdj_list_1d)
+        if kdj_1d_strategies.get_curr_death_cross():
             return
+
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
 
         current_kdj_1h = self.kdj_list_1h[0]
         if current_kdj_1h.k_val > Decimal("35") \
@@ -941,7 +945,7 @@ class PlotGptHandle(BasePlotHandle):
         current_price = self.macd_list_1h[0].closing_price
 
         bb_upper_4h, bb_lower_4h = self.get_bollinger_bands("4h")
-        check_price_fall_signal = check_near_support(self.kline_list_1h[:21][::-1], bb_lower_4h)
+        check_price_fall_signal = check_near_support(self.kline_list_4h[:21][::-1], bb_lower_4h)
         # near_support
         all_signals_dict["check_price_fall_signal"] = check_price_fall_signal
 
@@ -989,6 +993,9 @@ class PlotGptHandle(BasePlotHandle):
         check_fng_signal = self.get_fng_signal(buy=True)
         if check_fng_signal is not None:
             all_signals_dict["check_fng_signal"] = check_fng_signal
+
+        if kline_1h_strategies.get_engulfing_pattern_strategy()["has_bullish_engulfing"] is True:
+            all_signals_dict["check_has_bullish_engulfing"] = True
 
         if any(list(all_signals_dict.values())) is not True:
             return
