@@ -1003,6 +1003,8 @@ class PlotGptHandle(BasePlotHandle):
         signal_data = self.get_signal_count_data(*all_signals_dict.values())
         # if signal_data["true_count"] == 1:
         if signal_data["true_count"] <= 2: #TODO: 等待回测验证
+            logger.info(f"plot_gpt, _get_buy_direction not enough msg, "
+                        f"symbol:{self.symbol}, all_signals_dict:{all_signals_dict}")
             return
 
         depth_prices_data = self.get_depth_prices(current_price)
@@ -1028,7 +1030,7 @@ class PlotGptHandle(BasePlotHandle):
                               f"&low_price={sl_price}" \
                               f"&high_price={tp_price}"
 
-        logger.info(f"plot_gpt, _get_buy_direction, symbol:{self.symbol}, current_price:{current_price}")
+        logger.info(f"plot_gpt, _get_buy_direction has new msg, symbol:{self.symbol}, current_price:{current_price}")
 
         return {"direction": direction, "set_limit_price_url": set_limit_price_url,
                 "current_price": current_price, "recommend_bid_price": recommend_bid_price}
