@@ -320,7 +320,7 @@ def get_atr_price(kline_list, curr_price, window_size=6, tp_threshold=2, sl_thre
     sum_tr = Decimal("0")
     for i in range(1, window_size+1):
         high_price = kline_list[i].high_price
-        low_price = kline_list[i].low_pirce
+        low_price = kline_list[i].low_price
         prev_close_price = kline_list[i-1].close_price
 
         tr = max(high_price-low_price, abs(high_price-prev_close_price), abs(low_price-prev_close_price))
