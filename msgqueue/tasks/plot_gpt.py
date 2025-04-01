@@ -329,6 +329,8 @@ class PlotGptHandle(BasePlotHandle):
         self.check_time = int(time.time())
         self.email_title = f"{symbol} GPT Plot Notice"
 
+        self.close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{symbol}"
+
         self.prompt_text = f"你是一个专业的加密货币交易分析师。基于提供的 {self.symbol} 市场策略因子数据进行分析，交易时间为10小时内的短线交易，"
 
         self._kline_list_4h = None
@@ -776,6 +778,8 @@ class PlotGptHandle(BasePlotHandle):
 
     async def check(self, limit_count=7):
         await self.initialize_data()
+        open_ts = self.kline_list_1h[0].open_ts
+        curr_price = self.kline_list_1h[0].close_price
 
         for interval, macd_list in (("1d", self.macd_list_1d), ("4h", self.macd_list_4h)):
             interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
@@ -792,6 +796,37 @@ class PlotGptHandle(BasePlotHandle):
 
         await self.short_term_strategy(limit_count)
         await self.bull_run_strategy()
+
+        score_info = await self.get_buy_score_info(curr_price)
+        if score_info:
+            email_msg_md5_str = f"plotGpt:get_buy_score_info:{self.symbol}:{open_ts}"
+            email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+
+            try:
+                return await EmailMsgHistoryTable.aio_get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
+            except EmailMsgHistoryTable.DoesNotExist:
+                pass
+
+            direction = f"{score_info.items()}"
+
+            atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
+            sl_price = str2decimal(atr_price_info["sl_price"])
+            tp_price = str2decimal(atr_price_info["tp_price"])
+
+            close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
+            set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+                                  f"symbol={self.symbol}&low_price={sl_price}" \
+                                  f"&high_price={tp_price}"
+
+            self.result[self.symbol] = self.bull_run_strategy_reformat_notice(
+                direction, open_ts, curr_price, self.check_time, close_monitor_url, set_limit_price_url)
+
+            email_content = "".join(self.result.values())
+            await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
+
+            logger.info(
+                f"PlotGptHandle.get_buy_score_info finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
+            await self.send_msg(self.email_title, email_content)
 
     async def short_term_strategy(self, limit_count):
         """
@@ -873,7 +908,10 @@ class PlotGptHandle(BasePlotHandle):
 
         # elif MarketPriceLimitCache.hget(self.symbol):
         elif await self.has_limit_price_check((1, )):
-            direction = self._get_sell_direction_active_profit_taking()
+            current_price = self.kline_list_1h[0].close_price
+            direction = self._get_sell_direction_active_profit_taking(current_price)
+
+
             if not direction:
 
 
@@ -1089,7 +1127,7 @@ class PlotGptHandle(BasePlotHandle):
         return {"direction": direction, "set_limit_price_url": set_limit_price_url,
                 "current_price": current_price, "recommend_bid_price": recommend_bid_price}
 
-    def _get_sell_direction_active_profit_taking(self):
+    def _get_sell_direction_active_profit_taking(self, curr_price):
         """
         主动止盈:
             若 KDJ J 值 > 90 且 MACD DIF 下降，视为强势过热信号，部分止盈。
@@ -1105,12 +1143,18 @@ class PlotGptHandle(BasePlotHandle):
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         bb_info = kline_1h_strategies.get_bollinger_bands()
         if check_near_high(self.kline_list_1h, bb_info["bb_upper"]):
-            direction += "价格逼近 布林带上轨，优先止盈。"
+            direction += "价格逼近 1小时布林带上轨，优先止盈。"
             return direction
 
         if kline_1h_strategies.has_double_top():
-            direction += "当前处于双顶形态"
+            direction += "当前处于1小时双顶形态"
             return direction
+
+        kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
+        if kline_4h_strategies.get_engulfing_pattern_strategy()["has_bearish_engulfing"] is True:
+            direction += "4小时看跌吞没。"
+            return
+
         return direction
 
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
@@ -1440,3 +1484,59 @@ class PlotGptHandle(BasePlotHandle):
         logger.info(
             f"PlotGptHandle.bull_run_strategy finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
         await self.send_msg(self.email_title, email_content)
+
+    async def get_buy_score_info(self, current_price):
+        if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
+            return
+
+        score_info = {}
+
+        # 趋势因子
+        if self.macd_list_1d[0].macd > 0:
+            score_info["macd_1d>0"] = 15
+
+        if self.macd_list_4h[0].mad > 0:
+            score_info["macd_4h>0"] = 15
+
+        kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
+        ema_4h_strategy = kline_4h_strategies.get_ema_strategy(is_bid=True)
+        if ema_4h_strategy.get("has_ema_uptrend"):
+            score_info["4h_has_ema_uptrend"] = 10
+
+        # 短期动能因子
+        kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
+        kdj_4h_up_signal = kdj_4h_strategies.get_uptrend(3)
+        if kdj_4h_up_signal:
+            score_info["kdj_4h_up_signal"] = 15
+
+        kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
+        if self.kdj_list_1h[0].k_val >= self.kdj_list_1h[0].d_val:
+            score_info["kdj_1h_no_death_cross"] = 15
+
+        # 成交量因子
+        val_4h_strategy = kline_4h_strategies.get_vol_strategy(5)
+        if val_4h_strategy.get("has_enhance_spike_volume"):
+            score_info["vol_4h_up_1.3x"] = 20
+
+        # 支持阻力因子
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        bb_info = kline_1h_strategies.get_bollinger_bands()
+        bb_upper_price = bb_info["bb_upper"]
+        bb_lower_price = bb_info["bb_lower"]
+        bb_mid_price = (bb_upper_price + bb_lower_price) / Decimal(2)
+        if bb_mid_price <= current_price < bb_upper_price:
+            price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price)
+        elif bb_lower_price <= current_price < bb_mid_price:
+            price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_lower_price)
+        else:
+            price_near_support = False
+
+        if price_near_support:
+            score_info["price_near_support"] = 10
+
+        if sum(score_info.values()) >= 50:
+            return score_info
+        return
+
+
+
