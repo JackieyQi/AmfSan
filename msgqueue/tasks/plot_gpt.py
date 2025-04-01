@@ -298,6 +298,8 @@ class PlotGptHandle(BasePlotHandle):
         self.check_time = int(time.time())
         self.email_title = f"{symbol} GPT Plot Notice"
 
+        self.prompt_text = "你是一个专业的加密货币交易分析师。基于提供的市场数据进行分析，输出买入、卖出或持仓的建议概率。"
+
         self._kline_list_4h = None
         self._kline_list_1h = None
         self._macd_list_1d = None
@@ -585,6 +587,8 @@ class PlotGptHandle(BasePlotHandle):
 
         recommend_bid_price = bid_price + (current_price - bid_price) * Decimal("0.6")
         recommend_ask_price = current_price + (ask_price - current_price) * Decimal("0.6")
+        self.prompt_text += f"\n 当前价格:{current_price}，根据最新99条深度数据，最大挂买单量的价格:{bid_price}，按照公式：" \
+                            f"bid_price + (current_price - bid_price) * Decimal('0.6')，得到买入建议价:{str2decimal(recommend_bid_price)}"
         return {
             "bid_price": bid_price,
             "ask_price": ask_price,
@@ -1205,6 +1209,7 @@ class PlotGptHandle(BasePlotHandle):
         """
         if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
             return
+        self.prompt_text += f"\n 当前日线的MACD大于0为 {self.macd_list_1d[0].macd > 0}，当前4小时线的MACD大于0为 {self.macd_list_4h[0].macd > 0}"
         if self._check_trade_interval_time() is False:
             return
         if await self.has_limit_price_check((0, 1, 3)):
@@ -1213,26 +1218,33 @@ class PlotGptHandle(BasePlotHandle):
         kdj_1d_strategies = KdjStrategy(self.kdj_list_1d)
         if kdj_1d_strategies.get_curr_death_cross():
             return
+        self.prompt_text += f"\n 当前日线的KDJ没有刚形成死叉。"
 
         kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
         if kdj_1h_strategies.get_curr_death_cross_by_threshold(Decimal("80")):
             return
+        self.prompt_text += f"\n 当前1小时线KDJ不处于80高位死叉位置。"
 
         kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
         if kline_4h_strategies.get_engulfing_pattern_strategy(window_index=1)["has_bearish_engulfing"] is True:
             return
+        self.prompt_text += f"\n 当前4小时线的前2根线(不包含当前根线)，不处于看跌吞没状态。"
 
         ema_4h_strategy = kline_4h_strategies.get_ema_strategy(is_bid=True)
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_bid=True)
         if sum(ema_4h_strategy.values()) <= 1 and sum(ema_1h_strategy.values()) <= 1:
             return
+        self.prompt_text += f"\n 4小时ema策略：{ema_4h_strategy}"
+        self.prompt_text += f"\n 1小时ema策略：{ema_1h_strategy}"
 
         val_4h_strategy = kline_4h_strategies.get_vol_strategy(5)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
         has_kdj_extreme_increase = kdj_4h_strategies.get_extreme_increase(4)
         if has_kdj_extreme_increase and not val_4h_strategy.get("has_enhance_spike_volume", False):
             return
+        self.prompt_text += f"\n 4小时KDJ的J值连续超100为 {has_kdj_extreme_increase}"
+        self.prompt_text += f"\n 4小时线的当前交易大于过去5根线交易量均值的1.3b倍为 {val_4h_strategy.get('has_enhance_spike_volume', False)}"
 
         direction = ""
         current_price = self.kline_list_1h[0].close_price
@@ -1250,6 +1262,7 @@ class PlotGptHandle(BasePlotHandle):
 
             # 趋势已确立的行情：如果MACD已经明确表明趋势方向（如DIF和DEA持续分离），则KDJ可能会在趋势中反复震荡，容易导致误判
             ignore_kdj_signal = True
+            self.prompt_text += f"\n 4小时MACD(不包含当前线)趋近死叉，可能触发信号背离，kdj指标失效。"
 
         counter = RollingCounter(self.symbol, "BullRun")
         if ignore_kdj_signal:
@@ -1260,6 +1273,7 @@ class PlotGptHandle(BasePlotHandle):
                 direction += f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
                 # 1小时时间
                 open_ts = self.kline_list_1h[0].open_ts
+                self.prompt_text += f"\n 当前价格突破了1小时线的最近6根线的最高价。"
             else:
                 return
 
@@ -1269,12 +1283,15 @@ class PlotGptHandle(BasePlotHandle):
 
             if any([kdj_4h_up_signal, kdj_4h_cross_signal]) is not True:
                 return
+            self.prompt_text += f"\n 4小时KDJ最近3根线持续上行为：{kdj_4h_up_signal}"
+            self.prompt_text += f"\n 4小时KDJ最近3根线(不包含当前线)有金叉为: {kdj_4h_cross_signal}"
 
             high_price_up_4h_signal = self._check_increasing_highs(self.kline_list_4h[:3])
             open_ts = self.kline_list_1h[0].open_ts
 
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
             direction += "信号增强：日线KDJ金叉"
+            self.prompt_text += f"\n 当前日线KDJ刚形成40以下的低位金叉位置"
 
         depth_prices_data = self.get_depth_prices(current_price)
         depth_bid_price = depth_prices_data["bid_price"]
@@ -1294,6 +1311,8 @@ class PlotGptHandle(BasePlotHandle):
 
         if self.symbol in TMP_STAR_TOP10:
             direction += "<br>🌟 🌟 🌟 🌟 🌟 </br>"
+
+        direction += self.prompt_text
 
         logger.info(f"plot_gpt, bull_run_strategy, symbol:{self.symbol}, "
                     f"curr_k_4h:{self.kdj_list_4h[0].k_val}, curr_d_4h:{self.kdj_list_4h[0].d_val}, "
