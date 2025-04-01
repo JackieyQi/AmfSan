@@ -303,6 +303,35 @@ def check_near_support(klines_data, support_level, percentage_threshold=0.03, at
     return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
 
 
+def get_atr_price(kline_list, curr_price, window_size=6, tp_threshold=2, sl_threshold=1):
+    """
+    ATR（真实波动范围）目标价：
+        止盈 = 现价 + 2 * ATR(6)
+        止损 = 现价 - ATR(6)
+
+    :param kline_list: 时间正序的数组
+    :param window_size: 高波动性选择5～6
+    :param tp_threshold: 止盈的atr乘数(调整 ATR 乘数（1.5x、2x、2.5x）可适应不同交易风格)
+    :param sl_threshold: 止损的atr乘数
+    """
+    if len(kline_list) != window_size + 1:
+        return {}
+
+    sum_tr = Decimal("0")
+    for i in range(1, window_size+1):
+        high_price = kline_list[i].high_price
+        low_price = kline_list[i].low_pirce
+        prev_close_price = kline_list[i-1].close_price
+
+        tr = max(high_price-low_price, abs(high_price-prev_close_price), abs(low_price-prev_close_price))
+        sum_tr += tr
+    atr = sum_tr / Decimal(window_size)
+
+    tp_price = curr_price + Decimal(tp_threshold) * atr
+    sl_price = curr_price - Decimal(sl_threshold) * atr
+    return {"tp_price": tp_price, "sl_price": sl_price}
+
+
 class RollingCounter(object):
     def __init__(self, symbol, counter_name):
         self.symbol = symbol

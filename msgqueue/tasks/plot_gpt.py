@@ -24,7 +24,7 @@ from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRIC
 from utils.common import ts2bjfmt, str2decimal
 from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
-    enhanced_analyze_list_trend_by_groups, RollingCounter, check_near_support
+    enhanced_analyze_list_trend_by_groups, RollingCounter, check_near_support, get_atr_price
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
     template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
 from business.back_test import BackTestHandler
@@ -596,7 +596,7 @@ class PlotGptHandle(BasePlotHandle):
             "recommend_ask_price": str2decimal(recommend_ask_price),
         }
 
-    def get_tp_and_sl(self, depth_bid_price, depth_ask_price, bb_upper_4h_price):
+    def get_tp_and_sl(self, curr_price, depth_bid_price, depth_ask_price, bb_upper_4h_price):
         """
         计算 止盈（Take Profit, TP）和止损（Stop Loss, SL）
         止损价 = (1小时布林带下轨 + 99条深度数据的最大买单价 + min(EMA12, EMA26)) / 3
@@ -612,7 +612,10 @@ class PlotGptHandle(BasePlotHandle):
 
         sl_price = (bb_lower_1h_price + depth_bid_price + min(ema12_price, ema26_price)) / Decimal("3")
         tp_price = (bb_upper_4h_price + depth_ask_price + previous_high_price) / Decimal("3")
-        return {"sl_price": str2decimal(sl_price), "tp_price": str2decimal(tp_price)}
+        atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
+        return {"sl_price": str2decimal(sl_price), "tp_price": str2decimal(tp_price),
+                "atr_sl_price": str2decimal(atr_price_info["sl_price"]),
+                "atr_tp_price": str2decimal(atr_price_info["tp_price"])}
 
     def get_previous_high_price(self, kline_list, window_size=6):
         """
@@ -1028,9 +1031,9 @@ class PlotGptHandle(BasePlotHandle):
         depth_ask_price = depth_prices_data["ask_price"]
         recommend_bid_price = depth_prices_data["recommend_bid_price"]
 
-        tp_and_sl_price_data = self.get_tp_and_sl(depth_bid_price, depth_ask_price, bb_upper_4h)
-        tp_price = tp_and_sl_price_data["tp_price"]
-        sl_price = tp_and_sl_price_data["sl_price"]
+        tp_and_sl_price_data = self.get_tp_and_sl(current_price, depth_bid_price, depth_ask_price, bb_upper_4h)
+        tp_price = tp_and_sl_price_data["atr_tp_price"]
+        sl_price = tp_and_sl_price_data["atr_sl_price"]
 
         direction = f" 🟢 短线高频交易(策略待优化): 📈 买入信号, " \
                     f"<br>总体信号-<b>{signal_data['status']}</b>" \
@@ -1329,9 +1332,9 @@ class PlotGptHandle(BasePlotHandle):
 
         bb_upper_4h, bb_lower_4h = self.get_bollinger_bands("4h")
 
-        tp_and_sl_price_data = self.get_tp_and_sl(depth_bid_price, depth_ask_price, bb_upper_4h)
-        tp_price = tp_and_sl_price_data["tp_price"]
-        sl_price = tp_and_sl_price_data["sl_price"]
+        tp_and_sl_price_data = self.get_tp_and_sl(current_price, depth_bid_price, depth_ask_price, bb_upper_4h)
+        tp_price = tp_and_sl_price_data["atr_tp_price"]
+        sl_price = tp_and_sl_price_data["atr_sl_price"]
 
         direction += f"""
         <br>建议买入价: {recommend_bid_price}
