@@ -298,7 +298,7 @@ class PlotGptHandle(BasePlotHandle):
         self.check_time = int(time.time())
         self.email_title = f"{symbol} GPT Plot Notice"
 
-        self.prompt_text = "你是一个专业的加密货币交易分析师。基于提供的市场数据进行分析，输出买入、卖出或持仓的建议概率。"
+        self.prompt_text = f"你是一个专业的加密货币交易分析师。基于提供的 {self.symbol} 市场策略因子数据进行分析，交易时间为10小时内的短线交易，"
 
         self._kline_list_4h = None
         self._kline_list_1h = None
@@ -587,8 +587,8 @@ class PlotGptHandle(BasePlotHandle):
 
         recommend_bid_price = bid_price + (current_price - bid_price) * Decimal("0.6")
         recommend_ask_price = current_price + (ask_price - current_price) * Decimal("0.6")
-        self.prompt_text += f"\n 当前价格:{current_price}，根据最新99条深度数据，最大挂买单量的价格:{bid_price}，按照公式：" \
-                            f"bid_price + (current_price - bid_price) * Decimal('0.6')，得到买入建议价:{str2decimal(recommend_bid_price)}"
+        self.prompt_text += f"\n<br> 计算建议价：当前价格:{current_price}，根据最新99条深度数据，最大挂买单量的价格:{bid_price}，按照买入建议价公式：bid_price + (current_price - bid_price) * Decimal('0.6')，得到买入建议价:{str2decimal(recommend_bid_price)}；" \
+                            f"最大挂卖单量的价格:{ask_price}，按照卖出建议价的公式：current_price + (ask_price - current_price) * Decimal('0.6')，得到卖出建议价：{str2decimal(recommend_ask_price)}。你有更好的买入或者卖出建议价吗"
         return {
             "bid_price": bid_price,
             "ask_price": ask_price,
@@ -814,6 +814,7 @@ class PlotGptHandle(BasePlotHandle):
 
         # TODO: 全仓改分仓
         if not await self.has_limit_price_check((0, 1, 3)):
+            self.prompt_text += "输出买入的建议概率。"
             direction_type = "is_bid"
             if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
                 return
@@ -838,6 +839,8 @@ class PlotGptHandle(BasePlotHandle):
 
         # elif MarketPriceLimitCache.hget(self.symbol):
         elif await self.has_limit_price_check((1, )):
+            self.prompt_text += "输出卖出或持仓的建议概率。"
+
             direction_type = "is_ask"
             if self.check_time >= (self.macd_list_1h[0].opening_ts + PLOT_INTERVAL_CONFIG["1h"]["interval_sec"]):
                 # 当前检查时间>=最新时间段的收盘时间，表明最新的MACD数据还未写入，暂停判断.
@@ -846,14 +849,17 @@ class PlotGptHandle(BasePlotHandle):
             macd_1h_strategies = MacdStrategy(self.macd_list_1h)
             if macd_1h_strategies.get_curr_golden_cross():
                 return
+            self.prompt_text += f"\n<br> 1.先判断当前出否处于特殊信号：当前1小时的MACD没有刚形成金叉。"
 
             macd_4h_strategies = MacdStrategy(self.macd_list_4h)
             if macd_4h_strategies.get_curr_golden_cross():
                 return
+            self.prompt_text += f"\n 当前4小时的MAD没有刚形成金叉。"
 
             kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
             if kdj_4h_strategies.get_curr_golden_cross():
                 return
+            self.prompt_text += f"\n 当前4小时的KDJ没有刚形成金叉。"
 
             holding_time_info = self._get_holding_time()
             set_time = holding_time_info["set_time"]
@@ -870,6 +876,8 @@ class PlotGptHandle(BasePlotHandle):
 
 
             if self.kdj_list_1h[0].j_val <= Decimal("80"):
+                self.prompt_text += f"\n<br> 2.当前的持仓时间为 {hours_diff} 小时。"
+                self.prompt_text += f"\n<br> 3.再判断更精细的因子信号：当前1小时的KDJ的J值小于80。"
 
                 direction_info = self._get_sell_direction_sideways_or_downward(set_time, hours_diff)
                 if direction_info:
@@ -885,6 +893,9 @@ class PlotGptHandle(BasePlotHandle):
                     )
 
             else:
+                self.prompt_text += f"\n<br> 2.当前的持仓时间为 {hours_diff} 小时"
+                self.prompt_text += f"\n<br> 3.再判断更精细的因子信号：当前1小时的KDJ的J值大于80。"
+
                 direction_info = self._get_sell_direction_upward(hours_diff)
                 if not direction_info:
                     return
@@ -1050,6 +1061,9 @@ class PlotGptHandle(BasePlotHandle):
         if (len(recent_kdj_list_1h) >= 5 and
                 all(Decimal("30") <= i.j_val < Decimal("70") for i in recent_kdj_list_1h) and
                 all(i.macd < 0 for i in recent_macd_list_1h)):
+
+            self.prompt_text += f"\n 当前持仓时间超过了5小时；且持仓时间范围内的1小时KDJ的J值均处于30到70区间；且持仓时间范围内的1小时MACD均小于0。"
+
             current_price = self.kline_list_1h[0].close_price
             depth_prices_data = self.get_depth_prices(current_price)
             recommend_ask_price = depth_prices_data["recommend_ask_price"]
@@ -1061,22 +1075,27 @@ class PlotGptHandle(BasePlotHandle):
         if not direction:
 
             kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
-            if any(_kdj.j_val >= Decimal("50") for _kdj in self.kdj_list_1h[:3]) \
-                    and not kdj_1h_strategies.get_downtrend(3):
+            has_all_up = any(_kdj.j_val >= Decimal("50") for _kdj in self.kdj_list_1h[:3])
+            has_b = kdj_1h_strategies.get_downtrend(3)
+            if has_all_up and not has_b:
                 return
+            self.prompt_text += f"\n 当前时间段的1小时的最新3条线的J值存在大于50为 {has_all_up}，且其最新三根线的KDJ处于递减趋势为：{has_b}。"
 
             if self.kdj_list_1h[0].j_val > self.kdj_list_1h[1].j_val:
                 return
+            self.prompt_text += f"\n 当前时间段的1小时的KDJ的当前J值小于前J值。"
 
             for i in range(len(self.kline_list_1h[:2]) - 1):
                 if self.kline_list_1h[i].open_price > self.kline_list_1h[i + 1].open_price:
                     return
                 if self.kline_list_1h[i].close_price > self.kline_list_1h[i + 1].close_price:
                     return
+            self.prompt_text += f"\n 当前时刻的1小时的K线的最新开盘价小于前开盘价，最新收盘价小于前收盘价。"
 
             j_val_4h_list = [i.j_val for i in self.kdj_list_4h[:3]]
             if all(x > y for x, y in zip(j_val_4h_list, j_val_4h_list[1:])) is True:
                 return
+            self.prompt_text += f"\n 当前时刻的4小时的KDJ的最新3根线的J值没有连续递增。"
 
             current_price = self.kline_list_1h[0].close_price
 
@@ -1104,10 +1123,12 @@ class PlotGptHandle(BasePlotHandle):
         current_trend_macd_1h = enhanced_analyze_list_trend_by_groups([i.macd for i in self.macd_list_1h[1:19]][::-1])
         check_trend_stalled_signal = current_trend_macd_1h["trend"] not in ["parabolic_move", ]
         all_signals_dict["check_trend_stalled_signal"] = check_trend_stalled_signal
+        self.prompt_text += f"\n 当前时刻的1小时的MACD最近7根线(不包含当前线)(结合历史18根线的趋势进行相对判断)MACD柱状图的不处于明显上升趋势为 {check_trend_stalled_signal}。"
 
         high_prices_list = [i.high_price for i in self.kline_list_1h[:4]]
         check_price_resistance_signal = high_prices_list[0] < max(high_prices_list[1:])
         all_signals_dict["check_price_resistance_signal"] = check_price_resistance_signal
+        self.prompt_text += f"\n 当前时刻的1小时周期的最高价小于前面3根1小时线的最高价为 {check_price_resistance_signal}。"
 
         current_price = self.macd_list_1h[0].closing_price
         bb_upper_1h, bb_lower_1h = self.get_bollinger_bands("1h")
@@ -1117,12 +1138,14 @@ class PlotGptHandle(BasePlotHandle):
         else:
             check_boll_resistance_signal = False
         all_signals_dict["check_boll_resistance_signal"] = check_boll_resistance_signal
+        self.prompt_text += f"\n 当前价格，在1小时周期的布林带上轨且回落0.5%的因子为 {check_boll_resistance_signal}。"
 
         if self.macd_list_4h[0].macd <= self.macd_list_4h[1].macd:
             check_macd_4h_signal = True
         else:
             check_macd_4h_signal = False
         all_signals_dict["check_macd_4h_signal"] = check_macd_4h_signal
+        self.prompt_text += f"\n 当前在4小时周期的最新MACD值小于前MACD值为 {check_macd_4h_signal}。"
 
         if (self.kdj_list_4h[0].k_val < self.kdj_list_4h[1].k_val) \
                 and (self.kdj_list_4h[0].j_val < self.kdj_list_4h[1].j_val):
@@ -1130,16 +1153,20 @@ class PlotGptHandle(BasePlotHandle):
         else:
             check_kdj_4h_signal = False
         all_signals_dict["check_kdj_4h_signal"] = check_kdj_4h_signal
+        self.prompt_text += f"\n 当前在4小时周期的KDJ的最新K值小于前K值且最新J值小于前J值为 {check_kdj_4h_signal}。"
 
         if self._check_kdj_death_cross_by_threshold(self.kdj_list_1h, self.get_dynamic_threshold()["kdj_death_cross"]):
             all_signals_dict["overbought_death_cross_signal"] = True
+            self.prompt_text += f"\n 当前在1小时周期的KDJ刚形成高位(80)死叉位置。"
 
         check_fng_signal = self.get_fng_signal(buy=False)
         if check_fng_signal is not None:
             all_signals_dict["check_fng_signal"] = check_fng_signal
+            self.prompt_text += f"\n 今日的加密货币恐惧指数，卖出判断为:{check_fng_signal}。"
 
         if hours_diff and hours_diff >= 8:
             all_signals_dict["holding_time_too_long"] = True
+            self.prompt_text += f"\n 持久时间过久，超过了8小时。"
 
         if any(list(all_signals_dict.values())) is not True:
             return
@@ -1207,9 +1234,10 @@ class PlotGptHandle(BasePlotHandle):
             若不触发当前报警 且未触发信号背离：
                 则判断：24小时内有历史报警+当前价格大于历史20根线的最高价，触发报警
         """
+        self.prompt_text += "输出买入的建议概率。"
         if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
             return
-        self.prompt_text += f"\n 当前日线的MACD大于0为 {self.macd_list_1d[0].macd > 0}，当前4小时线的MACD大于0为 {self.macd_list_4h[0].macd > 0}"
+        self.prompt_text += f"\n<br> 1.先判断大周期行情： 当前日线的MACD大于0为 {self.macd_list_1d[0].macd > 0}，当前4小时线的MACD大于0为 {self.macd_list_4h[0].macd > 0}。"
         if self._check_trade_interval_time() is False:
             return
         if await self.has_limit_price_check((0, 1, 3)):
@@ -1218,7 +1246,7 @@ class PlotGptHandle(BasePlotHandle):
         kdj_1d_strategies = KdjStrategy(self.kdj_list_1d)
         if kdj_1d_strategies.get_curr_death_cross():
             return
-        self.prompt_text += f"\n 当前日线的KDJ没有刚形成死叉。"
+        self.prompt_text += f"\n<br> 2. 再判断当前是否处于特殊信号：当前日线的KDJ没有刚形成死叉。"
 
         kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
         if kdj_1h_strategies.get_curr_death_cross_by_threshold(Decimal("80")):
@@ -1235,16 +1263,16 @@ class PlotGptHandle(BasePlotHandle):
         ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_bid=True)
         if sum(ema_4h_strategy.values()) <= 1 and sum(ema_1h_strategy.values()) <= 1:
             return
-        self.prompt_text += f"\n 4小时ema策略：{ema_4h_strategy}"
-        self.prompt_text += f"\n 1小时ema策略：{ema_1h_strategy}"
+        self.prompt_text += f"\n 4小时ema策略：{ema_4h_strategy}。"
+        self.prompt_text += f"\n 1小时ema策略：{ema_1h_strategy}。"
 
         val_4h_strategy = kline_4h_strategies.get_vol_strategy(5)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
         has_kdj_extreme_increase = kdj_4h_strategies.get_extreme_increase(4)
         if has_kdj_extreme_increase and not val_4h_strategy.get("has_enhance_spike_volume", False):
             return
-        self.prompt_text += f"\n 4小时KDJ的J值连续超100为 {has_kdj_extreme_increase}"
-        self.prompt_text += f"\n 4小时线的当前交易大于过去5根线交易量均值的1.3b倍为 {val_4h_strategy.get('has_enhance_spike_volume', False)}"
+        self.prompt_text += f"\n 4小时KDJ的J值连续超100为 {has_kdj_extreme_increase}。"
+        self.prompt_text += f"\n 4小时线的当前交易大于过去5根线交易量均值的1.3b倍为 {val_4h_strategy.get('has_enhance_spike_volume', False)}。"
 
         direction = ""
         current_price = self.kline_list_1h[0].close_price
@@ -1273,7 +1301,7 @@ class PlotGptHandle(BasePlotHandle):
                 direction += f"<br>当前价破新高 <br>24小时内🐮次数: {final_count}"
                 # 1小时时间
                 open_ts = self.kline_list_1h[0].open_ts
-                self.prompt_text += f"\n 当前价格突破了1小时线的最近6根线的最高价。"
+                self.prompt_text += f"\n<br> 3. 最后判断更精细的因子：当前价格突破了1小时线的最近6根线的最高价。"
             else:
                 return
 
@@ -1283,15 +1311,15 @@ class PlotGptHandle(BasePlotHandle):
 
             if any([kdj_4h_up_signal, kdj_4h_cross_signal]) is not True:
                 return
-            self.prompt_text += f"\n 4小时KDJ最近3根线持续上行为：{kdj_4h_up_signal}"
-            self.prompt_text += f"\n 4小时KDJ最近3根线(不包含当前线)有金叉为: {kdj_4h_cross_signal}"
+            self.prompt_text += f"\n<br> 3. 最后判断更精细的因子： 4小时KDJ最近3根线持续上行为：{kdj_4h_up_signal}。"
+            self.prompt_text += f"\n 4小时KDJ最近3根线(不包含当前线)有金叉为: {kdj_4h_cross_signal}。"
 
             high_price_up_4h_signal = self._check_increasing_highs(self.kline_list_4h[:3])
             open_ts = self.kline_list_1h[0].open_ts
 
         if self._check_kdj_golden_cross_by_threshold(self.kdj_list_1d, Decimal("40")):
             direction += "信号增强：日线KDJ金叉"
-            self.prompt_text += f"\n 当前日线KDJ刚形成40以下的低位金叉位置"
+            self.prompt_text += f"\n 当前日线KDJ刚形成40以下的低位金叉位置。"
 
         depth_prices_data = self.get_depth_prices(current_price)
         depth_bid_price = depth_prices_data["bid_price"]
