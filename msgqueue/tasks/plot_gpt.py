@@ -1495,7 +1495,7 @@ class PlotGptHandle(BasePlotHandle):
         if self.macd_list_1d[0].macd > 0:
             score_info["macd_1d>0"] = 15
 
-        if self.macd_list_4h[0].mad > 0:
+        if self.macd_list_4h[0].macd > 0:
             score_info["macd_4h>0"] = 15
 
         kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
