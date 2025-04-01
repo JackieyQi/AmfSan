@@ -915,6 +915,7 @@ class PlotGptHandle(BasePlotHandle):
 
         if not direction:
             return
+        direction += self.prompt_text
 
         email_msg_md5_str = (
             f"plotGpt:short_term_strategy:{self.symbol}:{self.kdj_list_1h[0].open_ts}:{direction_type}"
