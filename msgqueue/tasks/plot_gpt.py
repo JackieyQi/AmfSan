@@ -1212,7 +1212,7 @@ class PlotGptHandle(BasePlotHandle):
 
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         bb_info = kline_1h_strategies.get_bollinger_bands()
-        if check_near_high(self.kline_list_1h, bb_info["bb_mid"], bb_info["bb_upper"], logger):
+        if check_near_high(self.kline_list_1h[:21][::-1], bb_info["bb_mid"], bb_info["bb_upper"], logger):
             direction += "价格逼近 1小时布林带上轨，优先止盈。"
             return direction
 
