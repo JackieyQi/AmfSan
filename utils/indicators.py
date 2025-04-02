@@ -177,27 +177,35 @@ def enhanced_analyze_list_trend_by_groups(data, group_size=7):
     return results[-1]["stats"]
 
 
-def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, ema_window=20):
+def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, window=20):
     """
-    基于EMA，计算布林线指标(BOLL指标)
+    基于EMA，计算布林线指标(BOLL指标)->使用EMA可能会使布林带对噪音更敏感，可能产生更多的假信号。
+    传统方法，基于SMA计算。
+
     :param close_prices_array:
     :param ema_array:
     :param std_multiplier: 标准查倍数, 通常为2
-    :param ema_window: EMA窗口值
+    :param window: 窗口值
     :return:
     """
     close_prices_array = np.array([float(i) for i in close_prices_array])
     ema_array = np.array([float(i) for i in ema_array])
 
     df = pd.DataFrame({"ema": ema_array, "close": close_prices_array})
-    rolling_std = df["close"].ewm(ema_window, adjust=False).std()
 
+    # 基于EMA，计算布林线指标(BOLL指标)->使用EMA可能会使布林带对噪音更敏感，可能产生更多的假信号。
+    # rolling_std = df["close"].ewm(window, adjust=False).std()
     # 布林带上轨
-    higher_band = df["ema"] + (rolling_std * std_multiplier)
-    last_higher_band = higher_band.tail(1).values[0]
-
+    # higher_band = df["ema"] + (rolling_std * std_multiplier)
     # 布林带下轨
-    lower_band = df["ema"] - (rolling_std * std_multiplier)
+    # lower_band = df["ema"] - (rolling_std * std_multiplier)
+
+    middle_band = df["close"].rolling(window=window).mean()
+    std = df["close"].rolling(window=window).std()
+    higher_band = middle_band + (std * std_multiplier)
+    lower_band = middle_band - (std * std_multiplier)
+
+    last_higher_band = higher_band.tail(1).values[0]
     last_lower_band = lower_band.tail(1).values[0]
     return str2decimal(last_higher_band), str2decimal(last_lower_band)
 

@@ -815,7 +815,14 @@ class PlotGptHandle(BasePlotHandle):
             except EmailMsgHistoryTable.DoesNotExist:
                 pass
 
-            direction = f"{score_info.items()}"
+            depth_prices_data = self.get_depth_prices(curr_price)
+            depth_bid_price = depth_prices_data["bid_price"]
+            depth_ask_price = depth_prices_data["ask_price"]
+            recommend_bid_price = depth_prices_data["recommend_bid_price"]
+
+            direction = f"\n<br> 建议买入价: {recommend_bid_price}。<br>" \
+                        f"\n<br> 总分: {sum(score_info.values())}。" \
+                        f"\n<br> 分数详情： {score_info.items()}。"
 
             atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
             sl_price = str2decimal(atr_price_info["sl_price"])
