@@ -258,11 +258,102 @@ def analyze_crossovers(data_array):
     }
 
 
-def check_near_low(klines_data, support_level, percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
+def adaptive_near_threshold(low_val, high_val, base_ratio=0.5, min_threshold=0.005, max_threshold=0.03):
+    """
+    自适应*靠近因子*的百分比阈值
+    :param base_ratio: 布林带带宽的倍数
+    :param min_threshold: 最小阈值
+    :param max_threshold: 最大阈值
+    :return: 计算出的自适应阈值
+    """
+    band_width = (high_val - low_val) / high_val  # 计算布林带宽度（百分比）
+    dynamic_threshold = band_width * base_ratio  # 设定动态阈值
+    return max(min_threshold, min(dynamic_threshold, max_threshold))  # 限制范围
+
+
+def adaptive_near_atr_multiplier(df, short_window=6, long_window=20, base_multiplier=0.5, min_multiplier=0.3, max_multiplier=1.0):
+    """
+    根据市场波动动态调整 *靠近因子* ATR 倍数阈值
+        ATR 反映市场波动性，在高波动市场中，ATR 值较大，应使用较大的 ATR 倍数阈值；
+        在低波动市场中，ATR 值较小，应使用较小的 ATR 倍数阈值；
+        可以计算 短周期 ATR / 长周期 ATR 的比值 来确定波动率，然后动态调整 atr_multiplier。
+
+
+    :param df: K线数据
+    :param short_window: 短周期 ATR 计算窗口
+    :param long_window: 长周期 ATR 计算窗口
+    :param base_multiplier: ATR 倍数基础值
+    :param min_multiplier: 最小 ATR 倍数
+    :param max_multiplier: 最大 ATR 倍数
+    :return: 自适应 ATR 倍数
+    """
+    # 计算短周期 ATR
+    df["tr"] = np.maximum(
+        df["high"] - df["low"],
+        np.maximum(abs(df["high"] - df["close"].shift(1)), abs(df["low"] - df["close"].shift(1)))
+    )
+    df["short_atr"] = df["tr"].rolling(short_window).mean()
+    df["long_atr"] = df["tr"].rolling(long_window).mean()
+
+    # 计算 ATR 波动率因子
+    atr_volatility_factor = df["short_atr"].iloc[-1] / df["long_atr"].iloc[-1] if df["long_atr"].iloc[-1] != 0 else 1
+
+    # 计算自适应 ATR 倍数
+    adaptive_multiplier = base_multiplier * atr_volatility_factor
+    adaptive_multiplier = max(min_multiplier, min(adaptive_multiplier, max_multiplier))
+
+    return adaptive_multiplier
+
+
+def adaptive_near_atr_boll(df, low_val, high_val, base_multiplier=0.5, min_multiplier=0.3, max_multiplier=1.0):
+    """
+    结合布林带带宽调整 *靠近因子* ATR 倍数
+        在窄幅震荡时（低波动市场），ATR 倍数可以小一些（如 0.3），因为价格更容易靠近支撑位。
+        在高波动市场，ATR 倍数可以更大（如 0.8~1.0），避免价格随机触及支撑位。
+
+    :param df: K线数据
+    :param base_multiplier: ATR 倍数基础值
+    :param min_multiplier: 最小 ATR 倍数
+    :param max_multiplier: 最大 ATR 倍数
+    :return: 计算出的自适应 ATR 倍数
+    """
+    # 计算布林带带宽
+    boll_band_width = (high_val - low_val) / high_val  # 计算布林带宽度（百分比）
+
+    # 计算自适应 ATR 倍数
+    adaptive_multiplier = base_multiplier * (1 + boll_band_width)  # 例如布林带宽度为 5%，倍数增加 5%
+    adaptive_multiplier = max(min_multiplier, min(adaptive_multiplier, max_multiplier))
+
+    return adaptive_multiplier
+
+
+def adaptive_near_atr_trend(df, adx_threshold=25, trend_multiplier=0.7, range_multiplier=0.4):
+    """
+    结合 ADX 指标调整 *靠近因子* ATR 倍数
+    可以用ADX（平均方向指数） 来判断当前市场是趋势还是震荡：
+        ADX > 25：趋势市场，ATR 倍数较大（如 0.7 ~ 1.0）
+        ADX < 25：震荡市场，ATR 倍数较小（如 0.3 ~ 0.5
+
+    :param df: K线数据
+    :param adx_threshold: 判断趋势的 ADX 阈值
+    :param trend_multiplier: 趋势市场 ATR 倍数
+    :param range_multiplier: 震荡市场 ATR 倍数
+    :return: 计算出的自适应 ATR 倍数
+    """
+    # 计算 ADX 指标（这里简化，通常需要调用 TA 库）
+    df["adx"] = abs(df["high"] - df["low"]).rolling(14).mean()  # 这里用价格波动代替 ADX 计算
+
+    # 判断市场状态
+    is_trending = df["adx"].iloc[-1] > adx_threshold
+
+    # 设置 ATR 倍数
+    return trend_multiplier if is_trending else range_multiplier
+
+
+def check_near_low(klines_data, low_level, high_level, percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
     """
 
     :param klines_data: 按时间正序排列
-    :param support_level: 支撑位价格
     :param percentage_threshold: 百分比阈值，默认3%
     :param atr_multiplier: ATR倍数阈值，默认0.5倍
     :return:
@@ -276,10 +367,19 @@ def check_near_low(klines_data, support_level, percentage_threshold=0.03, atr_mu
         } for k in klines_data
     ])
 
+    new_percentage_threshold = adaptive_near_threshold(low_level, high_level, max_threshold=percentage_threshold)
+    new_percentage_threshold = float(new_percentage_threshold)
+    new_atr_multiplier = min(
+        adaptive_near_atr_multiplier(df, atr_window_size, base_multiplier=atr_multiplier),
+        adaptive_near_atr_boll(df, low_level, high_level, base_multiplier=atr_multiplier),
+        adaptive_near_atr_trend(df),
+    )
+    new_atr_multiplier = float(new_atr_multiplier)
+
     # 获取最新价格数据
     current_low = df["low"].iloc[-1]
     current_close = df["close"].iloc[-1]
-    support_level_float = float(support_level)
+    support_level_float = float(low_level)
 
     # 计算ATR (6周期简化版)
     df["tr"] = np.maximum(
@@ -302,20 +402,22 @@ def check_near_low(klines_data, support_level, percentage_threshold=0.03, atr_mu
     atr_distance = distance / atr if atr != 0 else float('inf')
 
     # 判断条件
-    is_near_by_percentage = 0 <= percentage_distance <= percentage_threshold
-    is_near_by_atr = 0 <= atr_distance <= atr_multiplier
+    is_near_by_percentage = 0 <= percentage_distance <= new_percentage_threshold
+    is_near_by_atr = 0 <= atr_distance <= new_atr_multiplier
     price_structure_valid = current_low <= support_level_float * (
-                1 + percentage_threshold) and current_close > support_level_float
+                1 + new_percentage_threshold) and current_close > support_level_float
 
     # 综合判断
     return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
 
 
-def check_near_high(klines_data, high_level, percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
+def check_near_high(klines_data, low_level, high_level,
+                    percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
     """
 
     :param klines_data: 按时间正序排列
-    :param high_level: 支撑位价格
+    :param low_level: 支撑位价格
+    :param high_level: 阻力位价格
     :param percentage_threshold: 百分比阈值，默认3%
     :param atr_multiplier: ATR倍数阈值，默认0.5倍
     :return:
@@ -328,6 +430,15 @@ def check_near_high(klines_data, high_level, percentage_threshold=0.03, atr_mult
             "low": float(k.low_price)
         } for k in klines_data
     ])
+
+    new_percentage_threshold = adaptive_near_threshold(low_level, high_level, max_threshold=percentage_threshold)
+    new_percentage_threshold = float(new_percentage_threshold)
+    new_atr_multiplier = min(
+        adaptive_near_atr_multiplier(df, atr_window_size, base_multiplier=atr_multiplier),
+        adaptive_near_atr_boll(df, low_level, high_level, base_multiplier=atr_multiplier),
+        adaptive_near_atr_trend(df),
+    )
+    new_atr_multiplier = float(new_atr_multiplier)
 
     # 获取最新价格数据
     current_high = df["high"].iloc[-1]
@@ -355,10 +466,10 @@ def check_near_high(klines_data, high_level, percentage_threshold=0.03, atr_mult
     atr_distance = distance / atr if atr != 0 else float('inf')
 
     # 判断条件
-    is_near_by_percentage = 0 <= percentage_distance <= percentage_threshold
-    is_near_by_atr = 0 <= atr_distance <= atr_multiplier
+    is_near_by_percentage = 0 <= percentage_distance <= new_percentage_threshold
+    is_near_by_atr = 0 <= atr_distance <= new_atr_multiplier
     price_structure_valid = current_high >= high_level_float * (
-                1 + percentage_threshold) and current_close < high_level_float
+                1 + new_percentage_threshold) and current_close < high_level_float
 
     # 综合判断
     return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
