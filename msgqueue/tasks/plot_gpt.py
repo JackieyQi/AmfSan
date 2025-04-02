@@ -1283,7 +1283,7 @@ class PlotGptHandle(BasePlotHandle):
         sum_score = sum(score_info.values())
         if sum_score >= 20:
             return f"{score_info.items()}"
-        return
+        return ""
 
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
         current_price, direction = "", ""
