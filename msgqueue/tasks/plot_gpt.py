@@ -843,10 +843,12 @@ class PlotGptHandle(BasePlotHandle):
             recommend_ask_price = None
 
             # 海象运算符, py3.8新特性
-            if part_direction := self._get_sell_direction_active_taking_profit(curr_price):
-                ask_plot_type = 6
-            elif part_direction := self._get_sell_direction_stop_loss(curr_price):
-                ask_plot_type = 7
+            # if part_direction := self._get_sell_direction_active_taking_profit(curr_price):
+            #     ask_plot_type = 6
+            # elif part_direction := self._get_sell_direction_stop_loss(curr_price):
+            #     ask_plot_type = 7
+            if part_direction := self._get_exit_score():
+                ask_plot_type = 8
             else:
                 redis_client = AllCache.get_client()
                 cache_data = redis_client.get(f"sl_tp:{self.symbol}")
@@ -1107,9 +1109,9 @@ class PlotGptHandle(BasePlotHandle):
         current_price = self.macd_list_1h[0].closing_price
 
         bb_upper_4h, bb_lower_4h = self.get_bollinger_bands("4h")
-        check_price_fall_signal = check_near_low(self.kline_list_4h[:21][::-1], bb_lower_4h, bb_upper_4h)
+        near_info = check_near_low(self.kline_list_4h[:21][::-1], bb_lower_4h, bb_upper_4h)
         # near_support
-        all_signals_dict["check_price_fall_signal"] = check_price_fall_signal
+        all_signals_dict["check_price_fall_signal"] = near_info["is_near"]
 
         check_cv_cross_signal = any(
             calculate_cv([kdj.k_val, kdj.d_val, kdj.j_val]) == 0
@@ -1212,7 +1214,8 @@ class PlotGptHandle(BasePlotHandle):
 
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         bb_info = kline_1h_strategies.get_bollinger_bands()
-        if check_near_high(self.kline_list_1h[:21][::-1], bb_info["bb_mid"], bb_info["bb_upper"], logger):
+        near_info = check_near_high(self.kline_list_1h[:21][::-1], bb_info["bb_mid"], bb_info["bb_upper"], logger)
+        if near_info["is_near"]:
             direction += "价格逼近 1小时布林带上轨，优先止盈。"
             return direction
 
@@ -1243,6 +1246,44 @@ class PlotGptHandle(BasePlotHandle):
 
         return direction
 
+    def _get_exit_score(self):
+        """
+        📊 领先信号（更早）：4H MACD 柱状图缩短：连续 2 根柱状图变短。-> +10 分
+        📊 领先信号（更早）：1H KDJ J 线高位拐头：J 线 > 80 且开始向下。-> +10 分
+        📊 动量因子：日线 KDJ 超买： K、D > 80 且 J 线向下。-> +15 分
+        📊 动量因子：4H KDJ 超买： K、D > 80 且 J 线向下。-> +10 分
+        🔻 价格行为因子：放量滞涨：1小时成交量暴增，但价格未创新高。-> +20 分
+
+        """
+        score_info = {}
+
+        macd_4h_strategies = MacdStrategy(self.macd_list_4h)
+        if macd_4h_strategies.get_downtrend():
+            score_info["macd_4h_downtrend"] = 10
+
+        if (self.kdj_list_1h[0].j_val > 80) and (self.kdj_list_1h[0].j_val < self.kdj_list_1h[1].j_val):
+            score_info["kdj_1h_j_80_downtrend"] = 10
+
+        if (self.kdj_list_1d[0].k_val > 80) and (self.kdj_list_1d[0].d_val > 80) \
+                and (self.kdj_list_1d[0].j_val < self.kdj_list_1d[1].j_val):
+            score_info["kdj_1d_over_bought"] = 15
+
+        if (self.kdj_list_4h[0].k_val > 80) and (self.kdj_list_4h[0].d_val > 80) \
+                and (self.kdj_list_4h[0].j_val < self.kdj_list_4h[1].j_val):
+            score_info["kdj_4h_over_bought"] = 15
+
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        window = 3
+        max_price = kline_1h_strategies.get_donchian_channel(window_size=window)["max_price"]
+        vol_1h_strategy = kline_1h_strategies.get_vol_strategy(window)
+
+        if vol_1h_strategy.get("has_spike_volume") and self.kline_list_1h[0].high_price < max_price:
+            score_info["vol_1h_stagflation"] = 20
+
+        sum_score = sum(score_info.values())
+        if sum_score >= 20:
+            return f"{score_info.items()}"
+        return
 
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
         current_price, direction = "", ""
@@ -1636,7 +1677,7 @@ class PlotGptHandle(BasePlotHandle):
 
         vol_1h_strategy = kline_1h_strategies.get_vol_strategy(5)
         if vol_1h_strategy.get("has_enhance_spike_volume"):
-            score_info["vol_1h_up_1.3x"] = 5 #  1 小时成交量 > 5 根均值 * 1.3 → +5 分
+            score_info["vol_1h_up_1.3x"] = 5 # 1 小时成交量 > 5 根均值 * 1.3 → +5 分
 
         if vol_4h_5_strategy.get("has_spike_volume") and vol_1h_strategy.get("has_spike_volume"):
             score_info["vol_4h_1h_up"] = 5 # 4 小时成交量 > 5 根均值 且 1 小时成交量 > 5 根均值 → +5 分
@@ -1649,14 +1690,16 @@ class PlotGptHandle(BasePlotHandle):
         bb_mid_price = bb_info["bb_mid"]
         logger.info(f"plot_gpt get_buy_score_info check bb, symbol:{self.symbol}, current_price:{current_price}, bb_info:{bb_info}")
         if bb_mid_price <= current_price < bb_upper_price:
-            price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price, logger)
+            near_info = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price, logger)
         elif bb_lower_price <= current_price < bb_mid_price:
-            price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_lower_price, bb_mid_price, logger)
+            near_info = check_near_low(self.kline_list_1h[:21][::-1], bb_lower_price, bb_mid_price, logger)
         else:
-            price_near_support = False
+            near_info = None
 
-        if price_near_support:
-            score_info["1h_low_price_near_support"] = 10
+        if near_info and near_info["is_near"]:
+            score_info["1h_low_price_near_support"] = 5 # 1小时最低价靠近支撑位 -> +5 分
+        if near_info and near_info["price_structure_valid"]:
+            score_info["1h_low_price_resistance_range"] = 5 # 1小时最低价处于阻力区间内 -> +5 分
 
         sum_score = sum(score_info.values())
         if sum_score >= 40:

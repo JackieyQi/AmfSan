@@ -401,23 +401,31 @@ def check_near_low(klines_data, low_level, high_level, logger,
         atr = df["tr"].mean()  # 如果数据不足14条，使用平均值
 
     # 计算当前价格与支撑位的距离
-    distance = current_low - support_level_float
+    distance = abs(current_low - support_level_float)
     percentage_distance = distance / (float(high_level) - support_level_float)
     atr_distance = distance / atr if atr != 0 else float('inf')
 
     # 判断条件
     is_near_by_percentage = 0 <= percentage_distance <= new_percentage_threshold
     is_near_by_atr = 0 <= atr_distance <= new_atr_multiplier
-    price_structure_valid = current_low <= support_level_float * (
-                1 + new_percentage_threshold) and current_close > support_level_float
+    # 综合判断
+    is_near = is_near_by_percentage or is_near_by_atr
+
+    # 用于判断阻力区间
+    if current_low < support_level_float:
+        in_resistance_range = current_low >= support_level_float * (1 - new_percentage_threshold)
+    else:
+        in_resistance_range = current_low <= support_level_float * (1 + new_percentage_threshold)
+
+    price_structure_valid = in_resistance_range and current_close > support_level_float
+    result = {"is_near": is_near, "price_structure_valid": price_structure_valid}
 
     logger.info(
         f"check_near_low, symbol:{klines_data[0].symbol}, current_low:{current_low}, support_level_float:{support_level_float},"
         f"high_level:{high_level}, new_percentage_threshold:{new_percentage_threshold},"
-        f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}, r:{(is_near_by_percentage or is_near_by_atr) and price_structure_valid}")
+        f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}, r:{result}")
 
-    # 综合判断
-    return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
+    return result
 
 
 def check_near_high(klines_data, low_level, high_level, logger,
@@ -477,14 +485,23 @@ def check_near_high(klines_data, low_level, high_level, logger,
     # 判断条件
     is_near_by_percentage = 0 <= percentage_distance <= new_percentage_threshold
     is_near_by_atr = 0 <= atr_distance <= new_atr_multiplier
-    price_structure_valid = current_high >= high_level_float * (
-                1 + new_percentage_threshold) and current_close < high_level_float
+    # 综合判断
+    is_near = is_near_by_percentage or is_near_by_atr
+
+    # 用于判断阻力区间
+    if current_high < high_level_float:
+        in_resistance_range = current_high >= high_level_float * (1 - new_percentage_threshold)
+    else:
+        in_resistance_range = current_high <= high_level_float * (1 + new_percentage_threshold)
+
+    price_structure_valid = in_resistance_range and current_close < high_level_float
+    result = {"is_near": is_near, "price_structure_valid": price_structure_valid}
 
     logger.info(f"check_near_high, symbol:{klines_data[0].symbol}, current_high:{current_high}, high_level_float:{high_level_float},"
                 f"low_level:{low_level}, new_percentage_threshold:{new_percentage_threshold},"
-                f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}, r:{(is_near_by_percentage or is_near_by_atr) and price_structure_valid}")
-    # 综合判断
-    return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
+                f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}, r:{result}")
+
+    return result
 
 
 def get_atr_price(kline_list, curr_price, window_size=6, tp_threshold=2, sl_threshold=1):
