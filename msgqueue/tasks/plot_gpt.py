@@ -1659,8 +1659,9 @@ class PlotGptHandle(BasePlotHandle):
             score_info["1h_low_price_near_support"] = 10
 
         sum_score = sum(score_info.values())
-        logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, bb_info:{bb_info}")
-        if sum_score >= 50:
+        if sum_score >= 40:
+            logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, bb_info:{bb_info}")
+        if sum_score >= 60:
             return score_info
         return
 
