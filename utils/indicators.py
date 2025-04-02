@@ -267,7 +267,8 @@ def adaptive_near_threshold(low_val, high_val, base_ratio=0.5, min_threshold=0.0
     :return: 计算出的自适应阈值
     """
     band_width = (high_val - low_val) / high_val  # 计算布林带宽度（百分比）
-    dynamic_threshold = band_width * Decimal(base_ratio)  # 设定动态阈值
+    band_width = float(band_width)
+    dynamic_threshold = band_width * base_ratio  # 设定动态阈值
     return max(min_threshold, min(dynamic_threshold, max_threshold))  # 限制范围
 
 
@@ -319,6 +320,7 @@ def adaptive_near_atr_boll(df, low_val, high_val, base_multiplier=0.5, min_multi
     """
     # 计算布林带带宽
     boll_band_width = (high_val - low_val) / high_val  # 计算布林带宽度（百分比）
+    boll_band_width = float(boll_band_width)
 
     # 计算自适应 ATR 倍数
     adaptive_multiplier = base_multiplier * (1 + boll_band_width)  # 例如布林带宽度为 5%，倍数增加 5%
