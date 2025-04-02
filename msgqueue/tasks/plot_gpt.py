@@ -1212,7 +1212,7 @@ class PlotGptHandle(BasePlotHandle):
 
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         bb_info = kline_1h_strategies.get_bollinger_bands()
-        if check_near_high(self.kline_list_1h, bb_info["bb_mid"], bb_info["bb_upper"]):
+        if check_near_high(self.kline_list_1h, bb_info["bb_mid"], bb_info["bb_upper"], logger):
             direction += "价格逼近 1小时布林带上轨，优先止盈。"
             return direction
 
@@ -1649,9 +1649,9 @@ class PlotGptHandle(BasePlotHandle):
         bb_mid_price = bb_info["bb_mid"]
         logger.info(f"plot_gpt get_buy_score_info check bb, symbol:{self.symbol}, current_price:{current_price}, bb_info:{bb_info}")
         if bb_mid_price <= current_price < bb_upper_price:
-            price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price)
+            price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price, logger)
         elif bb_lower_price <= current_price < bb_mid_price:
-            price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_lower_price, bb_mid_price)
+            price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_lower_price, bb_mid_price, logger)
         else:
             price_near_support = False
 

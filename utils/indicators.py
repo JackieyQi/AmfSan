@@ -352,7 +352,8 @@ def adaptive_near_atr_trend(df, adx_threshold=25, trend_multiplier=0.7, range_mu
     return trend_multiplier if is_trending else range_multiplier
 
 
-def check_near_low(klines_data, low_level, high_level, percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
+def check_near_low(klines_data, low_level, high_level, logger,
+                   percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
     """
 
     :param klines_data: 按时间正序排列
@@ -409,11 +410,16 @@ def check_near_low(klines_data, low_level, high_level, percentage_threshold=0.03
     price_structure_valid = current_low <= support_level_float * (
                 1 + new_percentage_threshold) and current_close > support_level_float
 
+    logger.info(
+        f"check_near_low, symbol:{klines_data[0].symbol}, current_low:{current_low}, high_level_float:{support_level_float}",
+        f"high_level:{high_level}, new_percentage_threshold:{new_percentage_threshold},"
+        f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}")
+
     # 综合判断
     return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
 
 
-def check_near_high(klines_data, low_level, high_level,
+def check_near_high(klines_data, low_level, high_level, logger,
                     percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
     """
 
@@ -473,6 +479,9 @@ def check_near_high(klines_data, low_level, high_level,
     price_structure_valid = current_high >= high_level_float * (
                 1 + new_percentage_threshold) and current_close < high_level_float
 
+    logger.info(f"check_near_high, symbol:{klines_data[0].symbol}, current_high:{current_high}, high_level_float:{high_level_float}",
+                f"low_level:{low_level}, new_percentage_threshold:{new_percentage_threshold},"
+                f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}")
     # 综合判断
     return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
 
