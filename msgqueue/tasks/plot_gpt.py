@@ -1573,8 +1573,8 @@ class PlotGptHandle(BasePlotHandle):
         await self.send_msg(self.email_title, email_content)
 
     async def get_buy_score_info(self, current_price):
-        if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
-            return
+        # if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
+        #     return
 
         score_info = {}
 
@@ -1647,7 +1647,7 @@ class PlotGptHandle(BasePlotHandle):
         bb_upper_price = bb_info["bb_upper"]
         bb_lower_price = bb_info["bb_lower"]
         bb_mid_price = bb_info["bb_mid"]
-        logger.info(f"plot_gpt get_buy_score_info, symbol:{self.symbol}, current_price:{current_price}, bb_info:{bb_info}")
+        logger.info(f"plot_gpt get_buy_score_info check bb, symbol:{self.symbol}, current_price:{current_price}, bb_info:{bb_info}")
         if bb_mid_price <= current_price < bb_upper_price:
             price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price)
         elif bb_lower_price <= current_price < bb_mid_price:
@@ -1658,7 +1658,9 @@ class PlotGptHandle(BasePlotHandle):
         if price_near_support:
             score_info["1h_low_price_near_support"] = 10
 
-        if sum(score_info.values()) >= 60:
+        sum_score = sum(score_info.values())
+        logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, bb_info:{bb_info}")
+        if sum_score >= 50:
             return score_info
         return
 
