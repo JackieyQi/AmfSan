@@ -266,7 +266,8 @@ def adaptive_near_threshold(low_val, high_val, base_ratio=0.5, min_threshold=0.0
     :param max_threshold: 最大阈值
     :return: 计算出的自适应阈值
     """
-    band_width = (high_val - low_val) / high_val  # 计算布林带宽度（百分比）
+    # 计算布林带宽度（百分比）; 除数为求和，相除后乘以2，避免 high_val 过小时的不稳定情况
+    band_width = (high_val - low_val) / (high_val + low_val) * Decimal(2)
     band_width = float(band_width)
     dynamic_threshold = band_width * base_ratio  # 设定动态阈值
     return max(min_threshold, min(dynamic_threshold, max_threshold))  # 限制范围
@@ -319,7 +320,7 @@ def adaptive_near_atr_boll(df, low_val, high_val, base_multiplier=0.5, min_multi
     :return: 计算出的自适应 ATR 倍数
     """
     # 计算布林带带宽
-    boll_band_width = (high_val - low_val) / high_val  # 计算布林带宽度（百分比）
+    boll_band_width = (high_val - low_val) / (high_val + low_val) * Decimal(2)  # 计算布林带宽度（百分比）
     boll_band_width = float(boll_band_width)
 
     # 计算自适应 ATR 倍数
@@ -401,7 +402,7 @@ def check_near_low(klines_data, low_level, high_level, logger,
 
     # 计算当前价格与支撑位的距离
     distance = current_low - support_level_float
-    percentage_distance = distance / support_level_float
+    percentage_distance = distance / (float(high_level) - support_level_float)
     atr_distance = distance / atr if atr != 0 else float('inf')
 
     # 判断条件
@@ -411,9 +412,9 @@ def check_near_low(klines_data, low_level, high_level, logger,
                 1 + new_percentage_threshold) and current_close > support_level_float
 
     logger.info(
-        f"check_near_low, symbol:{klines_data[0].symbol}, current_low:{current_low}, high_level_float:{support_level_float}",
+        f"check_near_low, symbol:{klines_data[0].symbol}, current_low:{current_low}, support_level_float:{support_level_float},"
         f"high_level:{high_level}, new_percentage_threshold:{new_percentage_threshold},"
-        f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}")
+        f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}, r:{(is_near_by_percentage or is_near_by_atr) and price_structure_valid}")
 
     # 综合判断
     return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
@@ -470,7 +471,7 @@ def check_near_high(klines_data, low_level, high_level, logger,
 
     # 计算当前价格与支撑位的距离
     distance = abs(high_level_float - current_high)
-    percentage_distance = distance / high_level_float
+    percentage_distance = distance / (high_level_float - float(low_level))
     atr_distance = distance / atr if atr != 0 else float('inf')
 
     # 判断条件
@@ -479,9 +480,9 @@ def check_near_high(klines_data, low_level, high_level, logger,
     price_structure_valid = current_high >= high_level_float * (
                 1 + new_percentage_threshold) and current_close < high_level_float
 
-    logger.info(f"check_near_high, symbol:{klines_data[0].symbol}, current_high:{current_high}, high_level_float:{high_level_float}",
+    logger.info(f"check_near_high, symbol:{klines_data[0].symbol}, current_high:{current_high}, high_level_float:{high_level_float},"
                 f"low_level:{low_level}, new_percentage_threshold:{new_percentage_threshold},"
-                f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}")
+                f"atr:{atr}, new_atr_multiplier:{new_atr_multiplier}, r:{(is_near_by_percentage or is_near_by_atr) and price_structure_valid}")
     # 综合判断
     return (is_near_by_percentage or is_near_by_atr) and price_structure_valid
 
