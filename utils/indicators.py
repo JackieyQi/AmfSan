@@ -267,7 +267,7 @@ def adaptive_near_threshold(low_val, high_val, base_ratio=0.5, min_threshold=0.0
     :return: 计算出的自适应阈值
     """
     band_width = (high_val - low_val) / high_val  # 计算布林带宽度（百分比）
-    dynamic_threshold = band_width * base_ratio  # 设定动态阈值
+    dynamic_threshold = band_width * Decimal(base_ratio)  # 设定动态阈值
     return max(min_threshold, min(dynamic_threshold, max_threshold))  # 限制范围
 
 
