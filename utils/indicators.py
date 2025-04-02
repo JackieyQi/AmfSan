@@ -177,7 +177,7 @@ def enhanced_analyze_list_trend_by_groups(data, group_size=7):
     return results[-1]["stats"]
 
 
-def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, ema_window=26):
+def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, ema_window=20):
     """
     基于EMA，计算布林线指标(BOLL指标)
     :param close_prices_array:

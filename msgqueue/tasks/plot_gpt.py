@@ -95,7 +95,8 @@ class CandlestickStrategy:
         ema_values = [row.ema_26 for row in macd_list]
 
         bb_upper, bb_lower = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
-        return {"bb_upper": bb_upper, "bb_lower": bb_lower}
+        bb_mid = (bb_upper + bb_lower) / Decimal(2)
+        return {"bb_upper": bb_upper, "bb_lower": bb_lower, "bb_mid": bb_mid}
 
     def get_ema_strategy(self, is_bid=False, is_ask=False):
         """
@@ -120,8 +121,7 @@ class CandlestickStrategy:
 
             if self.macd_list[0].ema_12 >= self.macd_list[1].ema_12:
                 strategies["has_ema_uptrend"] = True
-            if (self.macd_list[0].ema_12 >= self.macd_list[0].ema_26) \
-                    and (self.macd_list[1].ema_12 >= self.macd_list[1].ema_26):
+            if self.macd_list[0].ema_12 >= self.macd_list[0].ema_26:
                 strategies["has_ema_stack"] = True
             if self.macd_list[0].ema_12 >= curr_price > self.macd_list[0].ema_26:
                 strategies["has_nice_price"] = True
@@ -139,6 +139,14 @@ class CandlestickStrategy:
 
             return strategies
         return strategies
+
+    def get_prev_ema_trend_strategy(self, group_size=7):
+        """
+        增强版EMA趋势分析，结合历史趋势进行相对判断
+        """
+        trend_info = enhanced_analyze_list_trend_by_groups(
+            [i.ema_12 for i in self.macd_list[1:19]][::-1], group_size=group_size)
+        return trend_info
 
     def has_double_top(self, total_size=10, window_size=1):
         """
@@ -191,50 +199,50 @@ class CandlestickStrategy:
 class MacdStrategy:
     def __init__(self, macd_list):
         # 时间倒序
-        self.macd_lit = macd_list
+        self.macd_list = macd_list
 
     def get_curr_golden_cross(self):
         """
         macd滞后性强，短线交易中不考虑死叉
         """
-        return self.macd_lit[0].macd >= 0 and self.macd_lit[1].macd < 0
+        return self.macd_list[0].macd >= 0 and self.macd_list[1].macd < 0
 
     def get_bullish_stack(self):
         """
         多头排列
         """
-        return all(i.macd >= 0 for i in self.macd_lit)
+        return all(i.macd >= 0 for i in self.macd_list)
 
     def get_bearish_stack(self):
         """
         空头排列
         """
-        return all(i.macd < 0 for i in self.macd_lit)
+        return all(i.macd < 0 for i in self.macd_list)
 
     def get_downtrend(self):
         """
         更大周期趋势->增强短线交易的离场信号
         """
-        return self.macd_lit[0].macd <= self.macd_lit[1].macd
+        return self.macd_list[0].macd <= self.macd_list[1].macd
 
     def get_dif_downtrend(self):
-        dif = self.macd_lit[0].ema_12 - self.macd_lit[0].ema_26
-        prev_dif = self.macd_lit[1].ema_12 - self.macd_lit[1].ema_26
+        dif = self.macd_list[0].ema_12 - self.macd_list[0].ema_26
+        prev_dif = self.macd_list[1].ema_12 - self.macd_list[1].ema_26
         return prev_dif > dif
 
-    def get_enhance_trend_strategy(self, group_size=7):
+    def get_prev_trend_strategy(self, group_size=7):
         """
         增强版趋势分析，结合历史趋势进行相对判断
         """
         trend_info = enhanced_analyze_list_trend_by_groups(
-            [i.macd for i in self.macd_lit[1:19]][::-1], group_size=group_size)
+            [i.macd for i in self.macd_list[1:19]][::-1], group_size=group_size)
         return trend_info
 
     def get_trend_strategy(self):
         """
         趋势分析，基于最小二乘多项式拟合，使用线性回归计算趋势
         """
-        trend_str, _ = analyze_list_trend([i.macd for i in self.macd_lit[:7]][::-1])
+        trend_str, _ = analyze_list_trend([i.macd for i in self.macd_list[:7]][::-1])
         return {"trend": trend_str, }
 
 
@@ -1157,6 +1165,21 @@ class PlotGptHandle(BasePlotHandle):
 
         return direction
 
+    def _get_sell_direction_stop_loss(self, curr_price):
+        """
+        止损：
+        :param curr_price:
+        :return:
+        """
+        direction = ""
+
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_ask=True)
+        if ema_1h_strategy.get("has_death_cross"):
+            direction += "1 小时 EMA12 和 EMA26 死叉，止损离场。"
+            return direction
+
+
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
         current_price, direction = "", ""
         recommend_ask_price = 0
@@ -1491,39 +1514,76 @@ class PlotGptHandle(BasePlotHandle):
 
         score_info = {}
 
-        # 趋势因子
-        if self.macd_list_1d[0].macd > 0:
-            score_info["macd_1d>0"] = 15
-
-        if self.macd_list_4h[0].macd > 0:
-            score_info["macd_4h>0"] = 15
-
+        # 趋势因子(40分)
         kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
         ema_4h_strategy = kline_4h_strategies.get_ema_strategy(is_bid=True)
-        if ema_4h_strategy.get("has_ema_uptrend"):
-            score_info["4h_has_ema_uptrend"] = 10
+        if ema_4h_strategy.get("has_ema_stack"):
+            score_info["4h_has_ema_stack"] = 10 # 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
 
-        # 短期动能因子
+        if ema_4h_strategy.get("has_ema_uptrend"):
+            score_info["4h_has_ema_uptrend"] = 5 # 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +5 分
+
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_bid=True)
+        if ema_1h_strategy.get("has_ema_stack"):
+            score_info["1h_has_ema_stack"] = 5 # 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
+
+        prev_ema_trend_1h_info = kline_1h_strategies.get_prev_ema_trend_strategy()
+        if prev_ema_trend_1h_info["trend"] in ["parabolic_move", "modest_increase"]:
+            score_info["1h_has_prev_ema_uptrend"] = 5 # 1 小时 EMA12 上升（EMA12 斜率 > 0） → +5 分
+
+        macd_1h_strategies = MacdStrategy(self.macd_list_1h)
+        prev_macd_trend_1h_info = macd_1h_strategies.get_prev_trend_strategy()
+        if prev_macd_trend_1h_info["trend"] in ["parabolic_move", "modest_increase"]:
+            score_info["1h_has_prev_macd_uptrend"] = 5 # 1 小时 MACD 上升 → +5 分
+
+        if self.macd_list_1d[0].macd > 0:
+            score_info["macd_1d>0"] = 5 # 日线 MACD > 0 → +5 分
+
+        if self.macd_list_4h[0].macd > 0:
+            score_info["macd_4h>0"] = 5 # 4 小时 MACD > 0 → +5 分
+
+        # 短期动能因子(30分)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
         kdj_4h_up_signal = kdj_4h_strategies.get_uptrend(3)
         if kdj_4h_up_signal:
-            score_info["kdj_4h_up_signal"] = 15
+            # TODO: 回测是否调整为更稳健->"4 小时 KDJ 3 连升，但 J 值 < 100 → +10 分"
+            score_info["kdj_4h_up_signal"] = 10 # 4 小时 KDJ 3 连升 → +10 分
+
+        if Decimal("20") <= self.kdj_list_1h[0].j_val <= Decimal("80"):
+            score_info["kdj_j_health"] = 5 # 4 小时 KDJ J 值 20-80（健康范围） → +5 分
 
         kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
+        kdj_1h_up_signal = kdj_1h_strategies.get_uptrend(2)
+        if kdj_1h_up_signal:
+            score_info["kdj_1h_up_signal"] = 5  # 1 小时 KDJ 2 连升 → +5 分
+
+        if kdj_4h_strategies.get_curr_golden_cross():
+            score_info["kdj_4h_golden_cross"] = 5 # 4 小时 KDJ 刚好处于金叉 → +5 分
+
         if self.kdj_list_1h[0].k_val >= self.kdj_list_1h[0].d_val:
-            score_info["kdj_1h_no_death_cross"] = 15
+            score_info["kdj_1h_no_death_cross"] = 5 # 1 小时 KDJ 没死叉 → +5 分
 
-        # 成交量因子
-        val_4h_strategy = kline_4h_strategies.get_vol_strategy(5)
-        if val_4h_strategy.get("has_enhance_spike_volume"):
-            score_info["vol_4h_up_1.3x"] = 20
+        # 成交量因子(20分)
+        vol_4h_5_strategy = kline_4h_strategies.get_vol_strategy(5)
+        vol_4h_10_strategy = kline_4h_strategies.get_vol_strategy(10)
+        if vol_4h_5_strategy.get("has_spike_volume") and vol_4h_10_strategy.get("has_spike_volume"):
+            score_info["vol_4h_continue_up"] = 10 # 4 小时成交量 > 5 根均值 且 > 10 根均值 → +10 分
 
-        # 支持阻力因子
+        vol_1h_strategy = kline_1h_strategies.get_vol_strategy(5)
+        if vol_1h_strategy.get("has_enhance_spike_volume"):
+            score_info["vol_1h_up_1.3x"] = 5 #  1 小时成交量 > 5 根均值 * 1.3 → +5 分
+
+        if vol_4h_5_strategy.get("has_spike_volume") and vol_1h_strategy.get("has_spike_volume"):
+            score_info["vol_4h_1h_up"] = 5 # 4 小时成交量 > 5 根均值 且 1 小时成交量 > 5 根均值 → +5 分
+
+        # 支持阻力因子(10分)
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         bb_info = kline_1h_strategies.get_bollinger_bands()
         bb_upper_price = bb_info["bb_upper"]
         bb_lower_price = bb_info["bb_lower"]
-        bb_mid_price = (bb_upper_price + bb_lower_price) / Decimal(2)
+        bb_mid_price = bb_info["bb_mid"]
+        logger.info(f"plot_gpt get_buy_score_info, symbol:{self.symbol}, current_price:{current_price}, bb_info:{bb_info}")
         if bb_mid_price <= current_price < bb_upper_price:
             price_near_support = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price)
         elif bb_lower_price <= current_price < bb_mid_price:
