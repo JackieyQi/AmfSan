@@ -87,8 +87,18 @@ class BackTestHandler(object):
                         #         curr_ts, curr_price * Decimal("0.95"), curr_price * Decimal("1.05")
                         #     ),
                         # )
+                        redis_client = AllCache.get_client()
+                        cache_data = redis_client.get(f"sl_tp:{self.symbol}")
+                        if not cache_data:
+                            sl_price = curr_price * Decimal("0.95")
+                            tp_price = curr_price * Decimal("1.05")
+                        else:
+                            _d = cache_data.split(":")
+                            sl_price = Decimal(_d[0])
+                            tp_price = Decimal(_d[1])
+
                         market_price_handler.set_limit_price(
-                            _d.symbol, curr_price * Decimal("0.95"), curr_price * Decimal("1.05"), curr_ts)
+                            _d.symbol, sl_price, tp_price, curr_ts)
 
                     elif _d.bid_ts < (curr_ts - 5400):
                         _d.buy_ts = curr_ts

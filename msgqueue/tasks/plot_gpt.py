@@ -26,7 +26,7 @@ from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
     enhanced_analyze_list_trend_by_groups, RollingCounter, check_near_low, get_atr_price, check_near_high
 from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
-    template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice
+    template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice, template_strategy_notice
 from business.back_test import BackTestHandler
 from .base import BasePlotHandle
 
@@ -338,6 +338,7 @@ class PlotGptHandle(BasePlotHandle):
         self.email_title = f"{symbol} GPT Plot Notice"
 
         self.close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{symbol}"
+        self.set_limit_price_url = ""
 
         self.prompt_text = f"你是一个专业的加密货币交易分析师。基于提供的 {self.symbol} 市场策略因子数据进行分析，交易时间为10小时内的短线交易，"
 
@@ -802,46 +803,105 @@ class PlotGptHandle(BasePlotHandle):
 
                 return await self.send_msg(self.email_title, "".join(self.result.values()))
 
-        await self.short_term_strategy(limit_count)
-        await self.bull_run_strategy()
+        # await self.short_term_strategy(limit_count)
+        # await self.bull_run_strategy()
 
-        score_info = await self.get_buy_score_info(curr_price)
-        if score_info:
-            email_msg_md5_str = f"plotGpt:get_buy_score_info:{self.symbol}:{open_ts}"
-            email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
-
-            try:
-                return await EmailMsgHistoryTable.aio_get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
-            except EmailMsgHistoryTable.DoesNotExist:
-                pass
+        if not await self.has_limit_price_check((0, 1, 3)):
+            score_info = await self.get_buy_score_info(curr_price)
+            if not score_info:
+                return
 
             depth_prices_data = self.get_depth_prices(curr_price)
             depth_bid_price = depth_prices_data["bid_price"]
             depth_ask_price = depth_prices_data["ask_price"]
             recommend_bid_price = depth_prices_data["recommend_bid_price"]
 
-            direction = f"\n<br> 建议买入价: {recommend_bid_price}。<br>" \
-                        f"\n<br> 总分: {sum(score_info.values())}。" \
-                        f"\n<br> 分数详情： {score_info.items()}。"
-
             atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
             sl_price = str2decimal(atr_price_info["sl_price"])
             tp_price = str2decimal(atr_price_info["tp_price"])
-
-            close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{self.symbol}"
-            set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+            self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
                                   f"symbol={self.symbol}&low_price={sl_price}" \
                                   f"&high_price={tp_price}"
 
-            self.result[self.symbol] = self.bull_run_strategy_reformat_notice(
-                direction, open_ts, curr_price, self.check_time, close_monitor_url, set_limit_price_url)
+            redis_client = AllCache.get_client()
+            redis_client.set(f"sl_tp:{self.symbol}", f"{sl_price}:{tp_price}")
 
-            email_content = "".join(self.result.values())
-            await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
+            direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
+                        f"\n<br> 总分: {sum(score_info.values())}。" \
+                        f"\n<br> 分数详情： {score_info.items()}。" \
+                        f"\n<br><br> 📈 建议买入价: {recommend_bid_price}。<br><br>"
 
-            logger.info(
-                f"PlotGptHandle.get_buy_score_info finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
-            await self.send_msg(self.email_title, email_content)
+            await BackTestHandler(self.symbol).add_bid_ticket(
+                curr_price,
+                recommend_bid_price,
+                self.check_time,
+                5,
+                direction
+            )
+
+        elif await self.has_limit_price_check((1,)):
+            recommend_ask_price = None
+
+            # 海象运算符, py3.8新特性
+            if part_direction := self._get_sell_direction_active_taking_profit(curr_price):
+                ask_plot_type = 6
+            elif part_direction := self._get_sell_direction_stop_loss(curr_price):
+                ask_plot_type = 7
+            else:
+                redis_client = AllCache.get_client()
+                cache_data = redis_client.get(f"sl_tp:{self.symbol}")
+
+                if not cache_data:
+                    return
+                sl_price, tp_price = map(Decimal, cache_data.split(":"))
+
+                if curr_price >= tp_price:
+                    part_direction += "当前价格触及止盈价，止盈离场。"
+                    recommend_ask_price = curr_price
+                    ask_plot_type = 8
+                elif curr_price <= sl_price:
+                    part_direction += "当前价格触及止损价，止损离场。"
+                    recommend_ask_price = sl_price
+                    ask_plot_type = 9
+                else:
+                    return
+
+            if not recommend_ask_price:
+                depth_prices_data = self.get_depth_prices(curr_price)
+                recommend_ask_price = depth_prices_data["recommend_ask_price"]
+
+            direction = f"<br> 🔴 短线卖出信号: <b>{self.symbol.upper()}</b> " \
+                        f"<br> {part_direction}" \
+                        f"<br><br> 📉 建议卖出价：{recommend_ask_price}" \
+
+            await BackTestHandler(self.symbol).update_ask_ticket(
+                curr_price,
+                recommend_ask_price,
+                self.check_time,
+                ask_plot_type,
+                direction
+            )
+
+        else:
+            return
+
+        email_msg_md5_str = f"plotGpt:get_buy_score_info:{self.symbol}:{open_ts}"
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+
+        try:
+            return await EmailMsgHistoryTable.aio_get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
+        except EmailMsgHistoryTable.DoesNotExist:
+            pass
+
+        self.result[self.symbol] = template_strategy_notice(
+            direction, open_ts, curr_price, self.check_time, self.close_monitor_url, self.set_limit_price_url)
+
+        email_content = "".join(self.result.values())
+        await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
+
+        logger.info(
+            f"PlotGptHandle.get_buy_score_info finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
+        await self.send_msg(self.email_title, email_content)
 
     async def short_term_strategy(self, limit_count):
         """
@@ -924,72 +984,49 @@ class PlotGptHandle(BasePlotHandle):
         # elif MarketPriceLimitCache.hget(self.symbol):
         elif await self.has_limit_price_check((1, )):
             current_price = self.kline_list_1h[0].close_price
-            direction = self._get_sell_direction_active_profit_taking(current_price)
 
+            self.prompt_text += "输出卖出或持仓的建议概率。"
 
-            if not direction:
+            direction_type = "is_ask"
+            if self.check_time >= (self.macd_list_1h[0].opening_ts + PLOT_INTERVAL_CONFIG["1h"]["interval_sec"]):
+                # 当前检查时间>=最新时间段的收盘时间，表明最新的MACD数据还未写入，暂停判断.
+                return
 
+            macd_1h_strategies = MacdStrategy(self.macd_list_1h)
+            if macd_1h_strategies.get_curr_golden_cross():
+                return
+            self.prompt_text += f"\n<br> 1.先判断当前出否处于特殊信号：当前1小时的MACD没有刚形成金叉。"
 
-                self.prompt_text += "输出卖出或持仓的建议概率。"
+            macd_4h_strategies = MacdStrategy(self.macd_list_4h)
+            if macd_4h_strategies.get_curr_golden_cross():
+                return
+            self.prompt_text += f"\n 当前4小时的MAD没有刚形成金叉。"
 
-                direction_type = "is_ask"
-                if self.check_time >= (self.macd_list_1h[0].opening_ts + PLOT_INTERVAL_CONFIG["1h"]["interval_sec"]):
-                    # 当前检查时间>=最新时间段的收盘时间，表明最新的MACD数据还未写入，暂停判断.
-                    return
+            kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
+            if kdj_4h_strategies.get_curr_golden_cross():
+                return
+            self.prompt_text += f"\n 当前4小时的KDJ没有刚形成金叉。"
 
-                macd_1h_strategies = MacdStrategy(self.macd_list_1h)
-                if macd_1h_strategies.get_curr_golden_cross():
-                    return
-                self.prompt_text += f"\n<br> 1.先判断当前出否处于特殊信号：当前1小时的MACD没有刚形成金叉。"
+            holding_time_info = self._get_holding_time()
+            set_time = holding_time_info["set_time"]
+            hours_diff = holding_time_info["hours_diff"]
 
-                macd_4h_strategies = MacdStrategy(self.macd_list_4h)
-                if macd_4h_strategies.get_curr_golden_cross():
-                    return
-                self.prompt_text += f"\n 当前4小时的MAD没有刚形成金叉。"
-
-                kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
-                if kdj_4h_strategies.get_curr_golden_cross():
-                    return
-                self.prompt_text += f"\n 当前4小时的KDJ没有刚形成金叉。"
-
-                holding_time_info = self._get_holding_time()
-                set_time = holding_time_info["set_time"]
-                hours_diff = holding_time_info["hours_diff"]
-
-                # if self.kdj_list_1h[0].j_val >= Decimal("100"):
-                #     self._get_sell_signal_by100()
-                # elif self.kdj_list_1h[0].j_val >= Decimal("80"):
-                #     self._get_sell_signal_by80()
-                # elif self.kdj_list_1h[0].j_val >= Decimal("60"):
-                #     self._get_sell_signal_by60()
+            # if self.kdj_list_1h[0].j_val >= Decimal("100"):
+            #     self._get_sell_signal_by100()
+            # elif self.kdj_list_1h[0].j_val >= Decimal("80"):
+            #     self._get_sell_signal_by80()
+            # elif self.kdj_list_1h[0].j_val >= Decimal("60"):
+            #     self._get_sell_signal_by60()
 
 
 
 
-                if self.kdj_list_1h[0].j_val <= Decimal("80"):
-                    self.prompt_text += f"\n<br> 2.当前的持仓时间为 {hours_diff} 小时。"
-                    self.prompt_text += f"\n<br> 3.再判断更精细的因子信号：当前1小时的KDJ的J值小于80。"
+            if self.kdj_list_1h[0].j_val <= Decimal("80"):
+                self.prompt_text += f"\n<br> 2.当前的持仓时间为 {hours_diff} 小时。"
+                self.prompt_text += f"\n<br> 3.再判断更精细的因子信号：当前1小时的KDJ的J值小于80。"
 
-                    direction_info = self._get_sell_direction_sideways_or_downward(set_time, hours_diff)
-                    if direction_info:
-                        direction = direction_info["direction"]
-                        current_price = direction_info["current_price"]
-
-                        await BackTestHandler(self.symbol).update_ask_ticket(
-                            current_price,
-                            direction_info["recommend_ask_price"],
-                            self.check_time,
-                            2,
-                            direction
-                        )
-
-                else:
-                    self.prompt_text += f"\n<br> 2.当前的持仓时间为 {hours_diff} 小时"
-                    self.prompt_text += f"\n<br> 3.再判断更精细的因子信号：当前1小时的KDJ的J值大于80。"
-
-                    direction_info = self._get_sell_direction_upward(hours_diff)
-                    if not direction_info:
-                        return
+                direction_info = self._get_sell_direction_sideways_or_downward(set_time, hours_diff)
+                if direction_info:
                     direction = direction_info["direction"]
                     current_price = direction_info["current_price"]
 
@@ -997,9 +1034,27 @@ class PlotGptHandle(BasePlotHandle):
                         current_price,
                         direction_info["recommend_ask_price"],
                         self.check_time,
-                        3,
+                        2,
                         direction
                     )
+
+            else:
+                self.prompt_text += f"\n<br> 2.当前的持仓时间为 {hours_diff} 小时"
+                self.prompt_text += f"\n<br> 3.再判断更精细的因子信号：当前1小时的KDJ的J值大于80。"
+
+                direction_info = self._get_sell_direction_upward(hours_diff)
+                if not direction_info:
+                    return
+                direction = direction_info["direction"]
+                current_price = direction_info["current_price"]
+
+                await BackTestHandler(self.symbol).update_ask_ticket(
+                    current_price,
+                    direction_info["recommend_ask_price"],
+                    self.check_time,
+                    3,
+                    direction
+                )
 
         else:
             return
@@ -1142,7 +1197,7 @@ class PlotGptHandle(BasePlotHandle):
         return {"direction": direction, "set_limit_price_url": set_limit_price_url,
                 "current_price": current_price, "recommend_bid_price": recommend_bid_price}
 
-    def _get_sell_direction_active_profit_taking(self, curr_price):
+    def _get_sell_direction_active_taking_profit(self, curr_price):
         """
         主动止盈:
             若 KDJ J 值 > 90 且 MACD DIF 下降，视为强势过热信号，部分止盈。
@@ -1162,12 +1217,12 @@ class PlotGptHandle(BasePlotHandle):
             return direction
 
         if kline_1h_strategies.has_double_top():
-            direction += "当前处于1小时双顶形态"
+            direction += "当前处于1小时双顶形态，止盈离场。"
             return direction
 
         kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
         if kline_4h_strategies.get_engulfing_pattern_strategy()["has_bearish_engulfing"] is True:
-            direction += "4小时看跌吞没。"
+            direction += "4小时看跌吞没，止盈离场。"
             return
 
         return direction
@@ -1185,6 +1240,8 @@ class PlotGptHandle(BasePlotHandle):
         if ema_1h_strategy.get("has_death_cross"):
             direction += "1 小时 EMA12 和 EMA26 死叉，止损离场。"
             return direction
+
+        return direction
 
 
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
@@ -1557,8 +1614,8 @@ class PlotGptHandle(BasePlotHandle):
             # TODO: 回测是否调整为更稳健->"4 小时 KDJ 3 连升，但 J 值 < 100 → +10 分"
             score_info["kdj_4h_up_signal"] = 10 # 4 小时 KDJ 3 连升 → +10 分
 
-        if Decimal("20") <= self.kdj_list_1h[0].j_val <= Decimal("80"):
-            score_info["kdj_j_health"] = 5 # 4 小时 KDJ J 值 20-80（健康范围） → +5 分
+        if Decimal("20") <= self.kdj_list_4h[0].j_val <= Decimal("80"):
+            score_info["kdj_4h_j_health"] = 5 # 4 小时 KDJ J 值 20-80（健康范围） → +5 分
 
         kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
         kdj_1h_up_signal = kdj_1h_strategies.get_uptrend(2)
@@ -1599,7 +1656,7 @@ class PlotGptHandle(BasePlotHandle):
             price_near_support = False
 
         if price_near_support:
-            score_info["price_near_support"] = 10
+            score_info["1h_low_price_near_support"] = 10
 
         if sum(score_info.values()) >= 50:
             return score_info

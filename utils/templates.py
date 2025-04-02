@@ -195,3 +195,31 @@ def template_gpt_plot_bull_run_strategy_notice(
             </a>
             </div>
             """
+
+
+def template_strategy_notice(
+        direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url):
+    return f"""
+            <div>
+            <br>{direction}
+            <br>
+            <br>当前价: {current_price}, 发送时间：{ts2bjfmt(send_ts)}
+            <br>open time:{ts2bjfmt(open_ts)}
+            </div>
+
+                        <div style='margin-top: 20px;'>
+            <a href='{close_monitor_url}'
+               style='display: inline-block; padding: 10px 20px; margin-right: 10px; 
+                      background-color: #4CAF50; color: white; text-decoration: none; 
+                      border-radius: 4px;'>
+                删除监控
+            </a>
+
+            <a href='{set_limit_price_url}' 
+               style='display: inline-block; padding: 10px 20px; 
+                      background-color: #008CBA; color: white; text-decoration: none; 
+                      border-radius: 4px;'>
+                设置限价
+            </a>
+            </div>
+            """

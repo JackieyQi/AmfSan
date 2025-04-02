@@ -38,11 +38,11 @@ logger = logging.getLogger(__name__)
 async def check_price(*args, **kwargs):
     market_price_handler = MarketPriceHandler()
 
-    all_curr_prices = market_price_handler.get_current_price_by_cache()
-    await BackTestHandler().update_real_ticket(all_curr_prices)
-
     for symbol, price in market_price_handler.get_all_limit_price().items():
         await PlotPriceHandle(symbol, price).check_limit_price()
+
+    all_curr_prices = market_price_handler.get_current_price_by_cache()
+    await BackTestHandler().update_real_ticket(all_curr_prices)
 
 
 async def check_balance(*args, **kwargs):
