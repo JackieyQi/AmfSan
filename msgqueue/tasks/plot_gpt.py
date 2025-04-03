@@ -21,7 +21,7 @@ from models.market import KlineTable, MacdTable, KdjTable, RsiTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
-from utils.common import ts2bjfmt, str2decimal, decimal2decimal
+from utils.common import ts2bjfmt, decimal2decimal, decimal2str
 from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
     enhanced_analyze_list_trend_by_groups, RollingCounter, check_near_low, get_atr_price, check_near_high
@@ -701,8 +701,8 @@ class PlotGptHandle(BasePlotHandle):
 
         recommend_bid_price = bid_price + (current_price - bid_price) * Decimal("0.6")
         recommend_ask_price = current_price + (ask_price - current_price) * Decimal("0.6")
-        self.prompt_text += f"\n<br> 计算建议价：当前价格:{current_price}，根据最新99条深度数据，最大挂买单量的价格:{bid_price}，按照买入建议价公式：bid_price + (current_price - bid_price) * Decimal('0.6')，得到买入建议价:{str2decimal(recommend_bid_price)}；" \
-                            f"最大挂卖单量的价格:{ask_price}，按照卖出建议价的公式：current_price + (ask_price - current_price) * Decimal('0.6')，得到卖出建议价：{str2decimal(recommend_ask_price)}。你有更好的买入或者卖出建议价吗"
+        self.prompt_text += f"\n<br> 计算建议价：当前价格:{current_price}，根据最新99条深度数据，最大挂买单量的价格:{bid_price}，按照买入建议价公式：bid_price + (current_price - bid_price) * Decimal('0.6')，得到买入建议价:{decimal2str(recommend_bid_price)}；" \
+                            f"最大挂卖单量的价格:{ask_price}，按照卖出建议价的公式：current_price + (ask_price - current_price) * Decimal('0.6')，得到卖出建议价：{decimal2str(recommend_ask_price)}。你有更好的买入或者卖出建议价吗"
         return {
             "bid_price": bid_price,
             "ask_price": ask_price,
