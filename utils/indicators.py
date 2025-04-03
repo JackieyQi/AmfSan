@@ -5,7 +5,7 @@ import time
 import numpy as np
 import pandas as pd
 from decimal import Decimal
-from utils.common import str2decimal, leading_zeros
+from utils.common import leading_zeros, float2decimal
 from cache import AllCache
 
 
@@ -32,7 +32,7 @@ def analyze_list_trend(decimal_array, num=8):
     # 使用线性回归计算趋势, 最小二乘多项式拟合
     x = np.arange(len(float_array))
     slope, *args = np.polyfit(x, float_array, 1)
-    slope = str2decimal(slope, num)
+    slope = float2decimal(slope, num)
 
     if slope > 0 and trend_stats["up_count"] >= trend_stats["down_count"]:
         # trend = "明显上升趋势"
@@ -73,7 +73,7 @@ def enhanced_analyze_list_trend(decimal_array, previous_trends=None, num=8):
     # 使用线性回归计算趋势
     x = np.arange(len(float_array))
     slope, *args = np.polyfit(x, float_array, 1)
-    slope = str2decimal(slope, num)
+    slope = float2decimal(slope, num)
     trend_stats["slope"] = slope
 
     # 如果没有历史趋势数据，使用原始判断逻辑
@@ -100,7 +100,7 @@ def enhanced_analyze_list_trend(decimal_array, previous_trends=None, num=8):
 
         # 设定安全值，避免分母为负数。
         epsilon = np.mean(abs(float(avg_historical_slope))) * 0.001
-        epsilon = max(str2decimal(epsilon), Decimal("0.00000001"))
+        epsilon = max(float2decimal(epsilon), Decimal("0.00000001"))
 
         # 计算当前斜率与历史斜率的相对值
         relative_slope = (slope - avg_historical_slope) / max(std_historical_slope, epsilon)
@@ -207,7 +207,7 @@ def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, w
 
     last_higher_band = higher_band.tail(1).values[0]
     last_lower_band = lower_band.tail(1).values[0]
-    return str2decimal(last_higher_band), str2decimal(last_lower_band)
+    return float2decimal(last_higher_band), float2decimal(last_lower_band)
 
 
 def calculate_cv(decimal_array, num=1):
@@ -220,7 +220,7 @@ def calculate_cv(decimal_array, num=1):
         return
 
     cv = standard_deviation/mean
-    return str2decimal(cv, num)
+    return float2decimal(cv, num)
 
 
 def analyze_crossovers(data_array):
