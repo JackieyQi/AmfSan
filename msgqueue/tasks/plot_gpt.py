@@ -296,6 +296,11 @@ class KdjStrategy:
         crossovers_data = analyze_crossovers(self.kdj_list[1:window_size])
         return crossovers_data["golden_cross"] > threshold
 
+    def get_sideways(self, window_size=4):
+        """检查 KDJ是否震荡"""
+        crossovers_data = analyze_crossovers(self.kdj_list[:window_size])
+        return crossovers_data["golden_cross"] and crossovers_data["death_cross"]
+
     def get_curr_golden_cross(self):
         """检查 KDJ当前金叉"""
         return (self.kdj_list[1].k_val < self.kdj_list[1].d_val and
@@ -830,6 +835,7 @@ class PlotGptHandle(BasePlotHandle):
                         f"\n<br> 总分: {sum(score_info.values())}。" \
                         f"\n<br> 分数详情： {score_info.items()}。" \
                         f"\n<br><br> 📈 建议买入价: {recommend_bid_price}。<br><br>"
+            func_str = "get_buy_score_info"
 
             await BackTestHandler(self.symbol).add_bid_ticket(
                 curr_price,
@@ -849,9 +855,11 @@ class PlotGptHandle(BasePlotHandle):
             #     ask_plot_type = 7
             if part_direction := self._get_exit_score():
                 ask_plot_type = 8
+                func_str = "_get_exit_score"
             else:
                 redis_client = AllCache.get_client()
                 cache_data = redis_client.get(f"sl_tp:{self.symbol}")
+                func_str = "tp_sl"
 
                 if not cache_data:
                     return
@@ -887,7 +895,7 @@ class PlotGptHandle(BasePlotHandle):
         else:
             return
 
-        email_msg_md5_str = f"plotGpt:get_buy_score_info:{self.symbol}:{open_ts}"
+        email_msg_md5_str = f"plotGpt:{func_str}:{self.symbol}:{open_ts}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
 
         try:
@@ -1109,7 +1117,7 @@ class PlotGptHandle(BasePlotHandle):
         current_price = self.macd_list_1h[0].closing_price
 
         bb_upper_4h, bb_lower_4h = self.get_bollinger_bands("4h")
-        near_info = check_near_low(self.kline_list_4h[:21][::-1], bb_lower_4h, bb_upper_4h)
+        near_info = check_near_low(self.kline_list_4h[:21][::-1], bb_lower_4h, bb_upper_4h, logger)
         # near_support
         all_signals_dict["check_price_fall_signal"] = near_info["is_near"]
 
@@ -1625,8 +1633,11 @@ class PlotGptHandle(BasePlotHandle):
         if ema_4h_strategy.get("has_ema_stack"):
             score_info["4h_has_ema_stack"] = 10 # 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
 
+        bb_4h_info = kline_4h_strategies.get_bollinger_bands()
         if ema_4h_strategy.get("has_ema_uptrend"):
-            score_info["4h_has_ema_uptrend"] = 5 # 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +5 分
+            score_info["4h_has_ema_uptrend"] = self._get_adjust_score_4h_has_ema_uptrend(
+                5, current_price, self.kline_list_4h[0].high_price, self.kline_list_4h[0].open_price, bb_4h_info
+            ) # 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +5 分
 
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_bid=True)
@@ -1650,12 +1661,11 @@ class PlotGptHandle(BasePlotHandle):
 
         # 短期动能因子(30分)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
-        kdj_4h_up_signal = kdj_4h_strategies.get_uptrend(3)
-        if kdj_4h_up_signal:
-            # TODO: 回测是否调整为更稳健->"4 小时 KDJ 3 连升，但 J 值 < 100 → +10 分"
-            score_info["kdj_4h_up_signal"] = 10 # 4 小时 KDJ 3 连升 → +10 分
+        if kdj_4h_strategies.get_uptrend(3):
+            score_info["kdj_4h_up"] = self._get_adjust_score_kdj_4h_up(10) # 4 小时 KDJ 3 连升 → +10 分
 
         if Decimal("20") <= self.kdj_list_4h[0].j_val <= Decimal("80"):
+            # TODO: 上面已经有j值判断，改为rsi指标
             score_info["kdj_4h_j_health"] = 5 # 4 小时 KDJ J 值 20-80（健康范围） → +5 分
 
         kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
@@ -1667,7 +1677,8 @@ class PlotGptHandle(BasePlotHandle):
             score_info["kdj_4h_golden_cross"] = 5 # 4 小时 KDJ 刚好处于金叉 → +5 分
 
         if self.kdj_list_1h[0].k_val >= self.kdj_list_1h[0].d_val:
-            score_info["kdj_1h_no_death_cross"] = 5 # 1 小时 KDJ 没死叉 → +5 分
+            score_info["kdj_1h_no_death_cross"] = \
+                self._get_adjust_score_kdj_1h_no_death_cross(5, kdj_1h_strategies) # 1 小时 KDJ 没死叉 → +5 分
 
         # 成交量因子(20分)
         vol_4h_5_strategy = kline_4h_strategies.get_vol_strategy(5)
@@ -1708,5 +1719,45 @@ class PlotGptHandle(BasePlotHandle):
             return score_info
         return
 
+    def _get_adjust_score_kdj_1h_no_death_cross(self, score, kdj_1h_strategies):
+        """
+        过去 5 根 K 线的 KDJ 形态 - 判断 - kdj_1h_no_death_cross 分值
+        5 根 K 线中 2 次金叉 + 2 次死叉 - 震荡行情，趋势不明朗 - 0 分
+        5 根 K 线中 1 次金叉 + 1 次死叉 - 轻微震荡，可能仍有趋势 - 2 分
+        5 根 K 线中 只出现 1 次金叉，之后一直维持 - 趋势稳定 - 5 分
+        """
+        # TODO: 根据描述优化
+        if kdj_1h_strategies.get_sideways():
+            score -= 5 # KDJ 处于震荡状态 -> -5 分
 
+        return score
 
+    def _get_adjust_score_kdj_4h_up(self, score):
+        """
+        95 < J ≤ 100	按比例递减，如 10 - (J-95) * 1
+        """
+        curr_j = self.kdj_list_4h[0].j_val
+        if curr_j <= Decimal("95"):
+            return score # J<=95 -> 不扣分
+        elif Decimal("95") < curr_j <= Decimal("100"):
+            diff = (curr_j - Decimal("95")) * Decimal("1")
+            return int(score - diff) # 95 < J ≤ 100 -> 按比例递减, 10 - (J-95) * 1
+        elif curr_j > Decimal("100"):
+            return score - 10 # J > 100 -> -10 分
+        else:
+            return score
+
+    def _get_adjust_score_4h_has_ema_uptrend(self, score, curr_price, high_price, open_price, bb_info):
+        bb_upper_price = bb_info["bb_upper"]
+        bb_lower_price = bb_info["bb_lower"]
+        bb_mid_price = bb_info["bb_mid"]
+
+        if curr_price < bb_lower_price:
+            score += 2 # 收盘价跌破下轨 -> +2 分
+
+        if (curr_price < bb_upper_price) and (high_price > bb_upper_price):
+            score -= 3 # 最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分
+
+        if (curr_price > bb_upper_price) and (open_price > bb_upper_price):
+            score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
+        return score
