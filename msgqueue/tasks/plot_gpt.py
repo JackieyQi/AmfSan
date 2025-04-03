@@ -17,11 +17,11 @@ from decimal import Decimal
 from exts import async_database
 from cache import AllCache
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
-from models.market import KlineTable, MacdTable, KdjTable
+from models.market import KlineTable, MacdTable, KdjTable, RsiTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
-from utils.common import ts2bjfmt, str2decimal
+from utils.common import ts2bjfmt, str2decimal, decimal2decimal
 from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
     enhanced_analyze_list_trend_by_groups, RollingCounter, check_near_low, get_atr_price, check_near_high
@@ -335,6 +335,53 @@ class KdjStrategy:
         return current or last
 
 
+class RsiStrategy:
+    def __init__(self, rsi_list):
+        self.rsi_list = rsi_list
+
+    def get_curr_normalize_score(self):
+        """归一化到[-1, 1]"""
+        return Decimal("2") * (self.rsi_list[0].rsi - Decimal("50")) / Decimal("100")
+
+    def get_pullback_entry(self, breakthrough=Decimal("65"), pullback=Decimal("60")):
+        """
+        1小时 RSI-6 突破 65 后回踩 60，视为回调进场点（多单）-> +3 分
+        跌破 40 后回踩 45，视为回调做空点（空单）
+        """
+        rsi_array = [i.rsi for i in self.rsi_list[:7]]
+        if (rsi_array[0] < pullback) and \
+                (max(rsi_array) > breakthrough) and (rsi_array[-1] < Decimal("55")):
+            return True
+        return False
+
+    def get_uptrend(self):
+        """
+        1小时 RSI-6 连续3根线递增 -> +5 分
+        4 小时 RSI-6 连续 3 根 K 线递增 → +3 分
+        """
+        return self.rsi_list[0].rsi > self.rsi_list[1].rsi > self.rsi_list[2].rsi
+
+    def get_rebound(self):
+        """
+        1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。
+        """
+        return (self.rsi_list[0].rsi > self.rsi_list[1].rsi) \
+               and (self.rsi_list[1].rsi < Decimal("40")) and (self.rsi_list[1].rsi < self.rsi_list[2].rsi)
+
+    def get_healthy_bound(self):
+        """
+        1 小时波动过大，不做参考。
+        4 小时 RSI-6 在 45-65（中期健康区间） → +3 分。
+        """
+        return Decimal("45") < self.rsi_list[0].rsi < Decimal("65")
+
+    def get_breakout(self):
+        """
+        4 小时 RSI-6 突破 60，增强趋势信号 → +3 分。
+        """
+        return self.rsi_list[0].rsi > Decimal("60") > self.rsi_list[1].rsi
+
+
 class PlotGptHandle(BasePlotHandle):
     def __init__(self, symbol):
         super().__init__()
@@ -355,6 +402,9 @@ class PlotGptHandle(BasePlotHandle):
         self._kdj_list_1d = None
         self._kdj_list_4h = None
         self._kdj_list_1h = None
+
+        self.rsi_list_1h = None
+        self.rsi_list_4h = None
 
         required_intervals = ["1h", "4h", "1d"]
         for interval in required_intervals:
@@ -395,6 +445,14 @@ class PlotGptHandle(BasePlotHandle):
             _kdj_list_1h = await _query.aio_execute()
             self._kdj_list_1h = list(_kdj_list_1h)
 
+            _query = self.get_rsi_query("1h", limit_count=8)
+            _rsi_list_1h = await _query.aio_execute()
+            self.rsi_list_1h = list(_rsi_list_1h)
+
+            _query = self.get_rsi_query("4h", limit_count=8)
+            _rsi_list_4h = await _query.aio_execute()
+            self.rsi_list_4h = list(_rsi_list_4h)
+
     def get_kline_query(self, interval, limit_count=18):
         query = (
             KlineTable.select().where(
@@ -419,6 +477,15 @@ class PlotGptHandle(BasePlotHandle):
                 KdjTable.symbol == self.symbol,
                 KdjTable.interval_val == interval,
             ).order_by(KdjTable.id.desc()).limit(limit_count)
+        )
+        return query
+
+    def get_rsi_query(self, interval, limit_count=18):
+        query = (
+            RsiTable.select(RsiTable.rsi).where(
+                RsiTable.symbol == self.symbol,
+                RsiTable.interval_val == interval,
+            ).order_by(RsiTable.id.desc()).limit(limit_count)
         )
         return query
 
@@ -639,8 +706,8 @@ class PlotGptHandle(BasePlotHandle):
         return {
             "bid_price": bid_price,
             "ask_price": ask_price,
-            "recommend_bid_price": str2decimal(recommend_bid_price),
-            "recommend_ask_price": str2decimal(recommend_ask_price),
+            "recommend_bid_price": decimal2decimal(recommend_bid_price),
+            "recommend_ask_price": decimal2decimal(recommend_ask_price),
         }
 
     def get_tp_and_sl(self, curr_price, depth_bid_price, depth_ask_price, bb_upper_4h_price):
@@ -660,9 +727,9 @@ class PlotGptHandle(BasePlotHandle):
         sl_price = (bb_lower_1h_price + depth_bid_price + min(ema12_price, ema26_price)) / Decimal("3")
         tp_price = (bb_upper_4h_price + depth_ask_price + previous_high_price) / Decimal("3")
         atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
-        return {"sl_price": str2decimal(sl_price), "tp_price": str2decimal(tp_price),
-                "atr_sl_price": str2decimal(atr_price_info["sl_price"]),
-                "atr_tp_price": str2decimal(atr_price_info["tp_price"])}
+        return {"sl_price": decimal2decimal(sl_price), "tp_price": decimal2decimal(tp_price),
+                "atr_sl_price": decimal2decimal(atr_price_info["sl_price"]),
+                "atr_tp_price": decimal2decimal(atr_price_info["tp_price"])}
 
     def get_previous_high_price(self, kline_list, window_size=6):
         """
@@ -792,6 +859,7 @@ class PlotGptHandle(BasePlotHandle):
 
     async def check(self, limit_count=7):
         await self.initialize_data()
+
         open_ts = self.kline_list_1h[0].open_ts
         curr_price = self.kline_list_1h[0].close_price
 
@@ -822,8 +890,8 @@ class PlotGptHandle(BasePlotHandle):
             recommend_bid_price = depth_prices_data["recommend_bid_price"]
 
             atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
-            sl_price = str2decimal(atr_price_info["sl_price"])
-            tp_price = str2decimal(atr_price_info["tp_price"])
+            sl_price = decimal2decimal(atr_price_info["sl_price"])
+            tp_price = decimal2decimal(atr_price_info["tp_price"])
             self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
                                   f"symbol={self.symbol}&low_price={sl_price}" \
                                   f"&high_price={tp_price}"
@@ -1664,9 +1732,25 @@ class PlotGptHandle(BasePlotHandle):
         if kdj_4h_strategies.get_uptrend(3):
             score_info["kdj_4h_up"] = self._get_adjust_score_kdj_4h_up(10) # 4 小时 KDJ 3 连升 → +10 分
 
-        if Decimal("20") <= self.kdj_list_4h[0].j_val <= Decimal("80"):
-            # TODO: 上面已经有j值判断，改为rsi指标
-            score_info["kdj_4h_j_health"] = 5 # 4 小时 KDJ J 值 20-80（健康范围） → +5 分
+        rsi_4h_strategies = RsiStrategy(self.rsi_list_4h)
+        if rsi_4h_strategies.get_breakout():
+            score_info["rsi_4h_breakout_60"] = 3
+
+        if rsi_4h_strategies.get_healthy_bound():
+            score_info["rsi_4h_healthy_bound_45to65"] = 3
+
+        if rsi_4h_strategies.get_uptrend():
+            score_info["rsi_4h_uptrend"] = 3
+
+        rsi_1h_strategies = RsiStrategy(self.rsi_list_1h)
+        if rsi_1h_strategies.get_rebound():
+            score_info["rsi_1h_rebound_40"] = 5
+
+        if rsi_1h_strategies.get_uptrend():
+            score_info["rsi_1h_uptrend"] = 5
+
+        if rsi_1h_strategies.get_pullback_entry():
+            score_info["rsi_1h_pullback_65to60"] = 3
 
         kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
         kdj_1h_up_signal = kdj_1h_strategies.get_uptrend(2)
@@ -1725,10 +1809,15 @@ class PlotGptHandle(BasePlotHandle):
         5 根 K 线中 2 次金叉 + 2 次死叉 - 震荡行情，趋势不明朗 - 0 分
         5 根 K 线中 1 次金叉 + 1 次死叉 - 轻微震荡，可能仍有趋势 - 2 分
         5 根 K 线中 只出现 1 次金叉，之后一直维持 - 趋势稳定 - 5 分
+
+        rsi > 70 -> -3 分
         """
         # TODO: 根据描述优化
         if kdj_1h_strategies.get_sideways():
-            score -= 5 # KDJ 处于震荡状态 -> -5 分
+            score -= 2 # KDJ 处于震荡状态 -> -2 分
+
+        if self.rsi_list_1h.rsi > Decimal("70"):
+            score -= 2 # RSI>70 -> -2 分
 
         return score
 
@@ -1737,15 +1826,15 @@ class PlotGptHandle(BasePlotHandle):
         95 < J ≤ 100	按比例递减，如 10 - (J-95) * 1
         """
         curr_j = self.kdj_list_4h[0].j_val
-        if curr_j <= Decimal("95"):
-            return score # J<=95 -> 不扣分
+        if Decimal("20") < curr_j <= Decimal("95"):
+            return score # 20<J<=95 -> 不扣分
         elif Decimal("95") < curr_j <= Decimal("100"):
             diff = (curr_j - Decimal("95")) * Decimal("1")
             return int(score - diff) # 95 < J ≤ 100 -> 按比例递减, 10 - (J-95) * 1
         elif curr_j > Decimal("100"):
             return score - 10 # J > 100 -> -10 分
         else:
-            return score
+            return score - 10 # J<= 20 -> -10 分
 
     def _get_adjust_score_4h_has_ema_uptrend(self, score, curr_price, high_price, open_price, bb_info):
         bb_upper_price = bb_info["bb_upper"]
