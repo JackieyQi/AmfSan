@@ -837,8 +837,8 @@ class IndicatorsCalculateHandle(object):
                 "avg_gain": decimal2decimal(avg_gain), "avg_loss": decimal2decimal(avg_loss)}
 
     async def _init_rsi_data(self):
-        # 计算初始rsi值，选取30个数据点
-        start_ts = self.curr_time - self.interval_sec * 30
+        # 计算初始rsi值，选取70个数据点
+        start_ts = self.curr_time - self.interval_sec * 70
 
         db_klines = await KlineTable.select().where(
             KlineTable.symbol == self.symbol,
@@ -847,7 +847,7 @@ class IndicatorsCalculateHandle(object):
         ).order_by(KlineTable.id).aio_execute()
         # 正序
         db_klines = list(db_klines)
-        if len(db_klines) < 30:
+        if len(db_klines) < 70:
             return
 
         db_klines = db_klines[:-1]
