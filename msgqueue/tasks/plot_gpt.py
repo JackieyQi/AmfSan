@@ -1816,7 +1816,7 @@ class PlotGptHandle(BasePlotHandle):
         if kdj_1h_strategies.get_sideways():
             score -= 2 # KDJ 处于震荡状态 -> -2 分
 
-        if self.rsi_list_1h.rsi > Decimal("70"):
+        if self.rsi_list_1h[0].rsi > Decimal("70"):
             score -= 2 # RSI>70 -> -2 分
 
         return score
