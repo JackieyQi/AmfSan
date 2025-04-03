@@ -212,6 +212,9 @@ async def save_indicators_job(*args, **kwargs):
     symbols_info = await get_plot_symbols_info(redis_client)
     for symbol, _info in symbols_info.items():
         for _interval in PLOT_INTERVAL_LIST:
+            # TODO,
+            if _interval not in ["1h", "4h", "1d"]:
+                continue
 
             if redis_client.get(f"s_indicators:{symbol}:{_interval}"):
                 continue
@@ -842,12 +845,14 @@ class IndicatorsCalculateHandle(object):
             KlineTable.interval_val == self.interval,
             KlineTable.open_ts >= start_ts,
         ).order_by(KlineTable.id).aio_execute()
+        # 正序
         db_klines = list(db_klines)
         if len(db_klines) < 30:
             return
 
-        open_ts = db_klines[1].open_ts
-        rsi_info = self.get_origin_rsi([i.close_price for i in db_klines][1:][::-1], self.default_rsi_period)
+        db_klines = db_klines[:-1]
+        open_ts = db_klines[-1].open_ts
+        rsi_info = self.get_origin_rsi([i.close_price for i in db_klines], self.default_rsi_period)
         await RsiTable.aio_create(
             symbol=self.symbol,
             interval_val=self.interval,
