@@ -4,17 +4,20 @@
 import time
 import json
 import logging
+import numpy as np
+# import pandas as pd
 from decimal import Decimal as D
 
 from business.binance_exchange import BinanceExchangeRequestHandle
 # from business.huobi_exchange import HuobiExchangeAccountHandle
 from business.market import MarketPriceHandler, MacdInitData, KdjInitData, EmaInitData
-from models.market import KlineTable
-from models.order import MacdTable, OrderTradeHistoryTable, SymbolPlotTable, KdjTable, EmaTable
+from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable
+from models.order import OrderTradeHistoryTable, SymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
-from utils.common import decimal2str, str2decimal, locking, set_lock_latest
+from utils.common import decimal2str, str2decimal, locking, \
+    set_lock_latest, leading_zeros, decimal2decimal, float2decimal
 from utils.hrequest import http_get_request
 from exts import async_database
 from cache import AllCache, RedisPoolContext
@@ -203,6 +206,34 @@ async def save_kdj_job_by_symbol(msg):
         r.delete(f"s_kdj:{symbol}:{_interval}")
 
 
+async def save_indicators_job(*args, **kwargs):
+    redis_client = AllCache.get_client()
+
+    symbols_info = await get_plot_symbols_info(redis_client)
+    for symbol, _info in symbols_info.items():
+        for _interval in PLOT_INTERVAL_LIST:
+
+            if redis_client.get(f"s_indicators:{symbol}:{_interval}"):
+                continue
+            redis_client.set(f"s_kdj:{symbol}:{_interval}", 1, 1024)
+
+            await push_symbol_mq({
+                "bp": "save_indicators_job_by_symbol",
+                "symbol": symbol,
+                "interval": _interval
+            })
+    redis_client.close()
+
+
+async def save_indicators_job_by_symbol(msg):
+    symbol = msg.get("symbol")
+    _interval = msg.get("interval")
+    await IndicatorsCalculateHandle(symbol, _interval).start_cal()
+
+    with RedisPoolContext() as r:
+        r.delete(f"s_indicators:{symbol}:{_interval}")
+
+
 @locking("save_ema_job")
 async def save_ema_job(*args, **kwargs):
     symbol_list = ["wifusdt", ]
@@ -385,15 +416,15 @@ class MacdDataSaveHandle(object):
                 now_ema_26 = last_macd.ema_26 * 25 / 27 + closing_price * 2 / 27
                 now_dea = last_macd.dea * 8 / 10 + (now_ema_12 - now_ema_26) * 2 / 10
                 # now_dif = now_ema_12 - now_ema_26
-                now_macd_val = D(decimal2str(now_ema_12 - now_ema_26 - now_dea))
+                now_macd_val = decimal2decimal(now_ema_12 - now_ema_26 - now_dea)
 
                 if now_macd:
                     now_macd.opening_ts = opening_ts
                     now_macd.opening_price = opening_price
                     now_macd.closing_price = closing_price
-                    now_macd.ema_12 = str2decimal(now_ema_12)
-                    now_macd.ema_26 = str2decimal(now_ema_26)
-                    now_macd.dea = str2decimal(now_dea)
+                    now_macd.ema_12 = decimal2decimal(now_ema_12)
+                    now_macd.ema_26 = decimal2decimal(now_ema_26)
+                    now_macd.dea = decimal2decimal(now_dea)
                     now_macd.macd = now_macd_val
                     await now_macd.aio_save()
                     # updated_macds.append(now_macd)
@@ -404,9 +435,9 @@ class MacdDataSaveHandle(object):
                         opening_ts=opening_ts,
                         opening_price=opening_price,
                         closing_price=closing_price,
-                        ema_12=str2decimal(now_ema_12),
-                        ema_26=str2decimal(now_ema_26),
-                        dea=str2decimal(now_dea),
+                        ema_12=decimal2decimal(now_ema_12),
+                        ema_26=decimal2decimal(now_ema_26),
+                        dea=decimal2decimal(now_dea),
                         macd=now_macd_val,
                     )
 
@@ -548,18 +579,18 @@ class KdjDataSaveHandle(object):
                 k_val, d_val, j_val = kdj_result
 
                 if now_kdj:
-                    now_kdj.k_val = str2decimal(k_val)
-                    now_kdj.d_val = str2decimal(d_val)
-                    now_kdj.j_val = str2decimal(j_val)
+                    now_kdj.k_val = decimal2decimal(k_val)
+                    now_kdj.d_val = decimal2decimal(d_val)
+                    now_kdj.j_val = decimal2decimal(j_val)
                     await now_kdj.aio_save()
                 else:
                     await KdjTable.aio_create(
                         symbol=self.symbol,
                         interval_val=self.interval,
                         open_ts=open_ts,
-                        k_val=str2decimal(k_val),
-                        d_val=str2decimal(d_val),
-                        j_val=str2decimal(j_val),
+                        k_val=decimal2decimal(k_val),
+                        d_val=decimal2decimal(d_val),
+                        j_val=decimal2decimal(j_val),
                         cfg=last_kdj.cfg,
                     )
 
@@ -703,3 +734,175 @@ class EmaDataSaveHandle(object):
 
         for _data in k_data:
             self.parsed_k_lines_data(_data)
+
+
+class IndicatorsCalculateHandle(object):
+    def __init__(self, symbol, interval):
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+        self.curr_time = int(time.time())
+        self.default_rsi_period = 6
+
+    async def start_cal(self):
+
+        rsi_data_dict = {
+            (row.symbol, row.open_ts): row
+            for row in await RsiTable.select().where(
+                RsiTable.symbol == self.symbol,
+                RsiTable.interval_val == self.interval,
+            ).order_by(RsiTable.id.desc()).limit(2).aio_execute()
+        }
+        if not rsi_data_dict:
+            await self._init_rsi_data()
+
+
+        macd_data_dict = {}
+        kdj_data_dict = {}
+
+        await self.update_indicators(rsi_data_dict)
+
+
+    def get_origin_rsi(self, prices, period):
+        scale_factor = leading_zeros(prices[0])
+        if scale_factor:
+            for i, val in enumerate(prices):
+                prices[i] = val * scale_factor
+
+        # 计算价格变化
+        deltas = np.diff([float(i) for i in prices])
+
+        # 分离上涨和下跌
+        gain = np.where(deltas > 0, deltas, 0)
+        loss = np.where(deltas < 0, -deltas, 0)
+
+        # 初始平均上涨和下跌
+        avg_gain = np.mean(gain[:period])
+        avg_loss = np.mean(loss[:period])
+
+        # 计算后续的平均上涨和下跌（使用Wilder的平滑方法）
+        for i in range(period, len(deltas)):
+            avg_gain = ((period - 1) * avg_gain + gain[i]) / period
+            avg_loss = ((period - 1) * avg_loss + loss[i]) / period
+
+        # 计算RS和RSI
+        if avg_loss == 0:
+            return 100
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+        return {"rsi": float2decimal(rsi), "avg_gain": float2decimal(avg_gain), "avg_loss": float2decimal(avg_loss)}
+
+    def calculate_rsi_incremental(self, previous_rsi, previous_avg_gain, previous_avg_loss,
+                                  current_price, previous_price, period=14):
+        """
+        增量式计算RSI
+
+        参数:
+        previous_rsi: 前一个时间点的RSI值
+        previous_avg_gain: 前一个时间点的平均上涨
+        previous_avg_loss: 前一个时间点的平均下跌
+        current_price: 当前价格
+        previous_price: 前一个时间点的价格
+        period: RSI周期，默认为14
+
+        返回:
+        当前RSI值, 当前平均上涨, 当前平均下跌
+        """
+        period = D(period)
+        # 计算当前价格变化
+        price_change = current_price - previous_price
+
+        # 确定上涨或下跌
+        current_gain = max(0, price_change)
+        current_loss = max(0, -price_change)
+
+        # 更新平均上涨和下跌（使用Wilder的平滑方法）
+        avg_gain = ((period - 1) * previous_avg_gain + current_gain) / period
+        avg_loss = ((period - 1) * previous_avg_loss + current_loss) / period
+
+        # 计算新的RSI
+        if avg_loss == 0:
+            rsi = 100
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+
+        return {"rsi": decimal2decimal(rsi),
+                "avg_gain": decimal2decimal(avg_gain), "avg_loss": decimal2decimal(avg_loss)}
+
+    async def _init_rsi_data(self):
+        # 计算初始rsi值，选取30个数据点
+        start_ts = self.curr_time - self.interval_sec * 30
+
+        db_klines = await KlineTable.select().where(
+            KlineTable.symbol == self.symbol,
+            KlineTable.interval_val == self.interval,
+            KlineTable.open_ts >= start_ts,
+        ).order_by(KlineTable.id).aio_execute()
+        db_klines = list(db_klines)
+        if len(db_klines) < 30:
+            return
+
+        open_ts = db_klines[1].open_ts
+        rsi_info = self.get_origin_rsi([i.close_price for i in db_klines][1:][::-1], self.default_rsi_period)
+        await RsiTable.aio_create(
+            symbol=self.symbol,
+            interval_val=self.interval,
+            open_ts=open_ts,
+            rsi=rsi_info["rsi"],
+            avg_gain=rsi_info["avg_gain"],
+            avg_loss=rsi_info["avg_loss"],
+            period=self.default_rsi_period,
+        )
+
+    async def update_indicators(self, rsi_data_dict):
+
+        if rsi_data_dict:
+            rsi_start_ts = min(rsi_data_dict.keys(), key=lambda x: x[1])[1]
+        else:
+            rsi_start_ts = 0
+
+        start_ts = min([rsi_start_ts, ])
+        if not start_ts:
+            return
+
+        db_kline = await KlineTable.select().where(
+            KlineTable.symbol == self.symbol,
+            KlineTable.interval_val == self.interval,
+            KlineTable.open_ts >= start_ts,
+        ).order_by(KlineTable.id).aio_execute()
+        # 正序
+        db_kline = list(db_kline)
+
+        async with async_database.aio_atomic():
+            for index, k in enumerate(db_kline):
+                open_ts = k.open_ts
+                close_price = k.close_price
+
+                prev_rsi_data = rsi_data_dict.get((self.symbol, open_ts - self.interval_sec))
+                if not prev_rsi_data:
+                    continue
+
+                curr_rsi_info = self.calculate_rsi_incremental(
+                    prev_rsi_data.rsi, prev_rsi_data.avg_gain, prev_rsi_data.avg_loss,
+                    close_price, db_kline[index - 1].close_price, period=self.default_rsi_period
+                )
+
+                if curr_rsi_data := rsi_data_dict.get((self.symbol, open_ts)):
+                    curr_rsi_data.rsi = curr_rsi_info["rsi"]
+                    curr_rsi_data.avg_gain = curr_rsi_info["avg_gain"]
+                    curr_rsi_data.avg_loss = curr_rsi_info["avg_loss"]
+                    await curr_rsi_data.aio_save()
+                else:
+                    await RsiTable.aio_create(
+                        symbol=self.symbol,
+                        interval_val=self.interval,
+                        open_ts=open_ts,
+                        rsi=curr_rsi_info["rsi"],
+                        avg_gain=curr_rsi_info["avg_gain"],
+                        avg_loss=curr_rsi_info["avg_loss"],
+                        period=self.default_rsi_period,
+                    )

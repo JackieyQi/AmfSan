@@ -5,7 +5,7 @@ import hashlib
 import functools
 import time
 from datetime import datetime, timedelta
-from decimal import ROUND_DOWN, Decimal
+from decimal import ROUND_DOWN, Decimal, getcontext
 from uuid import uuid4
 from settings.constants import PLOT_INTERVAL_CONFIG
 
@@ -33,13 +33,58 @@ def ts2bjfmt(ts=None):
     )
 
 
-def decimal2str(val: Decimal, num=8):
+def decimal2str_old(val: Decimal, num=8):
+    # normalize 消耗性能
     val = val.quantize(Decimal((0, (1,), -num)), ROUND_DOWN)
     return "{:f}".format(val.normalize())
 
 
-def str2decimal(val, num=8):
-    return Decimal(decimal2str(Decimal(val), num))
+def _truncate_and_format_str_decimal(val_str: str, num: int, return_decimal: bool) -> str | Decimal:
+    # 处理科学计数法
+    if "E" in val_str or "e" in val_str:
+        return Decimal(f"{Decimal(val_str):.{num}f}") if return_decimal else f"{Decimal(val_str):.{num}f}"
+
+    # 处理整数
+    if "." not in val_str:
+        return Decimal(val_str) if return_decimal else val_str
+
+    integer_part, decimal_part = val_str.split(".")
+    if len(decimal_part) <= num:
+        truncated_decimal_part = decimal_part
+    else:
+        truncated_decimal_part = decimal_part[:num]
+    truncated_decimal_part = truncated_decimal_part.rstrip("0")
+    if truncated_decimal_part == "":
+        return Decimal(integer_part) if return_decimal else integer_part
+    return Decimal(f"{integer_part}.{truncated_decimal_part}") \
+        if return_decimal else f"{integer_part}.{truncated_decimal_part}"
+
+
+def str2str(val: str, num: int = 8) -> str:
+    return _truncate_and_format_str_decimal(val, num, False)
+
+
+def str2decimal(val: str, num: int = 8) -> Decimal:
+    return _truncate_and_format_str_decimal(val, num, True)
+
+
+def decimal2decimal(val: Decimal, num: int = 8) -> Decimal:
+    context = getcontext().copy()
+    context.rounding = ROUND_DOWN
+    return val.quantize(Decimal(f"1e-{num}"), context=context)
+
+
+def float2decimal(val: float, num: int = 8) -> Decimal:
+    context = getcontext().copy()
+    context.rounding = ROUND_DOWN
+    return Decimal(val).quantize(Decimal(f"1e-{num}"), context=context)
+
+
+def decimal2str(val: Decimal, num: int = 8) -> str:
+    context = getcontext().copy()
+    context.rounding = ROUND_DOWN
+    quantized_val = val.quantize(Decimal(f"1e-{num}"), context=context)
+    return f"{quantized_val:f}".rstrip("0").rstrip(".")
 
 
 def leading_zeros(val: Decimal):

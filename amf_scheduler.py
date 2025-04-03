@@ -85,6 +85,7 @@ class JobScheduler(object):
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kline_job", amf_kline_queue))
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_macd_job", amf_queue))
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kdj_job", amf_queue))
+        schedule.every(1).minutes.do(lambda: self.push_to_amf("save_indicators_job", amf_queue))
         # schedule.every(47).minutes.do(lambda: self.push_to_amf("save_ema_job"))
 
         # Technical analysis jobs

@@ -2,7 +2,8 @@
 # -*- coding: UTF-8 -*-
 
 import json
-from models.order import SymbolPlotTable, MacdTable, KdjTable
+from models.order import SymbolPlotTable
+from models.market import MacdTable, KdjTable
 
 
 class BasePlotHandle(object):

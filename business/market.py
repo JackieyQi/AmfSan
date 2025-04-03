@@ -10,8 +10,8 @@ from cache.order import (LimitPriceNoticeValueCache,
                          MarketPriceCache)
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     SymbolPlotTableCache, CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.market import KlineTable
-from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable, KdjTable, EmaTable
+from models.market import KlineTable, MacdTable, KdjTable, EmaTable
+from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime, decimal2str, Decimal
 from utils.exception import StandardResponseExc

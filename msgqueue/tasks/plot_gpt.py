@@ -17,8 +17,8 @@ from decimal import Decimal
 from exts import async_database
 from cache import AllCache
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
-from models.market import KlineTable
-from models.order import MacdTable, KdjTable, PlotBackTestTable
+from models.market import KlineTable, MacdTable, KdjTable
+from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt, str2decimal

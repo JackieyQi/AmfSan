@@ -24,6 +24,9 @@ route_map = {
     "save_macd_job_by_symbol": dw.save_macd_job_by_symbol,
     "save_kdj_job": dw.save_kdj_job,
     "save_kdj_job_by_symbol": dw.save_kdj_job_by_symbol,
+    "save_indicators_job": dw.save_indicators_job,
+    "save_indicators_job_by_symbol": dw.save_indicators_job_by_symbol,
+    #
     "save_ema_job": dw.save_ema_job,
     "save_account_balance_job": dw.save_account_balance_job,
     "save_trade_history_job": dw.save_trade_history_job,

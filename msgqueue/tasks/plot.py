@@ -12,8 +12,8 @@ from business.market import MarketPriceHandler
 from business.back_test import BackTestHandler
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.order import MacdTable, SymbolPlotTable, KdjTable, EmaTable, PlotBackTestTable
-from models.market import KlineTable
+from models.order import SymbolPlotTable, PlotBackTestTable
+from models.market import KlineTable, MacdTable, KdjTable, EmaTable
 from models.user import EmailMsgHistoryTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
