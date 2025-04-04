@@ -258,23 +258,24 @@ class KlineDataSaveHandle(object):
         self.curr_time = int(time.time())
 
     async def get_init_indicators_time(self):
+        # 考虑到策略窗口值，再增加20个数据点。
         if await KdjTable.select(KdjTable.symbol).where(
                 KdjTable.symbol == self.symbol, KdjTable.interval_val == self.interval).aio_exists():
             init_kdj_ts = 0
         else:
-            init_kdj_ts = self.curr_time - self.interval_sec * KDJIndicator.dateset_length
+            init_kdj_ts = self.curr_time - self.interval_sec * (KDJIndicator.dataset_length + 20)
 
         if await MacdTable.select(MacdTable.symbol).where(
                 MacdTable.symbol == self.symbol, MacdTable.interval_val == self.interval).aio_exists():
             init_macd_ts = 0
         else:
-            init_macd_ts = self.curr_time - self.interval_sec * MACDIndicator.dateset_length
+            init_macd_ts = self.curr_time - self.interval_sec * (MACDIndicator.dataset_length + 20)
 
         if await RsiTable.select(RsiTable.symbol).where(
                 RsiTable.symbol == self.symbol, RsiTable.interval_val == self.interval).aio_exists():
             init_rsi_ts = 0
         else:
-            init_rsi_ts = self.curr_time - self.interval_sec * RSIIndicator.dateset_length
+            init_rsi_ts = self.curr_time - self.interval_sec * (RSIIndicator.dataset_length + 20)
 
         start_ts = min(init_kdj_ts, init_macd_ts, init_rsi_ts)
         # TODO: 优化，避免每次检查
@@ -791,7 +792,7 @@ class EmaDataSaveHandle(object):
 
 
 class MACDIndicator:
-    dateset_length = 150 # 数据点为150，macd趋于稳定
+    dataset_length = 150 # 数据点为150，macd趋于稳定.
 
     default_fast_period = 12
     default_slow_period = 26
@@ -885,7 +886,7 @@ class MACDIndicator:
 
 
 class KDJIndicator:
-    dateset_length = 50 # 数据集为50，kdj趋于稳定。
+    dataset_length = 50 # 数据集为50，kdj趋于稳定.
 
     default_period = 9
     default_avg_move_1 = 3
@@ -974,7 +975,7 @@ class KDJIndicator:
 
 
 class RSIIndicator:
-    dateset_length = 70 # 数据集为70，rsi趋于稳定。
+    dataset_length = 70 # 数据集为70，rsi趋于稳定.
 
     default_period = 6 # period: RSI周期，默认为6(传统是14)
 
@@ -985,7 +986,7 @@ class RSIIndicator:
         :param period:
         :return:
         """
-        if len(prices) < (cls.dateset_length-1): # 去掉最新k线
+        if len(prices) < (cls.dataset_length-1): # 去掉最新k线
             return
 
         scale_factor = leading_zeros(prices[0])
@@ -1116,23 +1117,23 @@ class IndicatorsCalculateHandle(object):
         if start_ts := min(rsi_start_ts, macd_start_ts, kdj_start_ts):
             await self.update_indicators(start_ts, rsi_data_dict, macd_data_dict, kdj_data_dict)
 
-    async def _get_klines_for_init(self, dateset_length):
-        start_ts = self.curr_time - self.interval_sec * dateset_length
+    async def _get_klines_for_init(self, dataset_length):
+        # start_ts = self.curr_time - self.interval_sec * dataset_length
 
         db_klines = await KlineTable.select().where(
             KlineTable.symbol == self.symbol,
             KlineTable.interval_val == self.interval,
-            KlineTable.open_ts >= start_ts,
-        ).order_by(KlineTable.id).aio_execute()
+            # KlineTable.open_ts >= start_ts,
+        ).order_by(KlineTable.id).limit(dataset_length).aio_execute()
         # 正序
         db_klines = list(db_klines)
-        if len(db_klines) < dateset_length:
+        if len(db_klines) < dataset_length:
             return
 
         return db_klines[:-1] # 去掉最新k线
 
     async def _init_kdj_data(self):
-        klines_data = await self._get_klines_for_init(KDJIndicator.dateset_length)
+        klines_data = await self._get_klines_for_init(KDJIndicator.dataset_length)
         if not klines_data:
             return
 
@@ -1156,7 +1157,7 @@ class IndicatorsCalculateHandle(object):
         )
 
     async def _init_macd_data(self):
-        klines_data = await self._get_klines_for_init(MACDIndicator.dateset_length)
+        klines_data = await self._get_klines_for_init(MACDIndicator.dataset_length)
         if not klines_data:
             return
 
@@ -1177,7 +1178,7 @@ class IndicatorsCalculateHandle(object):
         )
 
     async def _init_rsi_data(self):
-        klines_data = await self._get_klines_for_init(RSIIndicator.dateset_length)
+        klines_data = await self._get_klines_for_init(RSIIndicator.dataset_length)
         if not klines_data:
             return
 

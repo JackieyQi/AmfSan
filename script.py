@@ -95,26 +95,51 @@ def command_add_new_symbol(symbol):
     print("***************start command_add_new_symbol**************")
     symbol = symbol.lower()
 
-    last_trade = (
-        OrderTradeHistoryTable.select()
-            .where(OrderTradeHistoryTable.symbol == symbol)
-            .order_by(OrderTradeHistoryTable.id.desc())
-            .get()
-    )
+    # last_trade = (
+    #     OrderTradeHistoryTable.select()
+    #         .where(OrderTradeHistoryTable.symbol == symbol)
+    #         .order_by(OrderTradeHistoryTable.id.desc())
+    #         .get()
+    # )
 
     query = SymbolPlotTable.select().where(
         SymbolPlotTable.user_id == 2, SymbolPlotTable.symbol == symbol
     )
     if query:
-        symbol_plot = query.get()
-        symbol_plot.last_price = last_trade.price
-        symbol_plot.save()
+        print("Already set.")
+        # symbol_plot = query.get()
+        # symbol_plot.last_price = last_trade.price
+        # symbol_plot.save()
     else:
         SymbolPlotTable(
             user_id=2,
-            symbol=last_trade.symbol,
-            last_price=last_trade.price,
+            symbol=symbol,
         ).save()
+
+    print("***************end command_add_new_symbol****************")
+
+
+def command_del_symbol(symbol):
+    from models.order import SymbolPlotTable
+    from models.market import KlineTable, MacdTable, KdjTable, RsiTable
+
+    print("***************start command_add_new_symbol**************")
+    symbol = symbol.lower()
+
+    symbol_plot_del_rows = SymbolPlotTable.delete().where(
+        SymbolPlotTable.user_id == 2, SymbolPlotTable.symbol == symbol
+    ).execute()
+
+    kline_del_rows = KlineTable.delete().where(MacdTable.symbol==symbol).execute()
+    macd_del_rows = MacdTable.delete().where(MacdTable.symbol==symbol).execute()
+    kdj_del_rows = KdjTable.delete().where(MacdTable.symbol==symbol).execute()
+    rsi_del_rows = RsiTable.delete().where(MacdTable.symbol==symbol).execute()
+    print(f"删除数据："
+          f"\nsymbol_plot_del_rows:{symbol_plot_del_rows}"
+          f"\nkline_del_rows:{kline_del_rows}"
+          f"\nmacd_del_rows:{macd_del_rows}"
+          f"\nkdj_del_rows:{kdj_del_rows}"
+          f"\nrsi_del_rows:{rsi_del_rows}")
 
     print("***************end command_add_new_symbol****************")
 
