@@ -1222,7 +1222,7 @@ class IndicatorsCalculateHandle(object):
                         curr_rsi_data.avg_loss = curr_rsi_info["avg_loss"]
                         await curr_rsi_data.aio_save()
                     else:
-                        await RsiTable.aio_create(
+                        inst = await RsiTable.aio_create(
                             symbol=self.symbol,
                             interval_val=self.interval,
                             open_ts=open_ts,
@@ -1231,6 +1231,7 @@ class IndicatorsCalculateHandle(object):
                             avg_loss=curr_rsi_info["avg_loss"],
                             period=self.default_rsi_period,
                         )
+                        rsi_data_dict[(self.symbol, open_ts)] = inst
 
                 if prev_macd_data := macd_data_dict.get((self.symbol, open_ts - self.interval_sec)):
                     curr_macd_info = MACDIndicator.calculate_macd_incremental(
@@ -1245,7 +1246,7 @@ class IndicatorsCalculateHandle(object):
                         now_macd.macd = curr_macd_info["macd"]
                         await now_macd.aio_save()
                     else:
-                        await MacdTable.aio_create(
+                        inst = await MacdTable.aio_create(
                             symbol=self.symbol,
                             interval_val=self.interval,
                             opening_ts=open_ts,
@@ -1256,6 +1257,7 @@ class IndicatorsCalculateHandle(object):
                             dea=curr_macd_info["dea"],
                             macd=curr_macd_info["macd"],
                         )
+                        macd_data_dict[(self.symbol, open_ts)] = inst
 
                 if prev_kdj_data := kdj_data_dict.get((self.symbol, open_ts - self.interval_sec)):
                     kdj_cfg = json.loads(prev_kdj_data.cfg)
@@ -1273,7 +1275,7 @@ class IndicatorsCalculateHandle(object):
                         curr_kdj_data.j_val = curr_kdj_info["j_val"]
                         await curr_kdj_data.aio_save()
                     else:
-                        await KdjTable.aio_create(
+                        inst = await KdjTable.aio_create(
                             symbol=self.symbol,
                             interval_val=self.interval,
                             open_ts=open_ts,
@@ -1282,3 +1284,4 @@ class IndicatorsCalculateHandle(object):
                             j_val=curr_kdj_info["j_val"],
                             cfg=prev_kdj_data.cfg,
                         )
+                        kdj_data_dict[(self.symbol, open_ts)] = inst
