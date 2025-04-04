@@ -91,30 +91,26 @@ def command_insert_mytrades(key, secret, symbol):
 
 def command_add_new_symbol(symbol):
     from models.order import OrderTradeHistoryTable, SymbolPlotTable
+    from cache import AllCache
 
     print("***************start command_add_new_symbol**************")
     symbol = symbol.lower()
-
-    # last_trade = (
-    #     OrderTradeHistoryTable.select()
-    #         .where(OrderTradeHistoryTable.symbol == symbol)
-    #         .order_by(OrderTradeHistoryTable.id.desc())
-    #         .get()
-    # )
 
     query = SymbolPlotTable.select().where(
         SymbolPlotTable.user_id == 2, SymbolPlotTable.symbol == symbol
     )
     if query:
         print("Already set.")
-        # symbol_plot = query.get()
-        # symbol_plot.last_price = last_trade.price
-        # symbol_plot.save()
     else:
         SymbolPlotTable(
             user_id=2,
             symbol=symbol,
         ).save()
+
+        redis_client = AllCache.get_client()
+        redis_key = "symbol:cfg"
+        redis_client.delete(redis_key)
+        redis_client.close()
 
     print("***************end command_add_new_symbol****************")
 
@@ -122,6 +118,7 @@ def command_add_new_symbol(symbol):
 def command_del_symbol(symbol):
     from models.order import SymbolPlotTable
     from models.market import KlineTable, MacdTable, KdjTable, RsiTable
+    from cache import AllCache
 
     print("***************start command_add_new_symbol**************")
     symbol = symbol.lower()
@@ -130,10 +127,16 @@ def command_del_symbol(symbol):
         SymbolPlotTable.user_id == 2, SymbolPlotTable.symbol == symbol
     ).execute()
 
-    kline_del_rows = KlineTable.delete().where(MacdTable.symbol==symbol).execute()
+    kline_del_rows = KlineTable.delete().where(KlineTable.symbol==symbol).execute()
     macd_del_rows = MacdTable.delete().where(MacdTable.symbol==symbol).execute()
-    kdj_del_rows = KdjTable.delete().where(MacdTable.symbol==symbol).execute()
-    rsi_del_rows = RsiTable.delete().where(MacdTable.symbol==symbol).execute()
+    kdj_del_rows = KdjTable.delete().where(KdjTable.symbol==symbol).execute()
+    rsi_del_rows = RsiTable.delete().where(RsiTable.symbol==symbol).execute()
+
+    redis_client = AllCache.get_client()
+    redis_key = "symbol:cfg"
+    redis_client.delete(redis_key)
+    redis_client.close()
+
     print(f"删除数据："
           f"\nsymbol_plot_del_rows:{symbol_plot_del_rows}"
           f"\nkline_del_rows:{kline_del_rows}"

@@ -25,7 +25,7 @@ class MarketPriceHandler(object):
         if resp_json:
             price_info = resp_json[0]
             ts = int(int(price_info["T"]) / 1000)
-            price_str = decimal2str(Decimal(price_info["p"]))
+            price_str = price_info["p"]
 
             MarketPriceCache.hset(symbol.lower(), price_str)
             return {
