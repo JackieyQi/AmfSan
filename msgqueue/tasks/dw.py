@@ -298,7 +298,7 @@ class KlineDataSaveHandle(object):
                 return
             else:
                 return start_ts
-        except KdjTable.DoesNotExist:
+        except KlineTable.DoesNotExist:
             return start_ts
 
     async def get_k_lines_by_innerapi(self, init_start_ts):
@@ -934,9 +934,9 @@ class KDJIndicator:
 
         # 计算K、D、J值
         for i in range(n, length):
-            k_values[i] = (2/3) * k_values[i-1] + (1/3) * rsv_values[i]
-            d_values[i] = (2/3) * d_values[i-1] + (1/3) * k_values[i]
-            j_values[i] = 3 * k_values[i] - 2 * d_values[i]
+            k_values[i] = D(2/3) * k_values[i-1] + D(1/3) * rsv_values[i]
+            d_values[i] = D(2/3) * d_values[i-1] + D(1/3) * k_values[i]
+            j_values[i] = D(3) * k_values[i] - D(2) * d_values[i]
 
         return {
             "k_val": decimal2decimal(k_values[-1]),
@@ -1104,8 +1104,9 @@ class IndicatorsCalculateHandle(object):
         if not kdj_data_dict:
             await self._init_kdj_data()
         else:
-            prev_kdj_ts = kdj_data_dict[-1].open_ts
-            kdj_cfg = json.loads(kdj_data_dict[-1].cfg)
+            prev_kdj = kdj_data_dict[min(kdj_data_dict.keys(), key=lambda x: x[1])]
+            prev_kdj_ts = prev_kdj.open_ts
+            kdj_cfg = json.loads(prev_kdj.cfg)
             period = kdj_cfg["period"]
             # 计算 KDJ 所需的最小时间
             min_start_ts = prev_kdj_ts - period * self.interval_sec
@@ -1135,7 +1136,7 @@ class IndicatorsCalculateHandle(object):
         if not klines_data:
             return
 
-        init_info = KDJIndicator.get_origin_kdj([i.close_price for i in klines_data])
+        init_info = KDJIndicator.get_origin_kdj(klines_data)
         if not init_info:
             return
 
