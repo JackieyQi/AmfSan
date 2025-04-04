@@ -6,7 +6,7 @@ from decimal import Decimal
 from exts import async_database
 from models.order import PlotBackTestTable
 from cache.order import MarketPriceLimitCache
-from utils.common import str2decimal
+from utils.common import str2decimal, decimal2decimal
 from cache import AllCache
 from .market import MarketPriceHandler
 
@@ -110,7 +110,7 @@ class BackTestHandler(object):
                         _d.sell_price = _d.ask_price
                         _d.sell_ts = curr_ts
                         _d.hold_time = curr_ts - _d.buy_ts
-                        _d.profit_percent = str2decimal(((_d.ask_price - _d.buy_price) / _d.buy_price)*Decimal("100"), 1)
+                        _d.profit_percent = decimal2decimal(((_d.ask_price - _d.buy_price) / _d.buy_price)*Decimal("100"), 1)
                         _d.status = 4
                         await _d.aio_save()
 
@@ -121,7 +121,7 @@ class BackTestHandler(object):
                         _d.sell_price = curr_price
                         _d.sell_ts = curr_ts
                         _d.hold_time = curr_ts - _d.buy_ts
-                        _d.profit_percent = str2decimal(((curr_price - _d.buy_price) / _d.buy_price)*Decimal("100"), 1)
+                        _d.profit_percent = decimal2decimal(((curr_price - _d.buy_price) / _d.buy_price)*Decimal("100"), 1)
                         _d.status = 5
                         await _d.aio_save()
 
