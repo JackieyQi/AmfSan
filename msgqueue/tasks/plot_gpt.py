@@ -74,14 +74,12 @@ class CandlestickStrategy:
             has_bearish_engulfing = True
         return {"has_bullish_engulfing": has_bullish_engulfing, "has_bearish_engulfing": has_bearish_engulfing}
 
-    def get_rsi(self):
+    def get_long_upper_shadow(self, scale=Decimal("1.5")):
         """
-        动量策略:
-            RSI（相对强弱指数）策略:
-                RSI > 70，超买，考虑做空
-                RSI < 30，超卖，考虑做多
+        长上影线可能是诱多 -> -2 分
         """
-        pass
+        return (self.kline_list[0].high_pricee - self.kline_list[0].close_price
+                ) > (self.kline_list[0].close_price - self.kline_list[0].open_price) * scale
 
     def get_bollinger_bands(self):
         """
@@ -182,10 +180,20 @@ class CandlestickStrategy:
                 4小时成交量 **高于过去3根均值**，资金持续流入，增强信号。
         :return:
         """
-        strategies = {}
+        strategies = {"curr_high_price": self.kline_list[0].high_price, }
         curr_volume = self.kline_list[0].volume
 
-        volume_list = [i.volume for i in self.kline_list[1:window_size+1]]
+        volume_list = []
+        high_price_list = []
+        for i in self.kline_list[1:window_size+1]:
+            volume_list.append(i.volume)
+            high_price_list.append(i.high_price)
+
+        if not volume_list:
+            return strategies
+        if high_price_list:
+            strategies["prev_high_price"] = max(high_price_list)
+
         last_mean_volume = sum(volume_list) / Decimal(len(volume_list))
 
         if curr_volume > last_mean_volume:
@@ -902,7 +910,7 @@ class PlotGptHandle(BasePlotHandle):
             direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
                         f"\n<br> 总分: {sum(score_info.values())}。" \
                         f"\n<br> 分数详情： {score_info.items()}。" \
-                        f"\n<br><br> 📈 建议买入价: {recommend_bid_price}。<br><br>"
+                        f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}。<br><br>"
             func_str = "get_buy_score_info"
 
             await BackTestHandler(self.symbol).add_bid_ticket(
@@ -972,7 +980,8 @@ class PlotGptHandle(BasePlotHandle):
             pass
 
         self.result[self.symbol] = template_strategy_notice(
-            direction, open_ts, curr_price, self.check_time, self.close_monitor_url, self.set_limit_price_url)
+            direction, open_ts, decimal2str(curr_price),
+            self.check_time, self.close_monitor_url, self.set_limit_price_url)
 
         email_content = "".join(self.result.values())
         await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
@@ -1352,7 +1361,6 @@ class PlotGptHandle(BasePlotHandle):
         window = 3
         max_price = kline_1h_strategies.get_donchian_channel(window_size=window)["max_price"]
         vol_1h_strategy = kline_1h_strategies.get_vol_strategy(window)
-
         if vol_1h_strategy.get("has_spike_volume") and self.kline_list_1h[0].high_price < max_price:
             score_info["vol_1h_stagflation"] = 20
 
@@ -1772,7 +1780,8 @@ class PlotGptHandle(BasePlotHandle):
 
         vol_1h_strategy = kline_1h_strategies.get_vol_strategy(5)
         if vol_1h_strategy.get("has_enhance_spike_volume"):
-            score_info["vol_1h_up_1.3x"] = 5 # 1 小时成交量 > 5 根均值 * 1.3 → +5 分
+            score_info["vol_1h_up_1.3x"] = \
+                self._get_adjust_score_vol_1h_up_13x(5, current_price, vol_1h_strategy) # 1 小时成交量 > 5 根均值 * 1.3 → +5 分
 
         if vol_4h_5_strategy.get("has_spike_volume") and vol_1h_strategy.get("has_spike_volume"):
             score_info["vol_4h_1h_up"] = 5 # 4 小时成交量 > 5 根均值 且 1 小时成交量 > 5 根均值 → +5 分
@@ -1849,4 +1858,11 @@ class PlotGptHandle(BasePlotHandle):
 
         if (curr_price > bb_upper_price) and (open_price > bb_upper_price):
             score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
+        return score
+
+    def _get_adjust_score_vol_1h_up_13x(self, score, curr_price, vol_1h_strategy):
+
+        if ("prev_high_price" in vol_1h_strategy) \
+                and (vol_1h_strategy["prev_high_price"] >= vol_1h_strategy["curr_high_price"]):
+            score -= 3 # 当前k线的最高价未突破前5根线的最高价 -> -3 分
         return score
