@@ -1360,8 +1360,8 @@ class PlotGptHandle(BasePlotHandle):
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         window = 3
         max_price = kline_1h_strategies.get_donchian_channel(window_size=window)["max_price"]
-        vol_1h_strategy = kline_1h_strategies.get_vol_strategy(window)
-        if vol_1h_strategy.get("has_spike_volume") and self.kline_list_1h[0].high_price < max_price:
+        vol_1h_strategy = kline_1h_strategies.get_vol_strategy(window, rate_threshold=Decimal("1.2"))
+        if vol_1h_strategy.get("has_enhance_spike_volume") and self.kline_list_1h[0].high_price < max_price:
             score_info["vol_1h_stagflation"] = 20
 
         sum_score = sum(score_info.values())
