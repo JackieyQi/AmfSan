@@ -28,7 +28,7 @@ class BinanceExchangeRequestHandle(object):
         resp = http_get_request(self.base_url + "/api/v3/aggTrades", payload)
         return resp
 
-    def get_k_lines(self, symbol, interval, start_ts, limit=5):
+    def get_k_lines(self, symbol, interval, start_ts, limit):
         payload = {
             "symbol": symbol.upper(),
             "interval": interval,

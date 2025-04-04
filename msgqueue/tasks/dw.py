@@ -142,6 +142,9 @@ async def save_kline_job(*args, **kwargs):
     symbols_info = await get_plot_symbols_info(redis_client)
     for symbol in symbols_info.keys():
         for _interval in PLOT_INTERVAL_LIST:
+            # TODO,
+            if _interval not in ["1h", "4h", "1d"]:
+                continue
             await KlineDataSaveHandle(symbol, _interval).save_data()
     redis_client.close()
 
@@ -252,33 +255,76 @@ class KlineDataSaveHandle(object):
         self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
         self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
 
-    async def get_k_lines_by_innerapi(self):
+        self.curr_time = int(time.time())
+
+    async def get_init_indicators_time(self):
+        if await KdjTable.select(KdjTable.symbol).where(
+                KdjTable.symbol == self.symbol, KdjTable.interval_val == self.interval).aio_exists():
+            init_kdj_ts = 0
+        else:
+            init_kdj_ts = self.curr_time - self.interval_sec * KDJIndicator.dateset_length
+
+        if await MacdTable.select(MacdTable.symbol).where(
+                MacdTable.symbol == self.symbol, MacdTable.interval_val == self.interval).aio_exists():
+            init_macd_ts = 0
+        else:
+            init_macd_ts = self.curr_time - self.interval_sec * MACDIndicator.dateset_length
+
+        if await RsiTable.select(RsiTable.symbol).where(
+                RsiTable.symbol == self.symbol, RsiTable.interval_val == self.interval).aio_exists():
+            init_rsi_ts = 0
+        else:
+            init_rsi_ts = self.curr_time - self.interval_sec * RSIIndicator.dateset_length
+
+        start_ts = min(init_kdj_ts, init_macd_ts, init_rsi_ts)
+        # TODO: 优化，避免每次检查
+        if not start_ts:
+            return
+
         try:
-            db_last_k = (
+            kline_data = (
                 await KlineTable.select(KlineTable.open_ts)
                 .where(
                     KlineTable.symbol == self.symbol,
                     KlineTable.interval_val == self.interval,
+                    KlineTable.open_ts >= start_ts,
                 )
-                .order_by(KlineTable.id.desc())
+                # .order_by(KlineTable.id.desc())
                 .limit(1)
                 .aio_get()
             )
+            if kline_data.open_ts >= start_ts:
+                return
+            else:
+                return start_ts
+        except KdjTable.DoesNotExist:
+            return start_ts
 
-            request_params = {
-                "key": "get_k_lines",
-                "symbol": self.symbol.upper(),
-                "interval": self.interval,
-                "start_ts": (db_last_k.open_ts - self.k_interval) * 1000,
-                "limit": 5,
-            }
-        except KlineTable.DoesNotExist:
-            request_params = {
-                "key": "get_k_lines",
-                "symbol": self.symbol.upper(),
-                "interval": self.interval,
-                "limit": 17,
-            }
+    async def get_k_lines_by_innerapi(self, init_start_ts):
+        request_params = {
+            "key": "get_k_lines",
+            "symbol": self.symbol.upper(),
+            "interval": self.interval,
+        }
+
+        if not init_start_ts:
+            try:
+                db_last_k = (
+                    await KlineTable.select(KlineTable.open_ts)
+                    .where(
+                        KlineTable.symbol == self.symbol,
+                        KlineTable.interval_val == self.interval,
+                    )
+                    .order_by(KlineTable.id.desc())
+                    .limit(1)
+                    .aio_get()
+                )
+                request_params["start_ts"] = (db_last_k.open_ts - self.k_interval) * 1000
+
+            except KlineTable.DoesNotExist:
+                request_params["limit"] = 17
+        else:
+            request_params["start_ts"] = init_start_ts * 1000
 
         # resp_data = http_get_request(
         #     f"""{cfgs["http"]["inner_url"]}/api/cache/sync/""",
@@ -288,15 +334,19 @@ class KlineDataSaveHandle(object):
         #     return resp_data["data"]
 
         result = BinanceExchangeRequestHandle().get_k_lines(
-            self.symbol.upper(), self.interval, int(request_params.get("start_ts", 0)), int(request_params["limit"]))
-        if result:
-            return result
+            self.symbol.upper(), self.interval,
+            request_params.get("start_ts"),
+            request_params.get("limit"),
+        )
+        return result if result else None
 
     async def save_data(self):
         if not self.interval:
             return
 
-        k_data = await self.get_k_lines_by_innerapi()
+        init_start_ts = await self.get_init_indicators_time()
+
+        k_data = await self.get_k_lines_by_innerapi(init_start_ts)
         if not k_data:
             return
 
@@ -739,36 +789,204 @@ class EmaDataSaveHandle(object):
             self.parsed_k_lines_data(_data)
 
 
-class IndicatorsCalculateHandle(object):
-    def __init__(self, symbol, interval):
-        self.symbol = symbol
-        self.interval = interval
-        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
-        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+class MACDIndicator:
+    dateset_length = 150 # 数据点为150，macd趋于稳定
 
-        self.curr_time = int(time.time())
-        self.default_rsi_period = 6
+    default_fast_period = 12
+    default_slow_period = 26
+    default_signal_period = 9
 
-    async def start_cal(self):
+    @classmethod
+    def get_origin_macd(cls, prices, fast_period=default_fast_period,
+                        slow_period=default_slow_period, signal_period=default_signal_period):
+        """
+        :param prices: 收盘价的正序数组
+        :param fast_period:
+        :param slow_period:
+        :param signal_period:
+        :return:
+        """
+        # 确保有足够的数据
+        if len(prices) < max(fast_period, slow_period) + signal_period:
+            return
 
-        rsi_data_dict = {
-            (row.symbol, row.open_ts): row
-            for row in await RsiTable.select().where(
-                RsiTable.symbol == self.symbol,
-                RsiTable.interval_val == self.interval,
-            ).order_by(RsiTable.id.desc()).limit(2).aio_execute()
+        # 计算快速EMA（通常是12日）
+        fast_ema = [0] * len(prices)
+        # 初始化：使用前N个周期的简单平均值
+        fast_ema[fast_period - 1] = sum(prices[:fast_period]) / fast_period
+
+        # 计算剩余的快速EMA
+        k_fast = D(2 / (fast_period + 1))
+        for i in range(fast_period, len(prices)):
+            fast_ema[i] = prices[i] * k_fast + fast_ema[i - 1] * (1 - k_fast)
+
+        # 计算慢速EMA（通常是26日）
+        slow_ema = [0] * len(prices)
+        # 初始化：使用前N个周期的简单平均值
+        slow_ema[slow_period - 1] = sum(prices[:slow_period]) / slow_period
+
+        # 计算剩余的慢速EMA
+        k_slow = D(2 / (slow_period + 1))
+        for i in range(slow_period, len(prices)):
+            slow_ema[i] = prices[i] * k_slow + slow_ema[i - 1] * (1 - k_slow)
+
+        # 计算MACD线(DIF)：快速EMA - 慢速EMA
+        dif_line = [0] * len(prices)
+        for i in range(slow_period, len(prices)):
+            dif_line[i] = fast_ema[i] - slow_ema[i]
+
+        # 计算信号线(DEA)：MACD线的EMA
+        dea_line = [0] * len(prices)
+        # 需要等到有足够的MACD线值才能计算其EMA
+        start_idx = slow_period + signal_period - 1
+        # 初始化信号线
+        dea_line[start_idx] = sum(dif_line[slow_period:start_idx + 1]) / D(signal_period)
+
+        # 计算剩余的信号线
+        k_signal = D(2 / (signal_period + 1))
+        for i in range(start_idx + 1, len(prices)):
+            dea_line[i] = dif_line[i] * k_signal + dea_line[i - 1] * (1 - k_signal)
+
+        # 计算柱状图：MACD
+        macd_line = [0] * len(prices)
+        for i in range(start_idx, len(prices)):
+            macd_line[i] = dif_line[i] - dea_line[i]
+
+        return {
+            "fast_ema": decimal2decimal(fast_ema[-1]),
+            "slow_ema": decimal2decimal(slow_ema[-1]),
+            "dif": decimal2decimal(dif_line[-1]),
+            "dea": decimal2decimal(dea_line[-1]),
+            "macd": decimal2decimal(macd_line[-1])
         }
-        if not rsi_data_dict:
-            await self._init_rsi_data()
+
+    @classmethod
+    def calculate_macd_incremental(cls, price, prev_fast_ema, prev_slow_ema, prev_dea,
+                                   fast_period=default_fast_period,
+                                   slow_period=default_slow_period,
+                                   signal_period=default_signal_period
+                                   ):
+
+        k_fast = D(2 / (fast_period + 1))
+        k_slow = D(2 / (slow_period + 1))
+        k_signal = D(2 / (signal_period + 1))
+
+        fast_ema = price * k_fast + prev_fast_ema * (1 - k_fast)
+        slow_ema = price * k_slow + prev_slow_ema * (1 - k_slow)
+        dif = fast_ema - slow_ema
+        dea = dif * k_signal + prev_dea * (1 - k_signal)
+        macd = dif - dea
+        return {
+            "fast_ema": decimal2decimal(fast_ema),
+            "slow_ema": decimal2decimal(slow_ema),
+            "dea": decimal2decimal(dea), "macd": decimal2decimal(macd),
+        }
 
 
-        macd_data_dict = {}
-        kdj_data_dict = {}
+class KDJIndicator:
+    dateset_length = 50 # 数据集为50，kdj趋于稳定。
 
-        await self.update_indicators(rsi_data_dict)
+    default_period = 9
+    default_avg_move_1 = 3
+    default_avg_move_2 = 3
+
+    @classmethod
+    def get_origin_kdj(cls, k_lines, n=default_period, m1=default_avg_move_1, m2=default_avg_move_2):
+        """
+        计算KDJ指标
+
+        参数:
+        k_lines: 数据库的正序的k线数据
+        n: RSV计算周期，默认为9
+        m1, m2: K和D值的平滑因子，默认都为3
+
+        返回:
+        包含K、D、J值的字典
+        """
+        if len(k_lines) < n:
+            return
+
+        high_prices = []
+        low_prices = []
+        close_prices = []
+        for _row in k_lines:
+            low_prices.append(_row.low_price)
+            high_prices.append(_row.high_price)
+            close_prices.append(_row.close_price)
+
+        # 初始化结果数组
+        length = len(k_lines)
+        rsv_values = [0] * length
+        k_values = [50] * length  # 初始K值设为50
+        d_values = [50] * length  # 初始D值设为50
+        j_values = [50] * length  # 初始J值
+
+        # 计算RSV值
+        for i in range(n-1, length):
+            period_high = max(high_prices[i-n+1:i+1])
+            period_low = min(low_prices[i-n+1:i+1])
+
+            if period_high == period_low:  # 防止除以零
+                rsv_values[i] = 50
+            else:
+                rsv_values[i] = ((close_prices[i] - period_low) / (period_high - period_low)) * 100
+
+        # 计算K、D、J值
+        for i in range(n, length):
+            k_values[i] = (2/3) * k_values[i-1] + (1/3) * rsv_values[i]
+            d_values[i] = (2/3) * d_values[i-1] + (1/3) * k_values[i]
+            j_values[i] = 3 * k_values[i] - 2 * d_values[i]
+
+        return {
+            "k_val": decimal2decimal(k_values[-1]),
+            "d_val": decimal2decimal(d_values[-1]),
+            "j_val": decimal2decimal(j_values[-1]),
+        }
+
+    @classmethod
+    def calculate_kdj_incremental(cls, k_lines, prev_k, prev_d, period=default_period):
+        if len(k_lines) < period:
+            return None
+
+        if not prev_k or not prev_d:
+            return
+
+        low_price_list = []
+        high_price_list = []
+        for _row in k_lines:
+            low_price_list.append(_row.low_price)
+            high_price_list.append(_row.high_price)
+        min_price = min(low_price_list)
+        max_price = max(high_price_list)
+        close_price = k_lines[-1].close_price
+
+        rsv = (close_price - min_price) / (max_price - min_price) * 100
+
+        k_val = D(2 / 3) * prev_k + D(1 / 3) * rsv
+        d_val = D(2 / 3) * prev_d + D(1 / 3) * k_val
+        j_val = D(3) * k_val - D(2) * d_val
+        return {
+            "k_val": decimal2decimal(k_val),
+            "d_val": decimal2decimal(d_val),
+            "j_val": decimal2decimal(j_val),
+        }
 
 
-    def get_origin_rsi(self, prices, period):
+class RSIIndicator:
+    dateset_length = 70 # 数据集为70，rsi趋于稳定。
+
+    default_period = 6 # period: RSI周期，默认为6(传统是14)
+
+    @classmethod
+    def get_origin_rsi(cls, prices, period=default_period):
+        """
+        :param prices: 收盘价的正序数组
+        :param period:
+        :return:
+        """
+        if len(prices) < (cls.dateset_length-1): # 去掉最新k线
+            return
+
         scale_factor = leading_zeros(prices[0])
         if scale_factor:
             for i, val in enumerate(prices):
@@ -792,14 +1010,16 @@ class IndicatorsCalculateHandle(object):
 
         # 计算RS和RSI
         if avg_loss == 0:
-            return 100
+            # return 100
+            return
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
 
         return {"rsi": float2decimal(rsi), "avg_gain": float2decimal(avg_gain), "avg_loss": float2decimal(avg_loss)}
 
-    def calculate_rsi_incremental(self, previous_rsi, previous_avg_gain, previous_avg_loss,
-                                  current_price, previous_price, period=14):
+    @classmethod
+    def calculate_rsi_incremental(cls, previous_rsi, previous_avg_gain, previous_avg_loss,
+                                  current_price, previous_price, period=default_period):
         """
         增量式计算RSI
 
@@ -809,7 +1029,6 @@ class IndicatorsCalculateHandle(object):
         previous_avg_loss: 前一个时间点的平均下跌
         current_price: 当前价格
         previous_price: 前一个时间点的价格
-        period: RSI周期，默认为14
 
         返回:
         当前RSI值, 当前平均上涨, 当前平均下跌
@@ -836,9 +1055,67 @@ class IndicatorsCalculateHandle(object):
         return {"rsi": decimal2decimal(rsi),
                 "avg_gain": decimal2decimal(avg_gain), "avg_loss": decimal2decimal(avg_loss)}
 
-    async def _init_rsi_data(self):
-        # 计算初始rsi值，选取70个数据点
-        start_ts = self.curr_time - self.interval_sec * 70
+
+class IndicatorsCalculateHandle(object):
+    def __init__(self, symbol, interval):
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+        self.k_interval = PLOT_INTERVAL_CONFIG[interval]["k_interval"]
+
+        self.curr_time = int(time.time())
+        self.default_rsi_period = 6
+
+    async def start_cal(self):
+        rsi_start_ts, macd_start_ts, kdj_start_ts = 0, 0, 0
+
+        rsi_data_dict = {
+            (row.symbol, row.open_ts): row
+            for row in await RsiTable.select().where(
+                RsiTable.symbol == self.symbol,
+                RsiTable.interval_val == self.interval,
+            ).order_by(RsiTable.id.desc()).limit(2).aio_execute()
+        }
+        if not rsi_data_dict:
+            await self._init_rsi_data()
+        else:
+            rsi_start_ts = min(rsi_data_dict.keys(), key=lambda x: x[1])[1]
+
+        macd_data_dict = {
+            (macd.symbol, macd.opening_ts): macd
+            for macd in await MacdTable.select().where(
+                MacdTable.symbol == self.symbol,
+                MacdTable.interval_val == self.interval,
+            ).order_by(MacdTable.id.desc()).limit(2).aio_execute()
+        }
+        if not macd_data_dict:
+            await self._init_macd_data()
+        else:
+            macd_start_ts = min(macd_data_dict.keys(), key=lambda x: x[1])[1]
+
+        kdj_data_dict = {
+            (kdj.symbol, kdj.open_ts): kdj
+            for kdj in await KdjTable.select().where(
+                KdjTable.symbol == self.symbol,
+                KdjTable.interval_val == self.interval,
+            ).order_by(MacdTable.id.desc()).limit(2).aio_execute()
+        }
+        if not kdj_data_dict:
+            await self._init_kdj_data()
+        else:
+            prev_kdj_ts = kdj_data_dict[-1].open_ts
+            kdj_cfg = json.loads(kdj_data_dict[-1].cfg)
+            period = kdj_cfg["period"]
+            # 计算 KDJ 所需的最小时间
+            min_start_ts = prev_kdj_ts - period * self.interval_sec
+            # 确保查询 K 线数据的起始时间能够覆盖最小时间
+            kdj_start_ts = min(prev_kdj_ts - self.k_interval, min_start_ts)
+
+        if start_ts := min(rsi_start_ts, macd_start_ts, kdj_start_ts):
+            await self.update_indicators(start_ts, rsi_data_dict, macd_data_dict, kdj_data_dict)
+
+    async def _get_klines_for_init(self, dateset_length):
+        start_ts = self.curr_time - self.interval_sec * dateset_length
 
         db_klines = await KlineTable.select().where(
             KlineTable.symbol == self.symbol,
@@ -847,33 +1124,76 @@ class IndicatorsCalculateHandle(object):
         ).order_by(KlineTable.id).aio_execute()
         # 正序
         db_klines = list(db_klines)
-        if len(db_klines) < 70:
+        if len(db_klines) < dateset_length:
             return
 
-        db_klines = db_klines[:-1]
-        open_ts = db_klines[-1].open_ts
-        rsi_info = self.get_origin_rsi([i.close_price for i in db_klines], self.default_rsi_period)
+        return db_klines[:-1] # 去掉最新k线
+
+    async def _init_kdj_data(self):
+        klines_data = await self._get_klines_for_init(KDJIndicator.dateset_length)
+        if not klines_data:
+            return
+
+        init_info = KDJIndicator.get_origin_kdj([i.close_price for i in klines_data])
+        if not init_info:
+            return
+
+        kdj_cfg = {
+            "period": KDJIndicator.default_period,
+            "move_average_period1": KDJIndicator.default_avg_move_1,
+            "move_average_period2": KDJIndicator.default_avg_move_2,
+        }
+        await KdjTable.aio_create(
+            symbol=self.symbol,
+            interval_val=self.interval,
+            open_ts=klines_data[-1].open_ts,
+            k_val=init_info["k_val"],
+            d_val=init_info["d_val"],
+            j_val=init_info["j_val"],
+            cfg=json.dumps(kdj_cfg),
+        )
+
+    async def _init_macd_data(self):
+        klines_data = await self._get_klines_for_init(MACDIndicator.dateset_length)
+        if not klines_data:
+            return
+
+        init_info = MACDIndicator.get_origin_macd([i.close_price for i in klines_data])
+        if not init_info:
+            return
+
+        await MacdTable.aio_create(
+            symbol=self.symbol,
+            interval_val=self.interval,
+            opening_ts=klines_data[-1].open_ts,
+            opening_price=klines_data[-1].open_price,
+            closing_price=klines_data[-1].close_price,
+            ema_12=init_info["fast_ema"],
+            ema_26=init_info["slow_ema"],
+            dea=init_info["dea"],
+            macd=init_info["macd"],
+        )
+
+    async def _init_rsi_data(self):
+        klines_data = await self._get_klines_for_init(RSIIndicator.dateset_length)
+        if not klines_data:
+            return
+
+        init_info = RSIIndicator.get_origin_rsi([i.close_price for i in klines_data])
+        if not init_info:
+            return
+
         await RsiTable.aio_create(
             symbol=self.symbol,
             interval_val=self.interval,
-            open_ts=open_ts,
-            rsi=rsi_info["rsi"],
-            avg_gain=rsi_info["avg_gain"],
-            avg_loss=rsi_info["avg_loss"],
+            open_ts=klines_data[-1].open_ts,
+            rsi=init_info["rsi"],
+            avg_gain=init_info["avg_gain"],
+            avg_loss=init_info["avg_loss"],
             period=self.default_rsi_period,
         )
 
-    async def update_indicators(self, rsi_data_dict):
-
-        if rsi_data_dict:
-            rsi_start_ts = min(rsi_data_dict.keys(), key=lambda x: x[1])[1]
-        else:
-            rsi_start_ts = 0
-
-        start_ts = min([rsi_start_ts, ])
-        if not start_ts:
-            return
-
+    async def update_indicators(self, start_ts, rsi_data_dict, macd_data_dict, kdj_data_dict):
         db_kline = await KlineTable.select().where(
             KlineTable.symbol == self.symbol,
             KlineTable.interval_val == self.interval,
@@ -882,32 +1202,80 @@ class IndicatorsCalculateHandle(object):
         # 正序
         db_kline = list(db_kline)
 
-        async with async_database.aio_atomic():
+        async with async_database.aio_atomic(): # 长事务，消耗内存占用，提升性能
             for index, k in enumerate(db_kline):
                 open_ts = k.open_ts
                 close_price = k.close_price
 
-                prev_rsi_data = rsi_data_dict.get((self.symbol, open_ts - self.interval_sec))
-                if not prev_rsi_data:
-                    continue
-
-                curr_rsi_info = self.calculate_rsi_incremental(
-                    prev_rsi_data.rsi, prev_rsi_data.avg_gain, prev_rsi_data.avg_loss,
-                    close_price, db_kline[index - 1].close_price, period=self.default_rsi_period
-                )
-
-                if curr_rsi_data := rsi_data_dict.get((self.symbol, open_ts)):
-                    curr_rsi_data.rsi = curr_rsi_info["rsi"]
-                    curr_rsi_data.avg_gain = curr_rsi_info["avg_gain"]
-                    curr_rsi_data.avg_loss = curr_rsi_info["avg_loss"]
-                    await curr_rsi_data.aio_save()
-                else:
-                    await RsiTable.aio_create(
-                        symbol=self.symbol,
-                        interval_val=self.interval,
-                        open_ts=open_ts,
-                        rsi=curr_rsi_info["rsi"],
-                        avg_gain=curr_rsi_info["avg_gain"],
-                        avg_loss=curr_rsi_info["avg_loss"],
-                        period=self.default_rsi_period,
+                if prev_rsi_data := rsi_data_dict.get((self.symbol, open_ts - self.interval_sec)):
+                    curr_rsi_info = RSIIndicator.calculate_rsi_incremental(
+                        prev_rsi_data.rsi, prev_rsi_data.avg_gain, prev_rsi_data.avg_loss,
+                        close_price, db_kline[index - 1].close_price, period=self.default_rsi_period
                     )
+
+                    if curr_rsi_data := rsi_data_dict.get((self.symbol, open_ts)):
+                        curr_rsi_data.rsi = curr_rsi_info["rsi"]
+                        curr_rsi_data.avg_gain = curr_rsi_info["avg_gain"]
+                        curr_rsi_data.avg_loss = curr_rsi_info["avg_loss"]
+                        await curr_rsi_data.aio_save()
+                    else:
+                        await RsiTable.aio_create(
+                            symbol=self.symbol,
+                            interval_val=self.interval,
+                            open_ts=open_ts,
+                            rsi=curr_rsi_info["rsi"],
+                            avg_gain=curr_rsi_info["avg_gain"],
+                            avg_loss=curr_rsi_info["avg_loss"],
+                            period=self.default_rsi_period,
+                        )
+
+                if prev_macd_data := macd_data_dict.get((self.symbol, open_ts - self.interval_sec)):
+                    curr_macd_info = MACDIndicator.calculate_macd_incremental(
+                        close_price, prev_macd_data.ema_12, prev_macd_data.ema_26, prev_macd_data.dea
+                    )
+
+                    if now_macd := macd_data_dict.get((self.symbol, open_ts)):
+                        now_macd.closing_price = close_price
+                        now_macd.ema_12 = curr_macd_info["fast_ema"]
+                        now_macd.ema_26 = curr_macd_info["slow_ema"]
+                        now_macd.dea = curr_macd_info["dea"]
+                        now_macd.macd = curr_macd_info["macd"]
+                        await now_macd.aio_save()
+                    else:
+                        await MacdTable.aio_create(
+                            symbol=self.symbol,
+                            interval_val=self.interval,
+                            opening_ts=open_ts,
+                            opening_price=k.open_price,
+                            closing_price=close_price,
+                            ema_12=curr_macd_info["fast_ema"],
+                            ema_26=curr_macd_info["slow_ema"],
+                            dea=curr_macd_info["dea"],
+                            macd=curr_macd_info["macd"],
+                        )
+
+                if prev_kdj_data := kdj_data_dict.get((self.symbol, open_ts - self.interval_sec)):
+                    kdj_cfg = json.loads(prev_kdj_data.cfg)
+                    period = kdj_cfg["period"]
+
+                    period_k_lines = [kl for kl in db_kline
+                                      if kl.open_ts <= open_ts and kl.open_ts > open_ts - period * self.interval_sec]
+                    curr_kdj_info = KDJIndicator.calculate_kdj_incremental(
+                        period_k_lines, prev_kdj_data.k_val, prev_kdj_data.d_val, period=period
+                    )
+
+                    if curr_kdj_data := kdj_data_dict.get((self.symbol, open_ts)):
+                        curr_kdj_data.k_val = curr_kdj_info["k_val"]
+                        curr_kdj_data.d_val = curr_kdj_info["d_val"]
+                        curr_kdj_data.j_val = curr_kdj_info["j_val"]
+                        await curr_kdj_data.aio_save()
+                    else:
+                        await KdjTable.aio_create(
+                            symbol=self.symbol,
+                            interval_val=self.interval,
+                            open_ts=open_ts,
+                            k_val=curr_kdj_info["k_val"],
+                            d_val=curr_kdj_info["d_val"],
+                            j_val=curr_kdj_info["j_val"],
+                            cfg=prev_kdj_data.cfg,
+                        )
