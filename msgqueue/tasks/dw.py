@@ -293,7 +293,8 @@ class KlineDataSaveHandle(object):
                 .limit(1)
                 .aio_get()
             )
-            if kline_data.open_ts >= start_ts:
+
+            if start_ts <= kline_data.open_ts < start_ts + self.interval_sec:
                 return
             else:
                 return start_ts
@@ -1098,7 +1099,7 @@ class IndicatorsCalculateHandle(object):
             for kdj in await KdjTable.select().where(
                 KdjTable.symbol == self.symbol,
                 KdjTable.interval_val == self.interval,
-            ).order_by(MacdTable.id.desc()).limit(2).aio_execute()
+            ).order_by(KdjTable.id.desc()).limit(2).aio_execute()
         }
         if not kdj_data_dict:
             await self._init_kdj_data()

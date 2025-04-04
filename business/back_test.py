@@ -45,7 +45,7 @@ class BackTestHandler(object):
                     PlotBackTestTable.symbol == self.symbol,
                     # PlotBackTestTable.buy_ts > 0,
                     # PlotBackTestTable.ask_ts == 0,
-                ).order_by(PlotBackTestTable.id.desc()).aio_get()
+                ).order_by(PlotBackTestTable.bid_ts.desc()).aio_get()
 
                 last_ticket.ask_curr_price = curr_price
                 last_ticket.ask_price = ask_price
