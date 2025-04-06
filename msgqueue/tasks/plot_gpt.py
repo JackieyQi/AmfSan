@@ -231,7 +231,7 @@ class MacdStrategy:
         """
         更大周期趋势->增强短线交易的离场信号
         """
-        return self.macd_list[0].macd <= self.macd_list[1].macd
+        return self.macd_list[0].macd < self.macd_list[1].macd < self.macd_list[2].macd
 
     def get_dif_downtrend(self):
         dif = self.macd_list[0].ema_12 - self.macd_list[0].ema_26
@@ -1732,8 +1732,9 @@ class PlotGptHandle(BasePlotHandle):
         if self.macd_list_1d[0].macd > 0:
             score_info["macd_1d>0"] = 5 # 日线 MACD > 0 → +5 分
 
+        macd_4h_strategies = MacdStrategy(self.macd_list_4h)
         if self.macd_list_4h[0].macd > 0:
-            score_info["macd_4h>0"] = 5 # 4 小时 MACD > 0 → +5 分
+            score_info["macd_4h>0"] = self._get_adjust_score_macd_gt0(5, macd_4h_strategies) # 4 小时 MACD > 0 → +5 分
 
         # 短期动能因子(30分)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
@@ -1865,4 +1866,9 @@ class PlotGptHandle(BasePlotHandle):
         if ("prev_high_price" in vol_1h_strategy) \
                 and (vol_1h_strategy["prev_high_price"] >= vol_1h_strategy["curr_high_price"]):
             score -= 3 # 当前k线的最高价未突破前5根线的最高价 -> -3 分
+        return score
+
+    def _get_adjust_score_macd_gt0(self, score, macd_strategies):
+        if macd_strategies.get_downtrend():
+            score -= 3
         return score
