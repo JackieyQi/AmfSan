@@ -1049,10 +1049,10 @@ class RSIIndicator:
 
         # 计算新的RSI
         if avg_loss == 0:
-            rsi = 100
+            rsi = D(100)
         else:
             rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
+            rsi = D(100) - (D(100) / (D(1) + rs))
 
         return {"rsi": decimal2decimal(rsi),
                 "avg_gain": decimal2decimal(avg_gain), "avg_loss": decimal2decimal(avg_loss)}
