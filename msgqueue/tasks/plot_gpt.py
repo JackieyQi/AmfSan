@@ -913,9 +913,13 @@ class PlotGptHandle(BasePlotHandle):
             redis_client = AllCache.get_client()
             redis_client.set(f"sl_tp:{self.symbol}", f"{sl_price}:{tp_price}")
 
+            score_detail_text = ""
+            for k, v in score_info.items():
+                score_detail_text += f"{k}:{v}分;"
+
             direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
                         f"\n<br> 总分: {sum(score_info.values())}。" \
-                        f"\n<br> 分数详情： {score_info.items()}。" \
+                        f"\n<br> 分数详情： {score_detail_text}。" \
                         f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}。<br><br>"
             func_str = "get_buy_score_info"
 
