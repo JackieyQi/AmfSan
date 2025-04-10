@@ -1866,22 +1866,26 @@ class PlotGptHandle(BasePlotHandle):
         elif self.get_fng_signal(buy=True) is False:
             score_info["fng_lt_20"] = -5 # 当指数>80(极度贪婪)时 -> -5 分。
 
+        back_score_info = {}
+
         # 触底反弹因子(20分)
         if (self.rsi_list_4h[0].rsi < Decimal("30")) \
                 and (self.rsi_list_4h[0].rsi > self.rsi_list_4h[1].rsi):# 4小时 RSI < 30 且 近2根K线开始反弹（当前 RSI > 前一 RSI）→ +5 分
-            score_info["back_rsi_4h_lt20_uptrend"] = 5
+            back_score_info["back_rsi_4h_lt20_uptrend"] = 5
 
         if (self.rsi_list_1h[0].rsi >= Decimal("30")) and (self.rsi_list_1h[1].rsi < Decimal("25")): # 1小时RSI-6从低于25上穿30 -> +5 分。
-            score_info["back_rsi_1h_low_up_25to30"] = 5
+            back_score_info["back_rsi_1h_low_up_25to30"] = 5
 
         if self.kdj_list_1h[0].j_val > Decimal("20") \
-                and self.kdj_list_1h[-1].j_val <= Decimal("15"): # 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
-            score_info["back_kdj_1h_pullback_15to20"] = 5
+                and self.kdj_list_1h[1].j_val <= Decimal("15"): # 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
+            back_score_info["back_kdj_1h_pullback_15to20"] = 5
 
         if kdj_1h_strategies.get_curr_golden_cross_by_threshold(Decimal("20")): # 1小时KDJ在低位（J<20）形成金叉 → +5分
-            score_info["back_kdj_1h_golden_cross_20low"] = 5
+            back_score_info["back_kdj_1h_golden_cross_20low"] = 5
 
-        sum_score = sum(score_info.values())
+        back_sum_score = sum(back_score_info.values())
+        sum_score = sum(score_info.values()) + back_sum_score
+
         # TODO:可以考虑“评分走势”的平滑机制
         """
         TODO: 可以考虑“评分走势”的平滑机制
@@ -1892,7 +1896,7 @@ class PlotGptHandle(BasePlotHandle):
         """
         if sum_score >= 40:
             logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, bb_info:{bb_info}")
-        if sum_score >= 60:
+        if sum_score >= 60 or back_sum_score >= 15:
             return score_info
         return
 
