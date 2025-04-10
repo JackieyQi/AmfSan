@@ -30,7 +30,9 @@ class UserRegisterVerification(HTTPMethodView):
         # TODO:限时发送
         code = generate_email_code()
         verification_codes[email] = code
-        print(f"验证码 {code} 发送至 {email}")  # 这里可替换为邮件发送逻辑
+        with RedisPoolContext() as r:
+            r.set(f"user:register_code:{email}", code, ex=600)
+        # print(f"验证码 {code} 发送至 {email}")  # 这里可替换为邮件发送逻辑
         return {"message": "Verification code sent"}
 
 
@@ -98,7 +100,6 @@ class UserLoginView(HTTPMethodView):
         token, exp_time, jti = generate_jwt(db_user)
         with RedisPoolContext() as r:
             r.set(f"user:{email}:jti", jti, ex=6*3600)
-            print(f"login, jti:{jti}")
 
         return {"user_id": db_user.uuid, "token": token, "expires_at": exp_time}
 
