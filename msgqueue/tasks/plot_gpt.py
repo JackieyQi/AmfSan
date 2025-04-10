@@ -935,11 +935,13 @@ class PlotGptHandle(BasePlotHandle):
             recommend_ask_price = None
 
             # 海象运算符, py3.8新特性
-            # if part_direction := self._get_sell_direction_active_taking_profit(curr_price):
-            #     ask_plot_type = 6
-            # elif part_direction := self._get_sell_direction_stop_loss(curr_price):
-            #     ask_plot_type = 7
-            if part_direction := self._get_exit_score():
+            if part_direction := self._get_sell_direction_active_taking_profit(curr_price):
+                ask_plot_type = 6
+                func_str = "_get_sell_direction_active_taking_profit"
+            elif part_direction := self._get_sell_direction_stop_loss(curr_price):
+                ask_plot_type = 7
+                func_str = "_get_sell_direction_stop_loss"
+            elif part_direction := self._get_exit_score():
                 ask_plot_type = 8
                 func_str = "_get_exit_score"
             else:
@@ -1321,7 +1323,7 @@ class PlotGptHandle(BasePlotHandle):
         kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
         if kline_4h_strategies.get_engulfing_pattern_strategy()["has_bearish_engulfing"] is True:
             direction += "4小时看跌吞没，止盈离场。"
-            return
+            return direction
 
         return direction
 
@@ -1347,7 +1349,7 @@ class PlotGptHandle(BasePlotHandle):
         📊 领先信号（更早）：1H KDJ J 线高位拐头：J 线 > 80 且开始向下。-> +10 分
         📊 动量因子：日线 KDJ 超买： K、D > 80 且 J 线向下。-> +15 分
         📊 动量因子：4H KDJ 超买： K、D > 80 且 J 线向下。-> +10 分
-        🔻 价格行为因子：放量滞涨：1小时成交量暴增，但价格未创新高。-> +20 分
+        🔻 价格行为因子：放量滞涨：1小时成交量暴增，但价格未创新高。-> +15 分
 
         """
         score_info = {}
@@ -1372,7 +1374,7 @@ class PlotGptHandle(BasePlotHandle):
         max_price = kline_1h_strategies.get_donchian_channel(window_size=window)["max_price"]
         vol_1h_strategy = kline_1h_strategies.get_vol_strategy(window, rate_threshold=Decimal("1.2"))
         if vol_1h_strategy.get("has_enhance_spike_volume") and self.kline_list_1h[0].high_price < max_price:
-            score_info["vol_1h_stagflation"] = 20
+            score_info["vol_1h_stagflation"] = 15
 
         sum_score = sum(score_info.values())
         if sum_score >= 20:
