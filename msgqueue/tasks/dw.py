@@ -12,7 +12,8 @@ from business.binance_exchange import BinanceExchangeRequestHandle
 # from business.huobi_exchange import HuobiExchangeAccountHandle
 from business.market import MarketPriceHandler, MacdInitData, KdjInitData, EmaInitData
 from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable
-from models.order import OrderTradeHistoryTable, SymbolPlotTable
+from models.order import OrderTradeHistoryTable
+from models.user import UserSymbolPlotTable as SymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG

@@ -33,6 +33,22 @@ def ts2bjfmt(ts=None):
     )
 
 
+def convert_seconds(seconds):
+    """
+    将秒数转换为天、小时和分钟，忽略秒数。
+
+    Args:
+        seconds: 要转换的秒数。
+
+    Returns:
+        包含天、小时和分钟的元组。
+    """
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    return days, hours, minutes
+
+
 def decimal2str_old(val: Decimal, num=8):
     # normalize 消耗性能
     val = val.quantize(Decimal((0, (1,), -num)), ROUND_DOWN)

@@ -6,7 +6,7 @@ from sanic.exceptions import SanicException
 from . import resp_code
 
 
-class SanicException(Exception):
+class CustomSanicException(SanicException):
     def __init__(self, message, status_code=None, quiet=None):
         super().__init__(message)
 
@@ -19,19 +19,16 @@ class SanicException(Exception):
 
 
 class StandardResponseExc(Exception):
-	def __init__(self, data=None, msg="", code=resp_code.FAIL):
-		"""
-		:param code:
-		:param msg:
-		:param data:
-		"""
-		self.code = code
-		self.data = data or dict()
-		self.message = msg or resp_code.CODE_MESSAGES.get(code, "FAIL")
+    def __init__(self, data=None, msg="", code=resp_code.FAIL):
+        self.code = code
+        self.data = data or dict()
+        self.message = msg or resp_code.CODE_MESSAGES.get(code, "FAIL")
+        super().__init__(self.message)
 
 
 class UnAuthorizationExc(Exception):
-	def __init__(self):
-		self.data = dict()
-		self.message = "The server could not verify that you are authorized to access the URL requested"
-		self.code = resp_code.UN_AUTHORIZATION
+    def __init__(self):
+        self.data = dict()
+        self.message = "The server could not verify that you are authorized to access the URL requested"
+        self.code = resp_code.UN_AUTHORIZATION
+        super(UnAuthorizationExc, self).__init__(self.message)

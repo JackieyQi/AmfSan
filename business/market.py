@@ -10,13 +10,16 @@ from cache.order import (LimitPriceNoticeValueCache,
                          MarketPriceCache)
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     SymbolPlotTableCache, CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.market import KlineTable, MacdTable, KdjTable, EmaTable
-from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable
+from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable
+from models.order import SymbolPriceChangeHistoryTable
+from models.user import UserSymbolPlotTable as SymbolPlotTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime, decimal2str, Decimal
 from utils.exception import StandardResponseExc
 from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
+from exts import async_database
+from cache import AllCache
 
 
 class MarketPriceHandler(object):
@@ -186,31 +189,53 @@ class MarketPriceHandler(object):
 
 
 class SymbolHandle(object):
-    def __init__(self, symbol):
-        self.user_id = 2
+    def __init__(self, symbol="", user_id=2):
+        self.user_id = user_id
         self.symbol = symbol
+
+    async def get_all(self):
+        db_rows = await SymbolPlotTable.select().where(
+            SymbolPlotTable.user_id == self.user_id
+        ).order_by(SymbolPlotTable.create_ts).aio_execute()
+
+        result = []
+        for row in db_rows:
+            result.append({
+                "symbol": row.symbol,
+                "is_valid": row.is_valid,
+                "create_ts": row.create_ts,
+            })
+        return result
+
+    def refresh_symbol_cache(self):
+        redis_client = AllCache.get_client()
+        redis_key = "symbol:cfg"
+        redis_client.delete(redis_key)
+        redis_client.close()
 
     def add_plot(self):
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 1)
 
-    def add_plot_to_db(self):
+    async def add_plot_to_db(self):
+        async with async_database.aio_atomic():
+            try:
+                db_row = await SymbolPlotTable.select().where(
+                    SymbolPlotTable.user_id == self.user_id,
+                    SymbolPlotTable.symbol == self.symbol,
+                ).aio_get()
 
-        query = SymbolPlotTable.select().where(
-            SymbolPlotTable.user_id == self.user_id,
-            SymbolPlotTable.symbol == self.symbol,
-        )
-        if query:
-            db_row = query.get()
-            if db_row.is_valid is False:
-                db_row.is_valid = True
-                db_row.save()
-            return
+                if db_row.is_valid is False:
+                    db_row.is_valid = True
+                    await db_row.aio_save()
+                return db_row
 
-        result = SymbolPlotTable(
-            user_id=self.user_id,
-            symbol=self.symbol,
-        ).save()
-        return result
+            except SymbolPlotTable.DoesNotExist:
+                new_row = SymbolPlotTable(
+                    user_id=self.user_id,
+                    symbol=self.symbol,
+                )
+                await new_row.aio_save()
+                return new_row
 
     def del_plot(self):
         self.del_macd_gate()
@@ -218,20 +243,22 @@ class SymbolHandle(object):
 
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
 
-    def del_plot_to_db(self):
+    async def del_plot_to_db(self):
+        async with async_database.aio_atomic():
+            plot_row = await SymbolPlotTable.delete().where(
+                # SymbolPlotTable.user_id == self.user_id,
+                SymbolPlotTable.symbol == self.symbol,
+            ).aio_execute()
 
-        query = SymbolPlotTable.select().where(
-            SymbolPlotTable.user_id == self.user_id,
-            SymbolPlotTable.symbol == self.symbol,
-        )
-        if not query:
-            return
+            kline_del_rows = await KlineTable.delete().where(KlineTable.symbol == self.symbol).aio_execute()
+            macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == self.symbol).aio_execute()
+            kdj_del_rows = await KdjTable.delete().where(KdjTable.symbol == self.symbol).aio_execute()
+            rsi_del_rows = await RsiTable.delete().where(RsiTable.symbol == self.symbol).aio_execute()
 
-        symbol_plot = query.get()
-        symbol_plot.is_valid = False
-        symbol_plot.save()
-
-        return 1
+        return {
+            "plot_row": plot_row, "kline_del_rows": kline_del_rows, "macd_del_rows": macd_del_rows,
+            "kdj_del_rows": kdj_del_rows, "rsi_del_rows": rsi_del_rows,
+        }
 
     def add_macd_gate(self, interval=""):
         if interval in PLOT_INTERVAL_LIST:

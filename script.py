@@ -22,6 +22,7 @@ def command_create_tables():
                 wallet.BalanceHistoryTable,
                 wallet.TotalBalanceHistoryTable,
                 user.EmailMsgHistoryTable,
+                user.UserInfoTable,
                 market.KlineTable,
                 market.MacdTable,
                 market.KdjTable,

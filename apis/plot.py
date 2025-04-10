@@ -2,10 +2,12 @@
 # coding:utf8
 
 import ujson as json
-from sanic.views import HTTPMethodView
+from utils.authentication import HTTPMethodView, ProtectedView
 from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
 from settings.constants import PLOT_INTERVAL_LIST
 from business.market import SymbolHandle
+from business.back_test import BackTestViewHandler
+from utils.exception import StandardResponseExc
 
 
 class PlotMacdView(HTTPMethodView):
@@ -105,3 +107,36 @@ class PlotEmaView(HTTPMethodView):
                     # SymbolHandle(symbol).add_kdj_gate(_interval)
 
         return "handle over!"
+
+
+class PlotBackTestRecordsView(ProtectedView):
+    need_auth = {"get": True, }
+
+    async def get(self, request):
+        user = request.ctx.user
+        if user.user_id != "2":
+            return {}
+
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 10))
+        symbol = request.args.get("symbol")
+        status = request.args.get("status")
+        if status is not None:
+            status = int(status)
+        return await BackTestViewHandler().get_back_test_records(page, page_size, symbol, status)
+
+
+class PlotBackTestRecordDetailView(ProtectedView):
+    need_auth = {"get": True, }
+
+    async def get(self, request):
+        user = request.ctx.user
+        if user.user_id != "2":
+            return {}
+
+        symbol = request.args.get("symbol")
+        record_id = request.args.get("id")
+        if not all([symbol, record_id]):
+            raise StandardResponseExc(msg="Missing required fields")
+
+        return await BackTestViewHandler().get_detail_record(symbol, record_id)

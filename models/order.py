@@ -9,24 +9,6 @@ from peewee import (BooleanField, CharField, DecimalField, IntegerField,
 from . import Base
 
 
-class SymbolPlotTable(Base):
-    user_id = CharField(null=False, db_column="user_id")
-    symbol = CharField(db_column="symbol", unique=True)
-    last_price = DecimalField(
-        db_column="last_price",
-        default=0,
-        max_digits=20,
-        decimal_places=8,
-        help_text="上次交易价格",
-    )
-    is_valid = BooleanField(db_column="is_valid", default=True)
-
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
-
-    class Meta:
-        table_name = "symbol_plot_table"
-
-
 class PlotBackTestTable(Base):
     id = AutoField()
     symbol = CharField(db_column="symbol", index=True, max_length=10)

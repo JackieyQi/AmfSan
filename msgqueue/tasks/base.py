@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 import json
-from models.order import SymbolPlotTable
+from models.user import UserSymbolPlotTable
 from models.market import MacdTable, KdjTable
 
 
@@ -42,7 +42,7 @@ async def get_plot_symbols_info(redis_client):
 
     cache_data = redis_client.hgetall(redis_key)
     if not cache_data:
-        query = await SymbolPlotTable.select().aio_execute()
+        query = await UserSymbolPlotTable.select().aio_execute()
         for row in query:
             symbols_info[row.symbol.lower()] = {"valid": int(row.is_valid)}
 

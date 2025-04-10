@@ -5,7 +5,7 @@ import time
 from decimal import Decimal
 
 from business.market import MarketPriceHandler, SymbolHandle
-from sanic.views import HTTPMethodView
+from utils.authentication import HTTPMethodView, ProtectedView
 from utils.common import str2decimal, decimal2str
 from utils.exception import StandardResponseExc
 
@@ -179,3 +179,38 @@ class MarketInnerPriceView(HTTPMethodView):
             )
         else:
             raise StandardResponseExc(msg="Error side_str:{}".format(side_str))
+
+
+class MarketPlotManageView(ProtectedView):
+    need_auth = {"get": True, "post": True, "delete": True}
+
+    async def get(self, request):
+        user = request.ctx.user
+        return await SymbolHandle(user_id=user.user_id).get_all()
+
+    async def post(self, request):
+        user = request.ctx.user
+        symbol = request.json.get("symbol")
+        if not all([symbol, ]):
+            raise StandardResponseExc(msg="Missing required fields")
+        symbol = symbol.strip().lower()
+
+        symbol_handler = SymbolHandle(symbol, user_id=user.user_id)
+        symbol_handler.add_plot()
+        user_symbol_info = await symbol_handler.add_plot_to_db()
+        symbol_handler.refresh_symbol_cache()
+
+        return {"message": "success"}
+
+    async def delete(self, request):
+        user = request.ctx.user
+        symbol = request.json.get("symbol")
+        if not all([symbol, ]):
+            raise StandardResponseExc(msg="Missing required fields")
+        symbol = symbol.strip().lower()
+
+        symbol_handler = SymbolHandle(symbol, user_id=user.user_id)
+        symbol_handler.del_plot()
+        result_info = await symbol_handler.del_plot_to_db()
+        symbol_handler.refresh_symbol_cache()
+        return result_info

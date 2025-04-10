@@ -12,9 +12,9 @@ from business.market import MarketPriceHandler
 from business.back_test import BackTestHandler
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.order import SymbolPlotTable, PlotBackTestTable
+from models.order import PlotBackTestTable
 from models.market import KlineTable, MacdTable, KdjTable, EmaTable
-from models.user import EmailMsgHistoryTable
+from models.user import EmailMsgHistoryTable, UserSymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
                                 INNER_GET_DELETE_MACD_CROSS_URL,
@@ -80,7 +80,7 @@ async def check_macd_cross_by_symbol(msg):
 
 
 async def check_macd_trend(*args, **kwargs):
-    query = SymbolPlotTable.select().where(SymbolPlotTable.is_valid == True)
+    query = UserSymbolPlotTable.select().where(UserSymbolPlotTable.is_valid == True)
     for row in query:
         for _interval in PLOT_INTERVAL_LIST:
             if not CheckMacdTrendGateCache.hget(f"{row.symbol}:{_interval}"):

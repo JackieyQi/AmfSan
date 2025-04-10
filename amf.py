@@ -5,8 +5,15 @@ from sanic import Sanic, response
 import ujson as json
 from sanic.response import json as json_view
 from sanic.handlers import ErrorHandler
+from sanic_ext import Extend
 
 app = Sanic(name=__name__)
+Extend(app, config={
+    "CORS_ORIGINS": "*",
+    "CORS_ALLOW_METHODS": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "CORS_ALLOW_HEADERS": ["Content-Type", "Authorization"],
+    "CORS_ALLOW_CREDENTIALS": True,
+})
 
 from settings.setting import cfgs
 from cache import AllCache
