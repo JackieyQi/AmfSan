@@ -69,7 +69,7 @@ class CandlestickStrategy:
                 and (self.kline_list[curr_index].close_price > self.kline_list[last_index].open_price):
             has_bullish_engulfing = True
 
-        if (self.kline_list[curr_index].open_price >= self.kline_list[last_index].close_price) \
+        if (self.kline_list[curr_index].open_price > self.kline_list[last_index].close_price) \
                 and (self.kline_list[curr_index].close_price < self.kline_list[last_index].open_price):
             has_bearish_engulfing = True
         return {"has_bullish_engulfing": has_bullish_engulfing, "has_bearish_engulfing": has_bearish_engulfing}
@@ -920,7 +920,8 @@ class PlotGptHandle(BasePlotHandle):
             direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
                         f"\n<br> 总分: {sum(score_info.values())}。" \
                         f"\n<br> 分数详情： {score_detail_text}。" \
-                        f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}。<br><br>"
+                        f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
+                        f"当前价: {decimal2str(curr_price)}。<br><br>"
             func_str = "get_buy_score_info"
 
             await BackTestHandler(self.symbol).add_bid_ticket(
@@ -970,7 +971,8 @@ class PlotGptHandle(BasePlotHandle):
 
             direction = f"<br> 🔴 短线卖出信号: <b>{self.symbol.upper()}</b> " \
                         f"<br> {part_direction}" \
-                        f"<br><br> 📉 建议卖出价：{recommend_ask_price}" \
+                        f"<br><br> 📉 建议卖出价：{decimal2str(recommend_ask_price)}，" \
+                        f"当前价: {decimal2str(curr_price)}。" \
 
             await BackTestHandler(self.symbol).update_ask_ticket(
                 curr_price,
@@ -1327,8 +1329,8 @@ class PlotGptHandle(BasePlotHandle):
             return direction
 
         kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
-        if kline_4h_strategies.get_engulfing_pattern_strategy()["has_bearish_engulfing"] is True:
-            direction += "4小时看跌吞没，止盈离场。"
+        if kline_4h_strategies.get_engulfing_pattern_strategy(window_index=1)["has_bearish_engulfing"] is True:
+            direction += "4小时的前k线看跌吞没，止盈离场。"
             return direction
 
         return direction
