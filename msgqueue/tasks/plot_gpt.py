@@ -1747,6 +1747,8 @@ class PlotGptHandle(BasePlotHandle):
             2. 1小时RSI-6从低于25上穿30 -> +5 分。
             3. 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
             4. 1小时KDJ在低位（J<20）形成金叉 → +5分
+        高位环境风险惩罚因子(-5分)
+            1. 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
 
         """
         # if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
@@ -1865,6 +1867,10 @@ class PlotGptHandle(BasePlotHandle):
             score_info["fng_lt_20"] = 5 # 当指数<20(极度恐惧)时 -> +5 分。
         elif self.get_fng_signal(buy=True) is False:
             score_info["fng_lt_20"] = -5 # 当指数>80(极度贪婪)时 -> -5 分。
+
+        # 高位环境风险惩罚因子(-5分)
+        if self.rsi_list_1h[0] > Decimal("80") or self.rsi_list_1h[1] > Decimal("80"):
+            score_info["warn_rsi_1h_too_high"] = - 5 # 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
 
         back_score_info = {}
 
