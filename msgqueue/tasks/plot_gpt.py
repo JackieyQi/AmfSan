@@ -1299,7 +1299,12 @@ class PlotGptHandle(BasePlotHandle):
     def _get_sell_direction_active_taking_profit(self, curr_price):
         """
         主动止盈:
-            若 KDJ J 值 > 90 且 MACD DIF 下降，视为强势过热信号，部分止盈。
+            * 若 KDJ J 值 > 90 且 MACD DIF 下降，视为强势过热信号，部分止盈。
+            * 价格逼近 1小时布林带上轨：
+                    1. 如果 RSI < 75 且 MACD 柱状图收缩（即动能减弱）→ 执行止盈
+                    TODO: 2. 如果 RSI > 75 且 KDJ 仍金叉、MACD 扩张 → 等待下一根 K 线确认
+                    TODO: 3. 如果连续3根K线都在上轨附近但价格未放量上涨 → 止盈
+
         :return:
         """
         direction = ""
@@ -1313,7 +1318,8 @@ class PlotGptHandle(BasePlotHandle):
         bb_info = kline_1h_strategies.get_bollinger_bands()
         near_info = check_near_high(self.kline_list_1h[:21][::-1], bb_info["bb_mid"], bb_info["bb_upper"], logger)
         if near_info["is_near"]:
-            direction += "价格逼近 1小时布林带上轨，优先止盈。"
+            if (self.rsi_list_1h[0].rsi < Decimal("75")) and (self.macd_list_1h[0].macd < self.macd_list_1h[1].macd):
+                direction += "价格逼近 1小时布林带上轨，RSI < 75 且 MACD 柱状图收缩（即动能减弱），优先止盈。"
             return direction
 
         if kline_1h_strategies.has_double_top():
