@@ -1755,6 +1755,18 @@ class PlotGptHandle(BasePlotHandle):
             4. 1小时KDJ在低位（J<20）形成金叉 → +5分
         高位环境风险惩罚因子(-5分)
             1. 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
+            2. 1小时的KDJ的前两根线均大于100 -> -5 分
+
+                布林带追高惩罚: -10分;
+                KDJ超出100惩罚: -5分;
+                RSI超过80惩罚: -5分;
+
+                1. 价格 > 1小时布林带上轨且开盘价也在上轨 -> -5 分。
+                2. RSI-6 > 80（极度超买）-> -5 分。
+                3. KDJ-J > 100（明显过热）-> -5 分。
+                4. 近 3 根 K 线 RSI 均 > 75，且阳线为主 -> -3 分。
+                5. 当前成交量 > 前 5 根均量的 3 倍 + RSI > 75 -> -3 分（放量冲高）。
+
 
         """
         # if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
@@ -1874,9 +1886,12 @@ class PlotGptHandle(BasePlotHandle):
         elif self.get_fng_signal(buy=True) is False:
             score_info["fng_lt_20"] = -5 # 当指数>80(极度贪婪)时 -> -5 分。
 
-        # 高位环境风险惩罚因子(-5分)
+        # 高位环境风险惩罚因子(-10分)
         if self.rsi_list_1h[0].rsi > Decimal("80") or self.rsi_list_1h[1].rsi > Decimal("80"):
-            score_info["warn_rsi_1h_too_high"] = - 5 # 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
+            score_info["overheat_risk_rsi_1h_too_high"] = - 5 # 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
+
+        if self.kdj_list_1h[1].j_val > Decimal("100") and self.kdj_list_1h[2].j_val > Decimal("100"):
+            score_info["overheat_risk_kdj_1h_too_hot"] = - 5 # 1小时的KDJ的前两根线均大于100 -> -5 分
 
         back_score_info = {}
 
