@@ -1869,7 +1869,7 @@ class PlotGptHandle(BasePlotHandle):
             score_info["fng_lt_20"] = -5 # 当指数>80(极度贪婪)时 -> -5 分。
 
         # 高位环境风险惩罚因子(-5分)
-        if self.rsi_list_1h[0] > Decimal("80") or self.rsi_list_1h[1] > Decimal("80"):
+        if self.rsi_list_1h[0].rsi > Decimal("80") or self.rsi_list_1h[1].rsi > Decimal("80"):
             score_info["warn_rsi_1h_too_high"] = - 5 # 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
 
         back_score_info = {}
