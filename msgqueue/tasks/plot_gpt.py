@@ -74,12 +74,47 @@ class CandlestickStrategy:
             has_bearish_engulfing = True
         return {"has_bullish_engulfing": has_bullish_engulfing, "has_bearish_engulfing": has_bearish_engulfing}
 
-    def get_long_upper_shadow(self, scale=Decimal("1.5")):
+    def get_long_upper_shadow(self, index=0, scale=Decimal("1.5")):
         """
         长上影线可能是诱多 -> -2 分
         """
-        return (self.kline_list[0].high_pricee - self.kline_list[0].close_price
-                ) > (self.kline_list[0].close_price - self.kline_list[0].open_price) * scale
+        real_body = abs(self.kline_list[index].close_price - self.kline_list[index].open_price)
+        upper_shadow_body = self.kline_list[index].high_price - max(
+            self.kline_list[index].open_price, self.kline_list[index].close_price)
+
+        return upper_shadow_body > real_body * scale
+
+    def get_crosshairs(self, index=0, scale=Decimal("0.15")):
+        """ 长十字线"""
+        real_body = abs(self.kline_list[index].close_price - self.kline_list[index].open_price)
+        range_total_body = self.kline_list[index].high_price - self.kline_list[index].low_price
+
+        return real_body < range_total_body * scale
+
+    def get_long_lower_shadow(self, index=0, scale=Decimal("1.5")):
+        """
+        长下影线可能是诱空 -> +2 分
+        :return:
+        """
+        real_body = abs(self.kline_list[index].close_price - self.kline_list[index].open_price)
+        lower_shadow_body = min(self.kline_list[index].open_price, self.kline_list[index].close_price
+                                ) - self.kline_list[index].low_price
+        return lower_shadow_body > real_body * scale
+
+    def get_corsshairs_and_long_lower_shadow(self, index=0):
+        """
+        判断：长十字线 + 下影线更长 -> -3 分
+        """
+        is_crosshairs = self.get_crosshairs(index)
+
+        upper_shadow_body = self.kline_list[index].high_price - max(
+            self.kline_list[index].open_price, self.kline_list[index].close_price)
+        lower_shadow_body = min(self.kline_list[index].open_price, self.kline_list[index].close_price
+                                ) - self.kline_list[index].low_price
+        range_total_body = self.kline_list[index].high_price - self.kline_list[index].low_price
+        return is_crosshairs and (lower_shadow_body > upper_shadow_body*Decimal("1.2")) and (
+            lower_shadow_body > range_total_body*Decimal("0.3")
+        )
 
     def get_bollinger_bands(self):
         """
@@ -1386,7 +1421,10 @@ class PlotGptHandle(BasePlotHandle):
 
         sum_score = sum(score_info.values())
         if sum_score >= 20:
-            return f"{score_info.items()}"
+            score_detail_text = ""
+            for k, v in score_info.items():
+                score_detail_text += f"{k}:{v}分;"
+            return score_detail_text
         return ""
 
     def _get_sell_direction_sideways_or_downward(self, set_time, hours_diff):
@@ -1722,9 +1760,14 @@ class PlotGptHandle(BasePlotHandle):
         偏向趋势跟随 + 突破确认 + 触底反弹(是否单独计分50：15)：总分100分
         趋势因子(35分)：
             1. 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
-            2. 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +3 分;动态调整分数：（收盘价跌破下轨 -> +2 分）（最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分）（开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分）
+            2. 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +3 分;动态调整分数：
+                （收盘价跌破下轨 -> +2 分）
+                （最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分）
+                （开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分）
+                （当前4小时k线形成上影线 -> -2 分）
             3. 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
-            4. 1 小时 EMA12 上升（EMA12 斜率 > 0） → +5 分;
+            4. 1 小时 EMA12 上升（EMA12 斜率 > 0） → +5 分;动态调整分数：
+                （1小时k线的前根线为长十字线 + 下影线更长 -> -3 分）
             5. 1 小时 MACD 上升 → +5 分;
             6. 日线 MACD > 0 → +2 分
             7. 4 小时 MACD > 0 → +5 分;动态调整分数：（macd当前线三连降 -> -3 分）
@@ -1782,10 +1825,9 @@ class PlotGptHandle(BasePlotHandle):
         if ema_4h_strategy.get("has_ema_stack"):
             score_info["4h_has_ema_stack"] = 10 # 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
 
-        bb_4h_info = kline_4h_strategies.get_bollinger_bands()
         if ema_4h_strategy.get("has_ema_uptrend"):
             score_info["4h_has_ema_uptrend"] = self._get_adjust_score_4h_has_ema_uptrend(
-                3, current_price, self.kline_list_4h[0].high_price, self.kline_list_4h[0].open_price, bb_4h_info
+                3, current_price, kline_4h_strategies
             ) # 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +3 分
 
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
@@ -1795,7 +1837,9 @@ class PlotGptHandle(BasePlotHandle):
 
         prev_ema_trend_1h_info = kline_1h_strategies.get_prev_ema_trend_strategy()
         if prev_ema_trend_1h_info["trend"] in ["parabolic_move", "modest_increase"]:
-            score_info["1h_has_prev_ema_uptrend"] = 5 # 1 小时 EMA12 上升（EMA12 斜率 > 0） → +5 分
+            score_info["1h_has_prev_ema_uptrend"] = self._get_adjust_score_1h_has_prev_ema_uptrend(
+                5, kline_1h_strategies
+            ) # 1 小时 EMA12 上升（EMA12 斜率 > 0） → +5 分
 
         macd_1h_strategies = MacdStrategy(self.macd_list_1h)
         prev_macd_trend_1h_info = macd_1h_strategies.get_prev_trend_strategy()
@@ -1962,10 +2006,13 @@ class PlotGptHandle(BasePlotHandle):
         else:
             return score - 10 # J<= 20 -> -10 分
 
-    def _get_adjust_score_4h_has_ema_uptrend(self, score, curr_price, high_price, open_price, bb_info):
+    def _get_adjust_score_4h_has_ema_uptrend(self, score, curr_price, kline_4h_strategies):
+        bb_info = kline_4h_strategies.get_bollinger_bands()
         bb_upper_price = bb_info["bb_upper"]
         bb_lower_price = bb_info["bb_lower"]
         bb_mid_price = bb_info["bb_mid"]
+        high_price = self.kline_list_4h[0].high_price
+        open_price = self.kline_list_4h[0].open_price
 
         if curr_price < bb_lower_price:
             score += 2 # 收盘价跌破下轨 -> +2 分
@@ -1975,6 +2022,9 @@ class PlotGptHandle(BasePlotHandle):
 
         if (curr_price > bb_upper_price) and (open_price > bb_upper_price):
             score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
+
+        if kline_4h_strategies.get_long_upper_shadow():
+            score -= 2 # 当前4小时k线形成上影线 -> -2 分
         return score
 
     def _get_adjust_score_vol_1h_up_13x(self, score, curr_price, vol_1h_strategy):
@@ -1987,4 +2037,9 @@ class PlotGptHandle(BasePlotHandle):
     def _get_adjust_score_macd_gt0(self, score, macd_strategies):
         if macd_strategies.get_downtrend():
             score -= 3 # macd当前线三连降 -> -3 分
+        return score
+
+    def _get_adjust_score_1h_has_prev_ema_uptrend(self, score, kline_1h_strategies):
+        if kline_1h_strategies.get_corsshairs_and_long_lower_shadow(index=1):
+            score -= 3 # 1小时k线的前根线为长十字线 + 下影线更长 -> -3 分
         return score
