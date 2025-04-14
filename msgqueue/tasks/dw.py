@@ -1106,12 +1106,12 @@ class BollIndicator:
         found_ind = -1
         for i, bb in enumerate(prices_list):
             if bb.open_ts == previous_open_ts:
-                found_ind = i-1
+                found_ind = i
                 break
-        if found_ind < 0 or (found_ind+period>total_len):
+        if found_ind == -1:
             return
-        current_price = prices_list[found_ind].close_price
-        old_close_price = prices_list[found_ind+period-1].close_price
+        current_price = prices_list[found_ind+1].close_price
+        old_close_price = prices_list[found_ind+1-period].close_price
 
         sum_close = previous_sum + (current_price - old_close_price)
         sum_sq_close = previous_sum_sq + (current_price ** 2 + old_close_price ** 2)
