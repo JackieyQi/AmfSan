@@ -1070,9 +1070,9 @@ class BollIndicator:
     def get_origin_bb(cls, prices, period=default_period, std_multiplier=default_std_multiplier):
         if len(prices) < period:
             return
-        prices = prices[-period:]
+        prices = prices[:period]
 
-        close_prices_array = np.array([float(i) for i in prices])
+        close_prices_array = np.array([float(i.close_price) for i in prices])
 
         df = pd.DataFrame({"close": close_prices_array})
 
@@ -1095,7 +1095,7 @@ class BollIndicator:
         sum_sq_close = np.sum(last_window ** 2)
         return {"bb_upper": float2decimal(last_higher_band), "bb_lower": float2decimal(last_lower_band),
                 "bb_mid": float2decimal(last_middle_band), "sum_close": float2decimal(sum_close),
-                "sum_sq_close": float2decimal(sum_sq_close), "period": period}
+                "sum_sq_close": float2decimal(sum_sq_close), "period": period, "open_ts": prices[-1].open_ts}
 
     @classmethod
     def calculate_bb_incremental(cls, prices_list, previous_open_ts, previous_sum, previous_sum_sq, period=default_period):
@@ -1283,14 +1283,14 @@ class IndicatorsCalculateHandle(object):
         if not klines_data:
             return
 
-        init_info = BollIndicator.get_origin_bb([i.close_price for i in klines_data])
+        init_info = BollIndicator.get_origin_bb(klines_data)
         if not init_info:
             return
 
         await BollTable.aio_create(
             symbol=self.symbol,
             interval_val=self.interval,
-            open_ts=klines_data[-1].open_ts,
+            open_ts=init_info["open_ts"],
             bbupper=init_info["bb_upper"],
             bbmid=init_info["bb_mid"],
             bblower=init_info["bb_lower"],
