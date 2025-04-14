@@ -1070,6 +1070,7 @@ class BollIndicator:
     def get_origin_bb(cls, prices, period=default_period, std_multiplier=default_std_multiplier):
         if len(prices) < period:
             return
+        prices = prices[-period:]
 
         close_prices_array = np.array([float(i) for i in prices])
 
@@ -1097,12 +1098,20 @@ class BollIndicator:
                 "sum_sq_close": float2decimal(sum_sq_close), "period": period}
 
     @classmethod
-    def calculate_bb_incremental(cls, prices_list, previous_sum, previous_sum_sq, period=default_period):
-        if len(prices_list) != period:
+    def calculate_bb_incremental(cls, prices_list, previous_open_ts, previous_sum, previous_sum_sq, period=default_period):
+        total_len = len(prices_list)
+        if total_len < period:
             return
 
-        current_price = prices_list[0].close_price
-        old_close_price = prices_list[-1].close_price
+        found_ind = -1
+        for i, bb in enumerate(prices_list):
+            if bb.open_ts == previous_open_ts:
+                found_ind = i-1
+                break
+        if found_ind < 0 or (found_ind+period>total_len):
+            return
+        current_price = prices_list[found_ind].close_price
+        old_close_price = prices_list[found_ind+period-1].close_price
 
         sum_close = previous_sum + (current_price - old_close_price)
         sum_sq_close = previous_sum_sq + (current_price ** 2 + old_close_price ** 2)
@@ -1184,7 +1193,8 @@ class IndicatorsCalculateHandle(object):
         if not bb_data_dict:
             await self._init_bb_data()
         else:
-            bb_start_ts = min(bb_data_dict.keys(), key=lambda x: x[1])[1]
+            prev_bb = min(bb_data_dict.keys(), key=lambda x: x[1])
+            bb_start_ts = prev_bb.open_ts - self.interval_sec * prev_bb.period
 
         if start_ts := min(rsi_start_ts, macd_start_ts, kdj_start_ts, bb_start_ts):
             await self.update_indicators(start_ts, rsi_data_dict, macd_data_dict, kdj_data_dict, bb_data_dict)
@@ -1381,7 +1391,7 @@ class IndicatorsCalculateHandle(object):
 
                 if prev_bb_data := bb_data_dict.get((self.symbol, open_ts - self.interval_sec)):
                     curr_bb_info = BollIndicator.calculate_bb_incremental(
-                        db_kline, prev_bb_data.sum_close, prev_bb_data.sum_sq_close
+                        db_kline, prev_bb_data.open_ts, prev_bb_data.sum_close, prev_bb_data.sum_sq_close
                     )
 
                     if curr_bb_data := bb_data_dict.get((self.symbol, open_ts)):
