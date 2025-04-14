@@ -27,6 +27,7 @@ def command_create_tables():
                 market.MacdTable,
                 market.KdjTable,
                 market.RsiTable,
+                market.BollTable,
             ]
         )
 

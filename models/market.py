@@ -150,3 +150,34 @@ class RsiTable(Base):
         indexes = (
             (("symbol", "interval_val"), False),  # False 代表普通索引（不是唯一索引）
         )
+
+
+class BollTable(Base):
+    id = AutoField()
+    symbol = CharField(db_column="symbol", index=True, max_length=10)
+    interval_val = CharField(default="4h", db_column="interval_val", help_text="k线间隔", max_length=5)
+    open_ts = IntegerField(default=0, db_column="open_ts", help_text="开盘时间")
+    bbupper = DecimalField(
+        db_column="bbupper", default=0, max_digits=20, decimal_places=8
+    )
+    bbmid = DecimalField(
+        db_column="bbmid", default=0, max_digits=20, decimal_places=8
+    )
+    bblower = DecimalField(
+        db_column="bblower", default=0, max_digits=20, decimal_places=8
+    )
+    sum_close = DecimalField(
+        db_column="sum_close", default=0, max_digits=20, decimal_places=8
+    )
+    sum_sq_close = DecimalField(
+        db_column="sum_sq_close", default=0, max_digits=20, decimal_places=8, help_text="收盘价平方的总和"
+    )
+    period = IntegerField(db_column="period", default=6, help_text="boll周期")
+
+    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+
+    class Meta:
+        table_name = "boll_table"
+        indexes = (
+            (("symbol", "interval_val"), False),
+        )

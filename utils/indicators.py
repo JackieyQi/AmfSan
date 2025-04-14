@@ -204,9 +204,11 @@ def calculate_bollinger_bands(close_prices_array, ema_array, std_multiplier=2, w
     std = df["close"].rolling(window=window).std(ddof=0) # 使用ddof=0参数指定用N作为除数
     higher_band = middle_band + (std * std_multiplier)
     lower_band = middle_band - (std * std_multiplier)
+    bandwidth = higher_band - lower_band
 
     last_higher_band = higher_band.tail(1).values[0]
     last_lower_band = lower_band.tail(1).values[0]
+    last_bandwidth = bandwidth.tail(1).values[0]
     return float2decimal(last_higher_band), float2decimal(last_lower_band)
 
 

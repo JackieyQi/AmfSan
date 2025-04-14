@@ -4,14 +4,15 @@
 import time
 import json
 import logging
+import math
 import numpy as np
-# import pandas as pd
+import pandas as pd
 from decimal import Decimal as D
 
 from business.binance_exchange import BinanceExchangeRequestHandle
 # from business.huobi_exchange import HuobiExchangeAccountHandle
 from business.market import MarketPriceHandler, MacdInitData, KdjInitData, EmaInitData
-from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable
+from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable, BollTable
 from models.order import OrderTradeHistoryTable
 from models.user import UserSymbolPlotTable as SymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
@@ -1059,6 +1060,64 @@ class RSIIndicator:
                 "avg_gain": decimal2decimal(avg_gain), "avg_loss": decimal2decimal(avg_loss)}
 
 
+class BollIndicator:
+    dataset_length = 40 # 数据集为70，rsi趋于稳定.
+
+    default_period = 20 # Boll周期，默认为20
+    default_std_multiplier = 2 # 标准查倍数, 通常为2
+
+    @classmethod
+    def get_origin_bb(cls, prices, period=default_period, std_multiplier=default_std_multiplier):
+        if len(prices) < period:
+            return
+
+        close_prices_array = np.array([float(i) for i in prices])
+
+        df = pd.DataFrame({"close": close_prices_array})
+
+        middle_band = df["close"].rolling(window=period).mean()
+        std = df["close"].rolling(window=period).std(ddof=0)  # 使用ddof=0参数指定用N作为除数
+        higher_band = middle_band + (std * std_multiplier)
+        lower_band = middle_band - (std * std_multiplier)
+        bandwidth = higher_band - lower_band
+
+        last_higher_band = higher_band.tail(1).values[0]
+        last_lower_band = lower_band.tail(1).values[0]
+        last_bandwidth = bandwidth.tail(1).values[0]
+        last_middle_band = middle_band.tail(1).values[0]
+
+        # 提取最后一个 period 长度的窗口数据
+        last_window = close_prices_array[-period:]
+
+        # 初始化滚动变量
+        sum_close = np.sum(last_window)
+        sum_sq_close = np.sum(last_window ** 2)
+        return {"bb_upper": float2decimal(last_higher_band), "bb_lower": float2decimal(last_lower_band),
+                "bb_mid": float2decimal(last_middle_band), "sum_close": float2decimal(sum_close),
+                "sum_sq_close": float2decimal(sum_sq_close), "period": period}
+
+    @classmethod
+    def calculate_bb_incremental(cls, prices_list, previous_sum, previous_sum_sq, period=default_period):
+        if len(prices_list) != period:
+            return
+
+        current_price = prices_list[0].close_price
+        old_close_price = prices_list[-1].close_price
+
+        sum_close = previous_sum + (current_price - old_close_price)
+        sum_sq_close = previous_sum_sq + (current_price ** 2 + old_close_price ** 2)
+
+        # 计算布林线
+        mean = sum_close / period # 中轨
+        std = math.sqrt(sum_sq_close / period - mean ** 2)
+        std = float2decimal(std)
+        upper = mean + 2 * std
+        lower = mean - 2 * std
+        return {"bb_upper": decimal2decimal(upper), "bb_lower": decimal2decimal(lower),
+                "bb_mid": decimal2decimal(mean), "sum_close": decimal2decimal(sum_close),
+                "sum_sq_close": decimal2decimal(sum_sq_close), "period": period}
+
+
 class IndicatorsCalculateHandle(object):
     def __init__(self, symbol, interval):
         self.symbol = symbol
@@ -1070,14 +1129,14 @@ class IndicatorsCalculateHandle(object):
         self.default_rsi_period = 6
 
     async def start_cal(self):
-        rsi_start_ts, macd_start_ts, kdj_start_ts = 0, 0, 0
+        rsi_start_ts, macd_start_ts, kdj_start_ts, bb_start_ts = 0, 0, 0, 0
 
         rsi_data_dict = {
             (row.symbol, row.open_ts): row
             for row in await RsiTable.select().where(
                 RsiTable.symbol == self.symbol,
                 RsiTable.interval_val == self.interval,
-            ).order_by(RsiTable.id.desc()).limit(2).aio_execute()
+            ).order_by(RsiTable.id.desc()).limit(3).aio_execute()
         }
         if not rsi_data_dict:
             await self._init_rsi_data()
@@ -1089,7 +1148,7 @@ class IndicatorsCalculateHandle(object):
             for macd in await MacdTable.select().where(
                 MacdTable.symbol == self.symbol,
                 MacdTable.interval_val == self.interval,
-            ).order_by(MacdTable.id.desc()).limit(2).aio_execute()
+            ).order_by(MacdTable.id.desc()).limit(3).aio_execute()
         }
         if not macd_data_dict:
             await self._init_macd_data()
@@ -1101,7 +1160,7 @@ class IndicatorsCalculateHandle(object):
             for kdj in await KdjTable.select().where(
                 KdjTable.symbol == self.symbol,
                 KdjTable.interval_val == self.interval,
-            ).order_by(KdjTable.id.desc()).limit(2).aio_execute()
+            ).order_by(KdjTable.id.desc()).limit(3).aio_execute()
         }
         if not kdj_data_dict:
             await self._init_kdj_data()
@@ -1115,8 +1174,20 @@ class IndicatorsCalculateHandle(object):
             # 确保查询 K 线数据的起始时间能够覆盖最小时间
             kdj_start_ts = min(prev_kdj_ts - self.k_interval, min_start_ts)
 
-        if start_ts := min(rsi_start_ts, macd_start_ts, kdj_start_ts):
-            await self.update_indicators(start_ts, rsi_data_dict, macd_data_dict, kdj_data_dict)
+        bb_data_dict = {
+            (bb.symbol, bb.open_ts): bb
+            for bb in await BollTable.select().where(
+                BollTable.symbol == self.symbol,
+                BollTable.interval_val == self.interval,
+            ).order_by(BollTable.id.desc()).limit(3).aio_execute()
+        }
+        if not bb_data_dict:
+            await self._init_bb_data()
+        else:
+            bb_start_ts = min(bb_data_dict.keys(), key=lambda x: x[1])[1]
+
+        if start_ts := min(rsi_start_ts, macd_start_ts, kdj_start_ts, bb_start_ts):
+            await self.update_indicators(start_ts, rsi_data_dict, macd_data_dict, kdj_data_dict, bb_data_dict)
 
     async def _get_klines_for_init(self, dataset_length):
         # start_ts = self.curr_time - self.interval_sec * dataset_length
@@ -1197,7 +1268,28 @@ class IndicatorsCalculateHandle(object):
             period=self.default_rsi_period,
         )
 
-    async def update_indicators(self, start_ts, rsi_data_dict, macd_data_dict, kdj_data_dict):
+    async def _init_bb_data(self):
+        klines_data = await self._get_klines_for_init(BollIndicator.dataset_length)
+        if not klines_data:
+            return
+
+        init_info = BollIndicator.get_origin_bb([i.close_price for i in klines_data])
+        if not init_info:
+            return
+
+        await BollTable.aio_create(
+            symbol=self.symbol,
+            interval_val=self.interval,
+            open_ts=klines_data[-1].open_ts,
+            bbupper=init_info["bb_upper"],
+            bbmid=init_info["bb_mid"],
+            bblower=init_info["bb_lower"],
+            sum_close=init_info["sum_close"],
+            sum_sq_close=init_info["sum_sq_close"],
+            period=init_info["period"],
+        )
+
+    async def update_indicators(self, start_ts, rsi_data_dict, macd_data_dict, kdj_data_dict, bb_data_dict):
         db_kline = await KlineTable.select().where(
             KlineTable.symbol == self.symbol,
             KlineTable.interval_val == self.interval,
@@ -1286,3 +1378,30 @@ class IndicatorsCalculateHandle(object):
                             cfg=prev_kdj_data.cfg,
                         )
                         kdj_data_dict[(self.symbol, open_ts)] = inst
+
+                if prev_bb_data := bb_data_dict.get((self.symbol, open_ts - self.interval_sec)):
+                    curr_bb_info = BollIndicator.calculate_bb_incremental(
+                        db_kline, prev_bb_data.sum_close, prev_bb_data.sum_sq_close
+                    )
+
+                    if curr_bb_data := bb_data_dict.get((self.symbol, open_ts)):
+                        curr_bb_data.bbupper = curr_bb_info["bb_upper"]
+                        curr_bb_data.bbmid = curr_bb_info["bb_mid"]
+                        curr_bb_data.bblower = curr_bb_info["bb_lower"]
+                        curr_bb_data.sum_close = curr_bb_info["sum_close"]
+                        curr_bb_data.sum_sq_close = curr_bb_info["sum_sq_close"]
+                        curr_bb_data.period = curr_bb_info["period"]
+                        await curr_rsi_data.aio_save()
+                    else:
+                        inst = await BollTable.aio_create(
+                            symbol=self.symbol,
+                            interval_val=self.interval,
+                            open_ts=open_ts,
+                            bbupper=curr_bb_info["bb_upper"],
+                            bbmid=curr_bb_info["bb_mid"],
+                            bblower=curr_bb_info["bb_lower"],
+                            sum_close=curr_bb_info["sum_close"],
+                            sum_sq_close=curr_bb_info["sum_sq_close"],
+                            period=curr_bb_info["period"],
+                        )
+                        bb_data_dict[(self.symbol, open_ts)] = inst
