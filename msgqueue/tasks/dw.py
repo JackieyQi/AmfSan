@@ -1061,7 +1061,7 @@ class RSIIndicator:
 
 
 class BollIndicator:
-    dataset_length = 40 # 数据集为70，rsi趋于稳定.
+    dataset_length = 40 # 数据集为40，boll趋于稳定.
 
     default_period = 20 # Boll周期，默认为20
     default_std_multiplier = 2 # 标准查倍数, 通常为2
@@ -1193,7 +1193,7 @@ class IndicatorsCalculateHandle(object):
         if not bb_data_dict:
             await self._init_bb_data()
         else:
-            prev_bb = min(bb_data_dict.keys(), key=lambda x: x[1])
+            prev_bb = bb_data_dict[min(bb_data_dict.keys(), key=lambda x: x[1])]
             bb_start_ts = prev_bb.open_ts - self.interval_sec * prev_bb.period
 
         if start_ts := min(rsi_start_ts, macd_start_ts, kdj_start_ts, bb_start_ts):
