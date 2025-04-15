@@ -1098,6 +1098,22 @@ class BollIndicator:
                 "sum_sq_close": float2decimal(sum_sq_close), "period": period, "open_ts": prices[-1].open_ts}
 
     @classmethod
+    def get_close_prices_list(cls, prices_list, open_ts, period=default_period):
+        total_len = len(prices_list)
+        if total_len < period:
+            return
+
+        found_ind = -1
+        for i, bb in enumerate(prices_list):
+            if bb.open_ts == open_ts:
+                found_ind = i
+                break
+        if found_ind == -1:
+            return
+
+        return prices_list[:found_ind+1][-period:]
+
+    @classmethod
     def calculate_bb_incremental(cls, prices_list, previous_open_ts, previous_sum, previous_sum_sq, period=default_period):
         total_len = len(prices_list)
         if total_len < period:
@@ -1118,6 +1134,7 @@ class BollIndicator:
 
         # 计算布林线
         mean = sum_close / period # 中轨
+        # TODO:递增计算有问题
         std = math.sqrt(sum_sq_close / period - mean ** 2)
         std = float2decimal(std)
         upper = mean + 2 * std
@@ -1206,13 +1223,13 @@ class IndicatorsCalculateHandle(object):
             KlineTable.symbol == self.symbol,
             KlineTable.interval_val == self.interval,
             # KlineTable.open_ts >= start_ts,
-        ).order_by(KlineTable.id).limit(dataset_length).aio_execute()
+        ).order_by(KlineTable.id.desc()).limit(dataset_length).aio_execute()
         # 正序
         db_klines = list(db_klines)
         if len(db_klines) < dataset_length:
             return
 
-        return db_klines[:-1] # 去掉最新k线
+        return db_klines[::-1][:-1] # 去掉最新k线
 
     async def _init_kdj_data(self):
         klines_data = await self._get_klines_for_init(KDJIndicator.dataset_length)
@@ -1390,9 +1407,12 @@ class IndicatorsCalculateHandle(object):
                         kdj_data_dict[(self.symbol, open_ts)] = inst
 
                 if prev_bb_data := bb_data_dict.get((self.symbol, open_ts - self.interval_sec)):
-                    curr_bb_info = BollIndicator.calculate_bb_incremental(
-                        db_kline, prev_bb_data.open_ts, prev_bb_data.sum_close, prev_bb_data.sum_sq_close
-                    )
+                    # curr_bb_info = BollIndicator.calculate_bb_incremental(
+                    #     db_kline, prev_bb_data.open_ts, prev_bb_data.sum_close, prev_bb_data.sum_sq_close
+                    # )
+
+                    prices = BollIndicator.get_close_prices_list(db_kline, open_ts)
+                    curr_bb_info = BollIndicator.get_origin_bb(prices)
 
                     if curr_bb_data := bb_data_dict.get((self.symbol, open_ts)):
                         curr_bb_data.bbupper = curr_bb_info["bb_upper"]
