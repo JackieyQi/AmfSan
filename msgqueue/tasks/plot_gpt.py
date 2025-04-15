@@ -17,7 +17,7 @@ from decimal import Decimal
 from exts import async_database
 from cache import AllCache
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
-from models.market import KlineTable, MacdTable, KdjTable, RsiTable
+from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
@@ -454,6 +454,7 @@ class PlotGptHandle(BasePlotHandle):
 
         self.rsi_list_1h = None
         self.rsi_list_4h = None
+        self.bb_list_1h = None
 
         required_intervals = ["1h", "4h", "1d"]
         for interval in required_intervals:
@@ -502,6 +503,10 @@ class PlotGptHandle(BasePlotHandle):
             _rsi_list_4h = await _query.aio_execute()
             self.rsi_list_4h = list(_rsi_list_4h)
 
+            _query = self.get_bb_query("1h", limit_count=8)
+            _bb_list_1h = await _query.aio_execute()
+            self.bb_list_1h = list(_bb_list_1h)
+
     def get_kline_query(self, interval, limit_count=18):
         query = (
             KlineTable.select().where(
@@ -535,6 +540,15 @@ class PlotGptHandle(BasePlotHandle):
                 RsiTable.symbol == self.symbol,
                 RsiTable.interval_val == interval,
             ).order_by(RsiTable.id.desc()).limit(limit_count)
+        )
+        return query
+
+    def get_bb_query(self, interval, limit_count=18):
+        query = (
+            BollTable.select(BollTable.bbupper, BollTable.bbmid, BollTable.bblower).where(
+                BollTable.symbol == self.symbol,
+                BollTable.interval_val == interval,
+            ).order_by(BollTable.id.desc()).limit(limit_count)
         )
         return query
 
@@ -928,97 +942,101 @@ class PlotGptHandle(BasePlotHandle):
         # await self.short_term_strategy(limit_count)
         # await self.bull_run_strategy()
 
-        if not await self.has_limit_price_check((0, 1, 3)):
-            score_info = await self.get_buy_score_info(curr_price)
-            if not score_info:
-                return
+        # if not await self.has_limit_price_check((0, 1, 3)):
+        #     score_info = await self.get_buy_score_info(curr_price)
+        #     if not score_info:
+        #         return
+        #
+        #     depth_prices_data = self.get_depth_prices(curr_price)
+        #     depth_bid_price = depth_prices_data["bid_price"]
+        #     depth_ask_price = depth_prices_data["ask_price"]
+        #     recommend_bid_price = depth_prices_data["recommend_bid_price"]
+        #
+        #     atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
+        #     sl_price = decimal2decimal(atr_price_info["sl_price"])
+        #     tp_price = decimal2decimal(atr_price_info["tp_price"])
+        #     self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+        #                           f"symbol={self.symbol}&low_price={sl_price}" \
+        #                           f"&high_price={tp_price}"
+        #
+        #     redis_client = AllCache.get_client()
+        #     redis_client.set(f"sl_tp:{self.symbol}", f"{sl_price}:{tp_price}")
+        #
+        #     score_detail_text = ""
+        #     for k, v in score_info.items():
+        #         score_detail_text += f"{k}:{v}分;"
+        #
+        #     direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
+        #                 f"\n<br> 总分: {sum(score_info.values())}。" \
+        #                 f"\n<br> 分数详情： {score_detail_text}。" \
+        #                 f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
+        #                 f"当前价: {decimal2str(curr_price)}。<br><br>"
+        #     func_str = "get_buy_score_info"
+        #
+        #     await BackTestHandler(self.symbol).add_bid_ticket(
+        #         curr_price,
+        #         recommend_bid_price,
+        #         self.check_time,
+        #         5,
+        #         direction
+        #     )
+        #
+        # elif await self.has_limit_price_check((1,)):
+        #     recommend_ask_price = None
+        #
+        #     # 海象运算符, py3.8新特性
+        #     if part_direction := self._get_sell_direction_active_taking_profit(curr_price):
+        #         ask_plot_type = 6
+        #         func_str = "_get_sell_direction_active_taking_profit"
+        #     elif part_direction := self._get_sell_direction_stop_loss(curr_price):
+        #         ask_plot_type = 7
+        #         func_str = "_get_sell_direction_stop_loss"
+        #     elif part_direction := self._get_exit_score():
+        #         ask_plot_type = 8
+        #         func_str = "_get_exit_score"
+        #     else:
+        #         redis_client = AllCache.get_client()
+        #         cache_data = redis_client.get(f"sl_tp:{self.symbol}")
+        #         func_str = "tp_sl"
+        #
+        #         if not cache_data:
+        #             return
+        #         sl_price, tp_price = map(Decimal, cache_data.split(":"))
+        #
+        #         if curr_price >= tp_price:
+        #             part_direction += "当前价格触及止盈价，止盈离场。"
+        #             recommend_ask_price = curr_price
+        #             ask_plot_type = 8
+        #         elif curr_price <= sl_price:
+        #             part_direction += "当前价格触及止损价，止损离场。"
+        #             recommend_ask_price = sl_price
+        #             ask_plot_type = 9
+        #         else:
+        #             return
+        #
+        #     if not recommend_ask_price:
+        #         depth_prices_data = self.get_depth_prices(curr_price)
+        #         recommend_ask_price = depth_prices_data["recommend_ask_price"]
+        #
+        #     direction = f"<br> 🔴 短线卖出信号: <b>{self.symbol.upper()}</b> " \
+        #                 f"<br> {part_direction}" \
+        #                 f"<br><br> 📉 建议卖出价：{decimal2str(recommend_ask_price)}，" \
+        #                 f"当前价: {decimal2str(curr_price)}。" \
+        #
+        #     await BackTestHandler(self.symbol).update_ask_ticket(
+        #         curr_price,
+        #         recommend_ask_price,
+        #         self.check_time,
+        #         ask_plot_type,
+        #         direction
+        #     )
+        #
+        # else:
+        #     return
 
-            depth_prices_data = self.get_depth_prices(curr_price)
-            depth_bid_price = depth_prices_data["bid_price"]
-            depth_ask_price = depth_prices_data["ask_price"]
-            recommend_bid_price = depth_prices_data["recommend_bid_price"]
-
-            atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
-            sl_price = decimal2decimal(atr_price_info["sl_price"])
-            tp_price = decimal2decimal(atr_price_info["tp_price"])
-            self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                  f"symbol={self.symbol}&low_price={sl_price}" \
-                                  f"&high_price={tp_price}"
-
-            redis_client = AllCache.get_client()
-            redis_client.set(f"sl_tp:{self.symbol}", f"{sl_price}:{tp_price}")
-
-            score_detail_text = ""
-            for k, v in score_info.items():
-                score_detail_text += f"{k}:{v}分;"
-
-            direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
-                        f"\n<br> 总分: {sum(score_info.values())}。" \
-                        f"\n<br> 分数详情： {score_detail_text}。" \
-                        f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
-                        f"当前价: {decimal2str(curr_price)}。<br><br>"
-            func_str = "get_buy_score_info"
-
-            await BackTestHandler(self.symbol).add_bid_ticket(
-                curr_price,
-                recommend_bid_price,
-                self.check_time,
-                5,
-                direction
-            )
-
-        elif await self.has_limit_price_check((1,)):
-            recommend_ask_price = None
-
-            # 海象运算符, py3.8新特性
-            if part_direction := self._get_sell_direction_active_taking_profit(curr_price):
-                ask_plot_type = 6
-                func_str = "_get_sell_direction_active_taking_profit"
-            elif part_direction := self._get_sell_direction_stop_loss(curr_price):
-                ask_plot_type = 7
-                func_str = "_get_sell_direction_stop_loss"
-            elif part_direction := self._get_exit_score():
-                ask_plot_type = 8
-                func_str = "_get_exit_score"
-            else:
-                redis_client = AllCache.get_client()
-                cache_data = redis_client.get(f"sl_tp:{self.symbol}")
-                func_str = "tp_sl"
-
-                if not cache_data:
-                    return
-                sl_price, tp_price = map(Decimal, cache_data.split(":"))
-
-                if curr_price >= tp_price:
-                    part_direction += "当前价格触及止盈价，止盈离场。"
-                    recommend_ask_price = curr_price
-                    ask_plot_type = 8
-                elif curr_price <= sl_price:
-                    part_direction += "当前价格触及止损价，止损离场。"
-                    recommend_ask_price = sl_price
-                    ask_plot_type = 9
-                else:
-                    return
-
-            if not recommend_ask_price:
-                depth_prices_data = self.get_depth_prices(curr_price)
-                recommend_ask_price = depth_prices_data["recommend_ask_price"]
-
-            direction = f"<br> 🔴 短线卖出信号: <b>{self.symbol.upper()}</b> " \
-                        f"<br> {part_direction}" \
-                        f"<br><br> 📉 建议卖出价：{decimal2str(recommend_ask_price)}，" \
-                        f"当前价: {decimal2str(curr_price)}。" \
-
-            await BackTestHandler(self.symbol).update_ask_ticket(
-                curr_price,
-                recommend_ask_price,
-                self.check_time,
-                ask_plot_type,
-                direction
-            )
-
-        else:
-            return
+        # TODO
+        direction = await self.check_bb_price_breakout(curr_price)
+        func_str = "check_bb_price_breakout"
 
         email_msg_md5_str = f"plotGpt:{func_str}:{self.symbol}:{open_ts}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
@@ -2043,3 +2061,23 @@ class PlotGptHandle(BasePlotHandle):
         if kline_1h_strategies.get_corsshairs_and_long_lower_shadow(index=1):
             score -= 3 # 1小时k线的前根线为长十字线 + 下影线更长 -> -3 分
         return score
+
+    async def check_bb_price_breakout(self, current_price):
+        last_k = self.kline_list_1h[1]
+        last_bb = self.bb_list_1h[1]
+        curr_bb = self.bb_list_1h[0]
+        #
+        # if curr_bb.bbmid <= current_price and cu:
+        #     near_info = check_near_high(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price, logger)
+        # elif bb_lower_price <= current_price < bb_mid_price:
+        #     near_info = check_near_low(self.kline_list_1h[:21][::-1], bb_lower_price, bb_mid_price, logger)
+        # else:
+        #     near_info = None
+
+        if (last_k.high_price > last_bb.bbupper) or (self.kline_list_1h[0].high_price > curr_bb.bbupper):
+            return "🌟🌟🌟🌟🌟 bb upper breakout"
+        if (last_k.low_price < last_bb.bblower) or (self.kline_list_1h[0].low_price < curr_bb.bblower):
+            return "🚨🚨🚨🚨🚨 bb lower breakout, 结合kdj是否都低于30，ema是否大趋势"
+        return
+
+
