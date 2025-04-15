@@ -2079,7 +2079,8 @@ class PlotGptHandle(BasePlotHandle):
         if (last_k.high_price > last_bb.bbupper) or (self.kline_list_1h[0].high_price > curr_bb.bbupper):
             return "🌟🌟🌟🌟🌟 bb upper breakout"
         if (last_k.low_price < last_bb.bblower) or (self.kline_list_1h[0].low_price < curr_bb.bblower):
-            return "🚨🚨🚨🚨🚨 bb lower breakout, 结合kdj是否都低于30，ema是否大趋势"
+            if self.kdj_list_1h[0].j_val > self.kdj_list_1h[1].j_val:
+                return "🚨🚨🚨🚨🚨 bb lower breakout, kdj j up。 结合kdj是否都低于30，ema是否大趋势"
         return
 
 
