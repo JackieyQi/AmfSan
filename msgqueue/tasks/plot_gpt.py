@@ -1037,6 +1037,8 @@ class PlotGptHandle(BasePlotHandle):
         # TODO
         direction = await self.check_bb_price_breakout(curr_price)
         func_str = "check_bb_price_breakout"
+        if not direction:
+            return
 
         email_msg_md5_str = f"plotGpt:{func_str}:{self.symbol}:{open_ts}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
