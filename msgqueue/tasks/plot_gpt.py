@@ -117,20 +117,21 @@ class CandlestickStrategy:
             lower_shadow_body > range_total_body*Decimal("0.3")
         )
 
-    def get_bollinger_bands(self):
+    def get_bollinger_bands(self, index=0):
         """
         布林带策略：
             买入：价格突破上轨，趋势延续
             卖出：价格跌破下轨，趋势反转
         """
 
-        macd_list = self.macd_list[1:27]
-        close_prices = [row.closing_price for row in macd_list]
-        ema_values = [row.ema_26 for row in macd_list]
-
-        bb_upper, bb_lower = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
-        bb_mid = (bb_upper + bb_lower) / Decimal(2)
-        return {"bb_upper": bb_upper, "bb_lower": bb_lower, "bb_mid": bb_mid}
+        # macd_list = self.macd_list[1:27]
+        # close_prices = [row.closing_price for row in macd_list]
+        # ema_values = [row.ema_26 for row in macd_list]
+        #
+        # bb_upper, bb_lower = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
+        # bb_mid = (bb_upper + bb_lower) / Decimal(2)
+        return {"bb_upper": self.bb_list[index].bbupper,
+                "bb_lower": self.bb_list[index].bblower, "bb_mid": self.bb_list[index].bbmid}
 
     def get_fake_breakout_by_bb(self, index=0):
         """
@@ -1433,7 +1434,7 @@ class PlotGptHandle(BasePlotHandle):
             direction += "强势过热信号，部分止盈。"
             return direction
 
-        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
         bb_info = kline_1h_strategies.get_bollinger_bands()
         near_info = check_near_high(self.kline_list_1h[:21][::-1], bb_info["bb_mid"], bb_info["bb_upper"], logger)
         if near_info["is_near"]:
