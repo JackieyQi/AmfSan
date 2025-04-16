@@ -1080,7 +1080,7 @@ class PlotGptHandle(BasePlotHandle):
                     part_direction += "当前价格触及止盈价，止盈离场。"
                     recommend_ask_price = curr_price
                     ask_plot_type = 8
-                elif curr_price <= sl_price:
+                elif curr_price <= min(sl_price, self.bb_list_1h[0].bblower):
                     part_direction += "当前价格触及止损价，止损离场。"
                     recommend_ask_price = sl_price
                     ask_plot_type = 9
