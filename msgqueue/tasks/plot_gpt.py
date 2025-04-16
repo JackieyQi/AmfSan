@@ -1963,7 +1963,6 @@ class PlotGptHandle(BasePlotHandle):
         bb_upper_price = bb_info["bb_upper"]
         bb_lower_price = bb_info["bb_lower"]
         bb_mid_price = bb_info["bb_mid"]
-        logger.info(f"plot_gpt get_buy_score_info check bb, symbol:{self.symbol}, current_price:{current_price}, bb_info:{bb_info}")
         if bb_mid_price <= current_price < bb_upper_price:
             near_info = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price, logger)
         elif bb_lower_price <= current_price < bb_mid_price:
@@ -2036,7 +2035,7 @@ class PlotGptHandle(BasePlotHandle):
             或者 评分突然从 <50 跳到 >70，说明趋势刚启动，作为额外信号。
         """
         if sum_score >= 40:
-            logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, bb_info:{bb_info}")
+            logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, score_info:{score_info}, back_score_info:{back_score_info}")
         if sum_score >= 60 or back_sum_score >= 15:
             return score_info
         return
