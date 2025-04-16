@@ -37,7 +37,7 @@ TMP_STAR_TOP10 = ["pnutusdt", "eigenusdt", "wifusdt", "beamxusdt", "dogeusdt", "
 
 
 class CandlestickStrategy:
-    def __init__(self, kline_list, macd_list, bb_list=None):
+    def __init__(self, kline_list, macd_list, bb_list):
         # 时间倒序
         self.kline_list = kline_list
         self.macd_list = macd_list
@@ -66,11 +66,15 @@ class CandlestickStrategy:
         last_index = window_index + 1
         has_bullish_engulfing, has_bearish_engulfing = False, False
 
-        if (self.kline_list[curr_index].open_price < self.kline_list[last_index].close_price) \
+        if (self.kline_list[last_index].open_price > self.kline_list[last_index].close_price) \
+                and (self.kline_list[curr_index].open_price < self.kline_list[curr_index].close_price) \
+                and (self.kline_list[curr_index].open_price < self.kline_list[last_index].close_price) \
                 and (self.kline_list[curr_index].close_price > self.kline_list[last_index].open_price):
             has_bullish_engulfing = True
 
-        if (self.kline_list[curr_index].open_price > self.kline_list[last_index].close_price) \
+        if (self.kline_list[last_index].open_price < self.kline_list[last_index].close_price) \
+                and (self.kline_list[curr_index].open_price > self.kline_list[curr_index].close_price) \
+                and (self.kline_list[curr_index].open_price > self.kline_list[last_index].close_price) \
                 and (self.kline_list[curr_index].close_price < self.kline_list[last_index].open_price):
             has_bearish_engulfing = True
         return {"has_bullish_engulfing": has_bullish_engulfing, "has_bearish_engulfing": has_bearish_engulfing}
@@ -1446,7 +1450,7 @@ class PlotGptHandle(BasePlotHandle):
             direction += "当前处于1小时双顶形态，止盈离场。"
             return direction
 
-        kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
+        kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
         if kline_4h_strategies.get_engulfing_pattern_strategy(window_index=1)["has_bearish_engulfing"] is True:
             direction += "4小时的前k线看跌吞没，止盈离场。"
             return direction
@@ -1461,7 +1465,7 @@ class PlotGptHandle(BasePlotHandle):
         """
         direction = ""
 
-        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
         ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_ask=True)
         if ema_1h_strategy.get("has_death_cross"):
             direction += "1 小时 EMA12 和 EMA26 死叉，止损离场。"
@@ -1495,7 +1499,7 @@ class PlotGptHandle(BasePlotHandle):
                 and (self.kdj_list_4h[0].j_val < self.kdj_list_4h[1].j_val):
             score_info["kdj_4h_over_bought"] = 15
 
-        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
         window = 3
         max_price = kline_1h_strategies.get_donchian_channel(window_size=window)["max_price"]
         vol_1h_strategy = kline_1h_strategies.get_vol_strategy(window, rate_threshold=Decimal("1.2"))
@@ -1903,7 +1907,7 @@ class PlotGptHandle(BasePlotHandle):
         score_info = {}
 
         # 趋势因子(35分)
-        kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h)
+        kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
         ema_4h_strategy = kline_4h_strategies.get_ema_strategy(is_bid=True)
         if ema_4h_strategy.get("has_ema_stack"):
             score_info["4h_has_ema_stack"] = 10 # 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
