@@ -37,10 +37,11 @@ TMP_STAR_TOP10 = ["pnutusdt", "eigenusdt", "wifusdt", "beamxusdt", "dogeusdt", "
 
 
 class CandlestickStrategy:
-    def __init__(self, kline_list, macd_list):
+    def __init__(self, kline_list, macd_list, bb_list=None):
         # 时间倒序
         self.kline_list = kline_list
         self.macd_list = macd_list
+        self.bb_list = bb_list
 
     def get_donchian_channel(self, window_size=6):
         """
@@ -130,6 +131,16 @@ class CandlestickStrategy:
         bb_upper, bb_lower = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
         bb_mid = (bb_upper + bb_lower) / Decimal(2)
         return {"bb_upper": bb_upper, "bb_lower": bb_lower, "bb_mid": bb_mid}
+
+    def get_fake_breakout_by_bb(self, index=0):
+        """
+        k线的假突破
+        """
+        if (self.kline_list[index].high_price > self.bb_list[index].bbupper) \
+                and (self.kline_list[index].close_price < self.bb_list[index].bbupper):
+            return True
+        else:
+            return False
 
     def get_ema_strategy(self, is_bid=False, is_ask=False):
         """
@@ -1812,6 +1823,20 @@ class PlotGptHandle(BasePlotHandle):
         整体市场情绪因子(5分)
             1. 当指数<20(极度恐惧)时 -> +5 分。
             2. 当指数>80(极度贪婪)时 -> -5 分。
+        高位环境风险惩罚因子(-5分)
+            1. 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
+            2. 1小时的KDJ的前两根线均大于100 -> -5 分
+            3. 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
+
+                # 布林带追高惩罚: -10分;
+                # KDJ超出100惩罚: -5分;
+                # RSI超过80惩罚: -5分;
+                #
+                # 1. 价格 > 1小时布林带上轨且开盘价也在上轨 -> -5 分。
+                # 2. RSI-6 > 80（极度超买）-> -5 分。
+                # 4. 近 3 根 K 线 RSI 均 > 75，且阳线为主 -> -3 分。
+                # 5. 当前成交量 > 前 5 根均量的 3 倍 + RSI > 75 -> -3 分（放量冲高）。
+
         触底反弹因子（20分）
             1. 4小时 RSI < 30 且 近2根K线开始反弹（当前 RSI > 前一 RSI）→ +5 分
             2. 1小时RSI-6从低于25上穿30 -> +5 分。
@@ -1822,21 +1847,6 @@ class PlotGptHandle(BasePlotHandle):
             5. 当前1h最低价 < 下轨,当前1h收盘价回到下轨之上 -> +10 分。
             6. 1h的rsi从30反弹 -> +5 分。
             7. 1h的MACD 背离增强: 价格创新低，但 MACD 未创新低，背离 -> +5分。
-
-        高位环境风险惩罚因子(-5分)
-            1. 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
-            2. 1小时的KDJ的前两根线均大于100 -> -5 分
-
-                # 布林带追高惩罚: -10分;
-                # KDJ超出100惩罚: -5分;
-                # RSI超过80惩罚: -5分;
-                #
-                # 1. 价格 > 1小时布林带上轨且开盘价也在上轨 -> -5 分。
-                # 2. RSI-6 > 80（极度超买）-> -5 分。
-                # 3. KDJ-J > 100（明显过热）-> -5 分。
-                # 4. 近 3 根 K 线 RSI 均 > 75，且阳线为主 -> -3 分。
-                # 5. 当前成交量 > 前 5 根均量的 3 倍 + RSI > 75 -> -3 分（放量冲高）。
-
 
         """
         # if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
@@ -1855,7 +1865,7 @@ class PlotGptHandle(BasePlotHandle):
                 3, current_price, kline_4h_strategies
             ) # 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +3 分
 
-        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
+        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
         ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_bid=True)
         if ema_1h_strategy.get("has_ema_stack"):
             score_info["1h_has_ema_stack"] = 5 # 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
@@ -1933,7 +1943,6 @@ class PlotGptHandle(BasePlotHandle):
             score_info["vol_4h_1h_up"] = 5 # 4 小时成交量 > 5 根均值 且 1 小时成交量 > 5 根均值 → +5 分
 
         # 支持阻力因子(10分)
-        kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h)
         bb_info = kline_1h_strategies.get_bollinger_bands()
         bb_upper_price = bb_info["bb_upper"]
         bb_lower_price = bb_info["bb_lower"]
@@ -1963,6 +1972,11 @@ class PlotGptHandle(BasePlotHandle):
 
         if self.kdj_list_1h[1].j_val > Decimal("100") and self.kdj_list_1h[2].j_val > Decimal("100"):
             score_info["overheat_risk_kdj_1h_too_hot"] = - 5 # 1小时的KDJ的前两根线均大于100 -> -5 分
+
+        for index in (0, 1):
+            if kline_1h_strategies.get_long_upper_shadow(index) and kline_1h_strategies.get_fake_breakout_by_bb(index):
+                score_info["overheat_fake_breakout"] = - 5 # 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
+                break
 
         back_score_info = {}
 
