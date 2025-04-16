@@ -164,6 +164,36 @@ class CandlestickStrategy:
         else:
             return False
 
+    def is_along_upper_band(self, n=5, tolerance=Decimal("0.2")):
+        """
+        判断是否沿着上轨运行
+        :param tolerance: 容差范围，比如 0.02 表示距离上轨在 2% 以内算“贴近”
+        """
+        count = 0
+        for i in range(n-1, -1, -1):
+            if self.kline_list[i].close_price < self.bb_list[i].bbmid:
+                continue
+
+            if (self.bb_list[i].bbupper - self.kline_list[i].close_price) / (
+                    self.bb_list[i].bbupper - self.bb_list[i].bbmid) <= tolerance:
+                count += 1
+        return count > n * 0.5  # 至少70%贴近上轨
+
+    def is_along_lower_band(self, n=3, tolerance=Decimal("0.02")):
+        """
+        判断是否沿着下轨轨运行
+        :param tolerance: 容差范围，比如 0.02 表示距离上轨在 2% 以内算“贴近”
+        """
+        count = 0
+        for i in range(n-1, -1, -1):
+            if self.kline_list[i].close_price > self.bb_list[i].bbmid:
+                continue
+
+            if (self.kline_list[i].close_price - self.bb_list[i].bblower) / (
+                    self.bb_list[i].bbmid - self.bb_list[i].bblower) <= tolerance:
+                count += 1
+        return count > n * 0.7  # 至少70%贴近上轨
+
     def get_ema_strategy(self, is_bid=False, is_ask=False):
         """
         1. 双均线策略（Golden Cross & Death Cross）:
@@ -1858,6 +1888,7 @@ class PlotGptHandle(BasePlotHandle):
             2. 1小时RSI-6从低于25上穿30 -> +5 分。
             3. 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
             4. 1小时KDJ在低位（J<20）形成金叉 → +5分
+            5. 1小时的K线沿着下轨运行 -> -10 分
 
             # TODO：可设置上限，比如布林带相关因子总分不超过 20。
             5. 当前1h最低价 < 下轨,当前1h收盘价回到下轨之上 -> +10 分。
@@ -2013,6 +2044,9 @@ class PlotGptHandle(BasePlotHandle):
 
         if kdj_1h_strategies.get_curr_golden_cross_by_threshold(Decimal("20")): # 1小时KDJ在低位（J<20）形成金叉 → +5分
             back_score_info["back_kdj_1h_golden_cross_20low"] = 5
+
+        if kline_1h_strategies.is_along_lower_band():
+            back_score_info["back_is_along_lower_band"] = -10
 
         if (self.kline_list_1h[0].low_price < self.bb_list_1h[0].bblower) \
                 and (self.kline_list_1h[0].close_price > self.bb_list_1h[0].bblower):
