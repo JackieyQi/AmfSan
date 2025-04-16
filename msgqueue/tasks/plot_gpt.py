@@ -142,6 +142,28 @@ class CandlestickStrategy:
         else:
             return False
 
+    def get_first_breakout_by_bb(self, index=0):
+        """
+        首次冲高 + 上轨附近
+        """
+
+        if self.kline_list[index].close_price < self.bb_list[index].bbmid:
+            return False
+
+        if self.kline_list[index+1].low_price < self.bb_list[index+1].bbupper < self.kline_list[index+1].high_price:
+            return False
+
+        high_price_incre = self.kline_list[index].high_price > \
+                           self.kline_list[index+1].high_price > \
+                           self.kline_list[index+2].high_price
+
+        near_info = check_near_high(
+            self.kline_list[index:21+index][::-1], self.bb_list[index].bbmid, self.bb_list[index].bbupper, logger)
+        if high_price_incre and near_info and near_info["is_near"]:
+            return True
+        else:
+            return False
+
     def get_ema_strategy(self, is_bid=False, is_ask=False):
         """
         1. 双均线策略（Golden Cross & Death Cross）:
@@ -1828,14 +1850,8 @@ class PlotGptHandle(BasePlotHandle):
             2. 1小时的KDJ的前两根线均大于100 -> -5 分
             3. 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
 
-                # 布林带追高惩罚: -10分;
-                # KDJ超出100惩罚: -5分;
-                # RSI超过80惩罚: -5分;
-                #
-                # 1. 价格 > 1小时布林带上轨且开盘价也在上轨 -> -5 分。
-                # 2. RSI-6 > 80（极度超买）-> -5 分。
-                # 4. 近 3 根 K 线 RSI 均 > 75，且阳线为主 -> -3 分。
-                # 5. 当前成交量 > 前 5 根均量的 3 倍 + RSI > 75 -> -3 分（放量冲高）。
+            # TODO: 不执行买入机制
+            4. 1小时的当前k线，首次冲高 + 上轨附近 -> -20 分
 
         触底反弹因子（20分）
             1. 4小时 RSI < 30 且 近2根K线开始反弹（当前 RSI > 前一 RSI）→ +5 分
@@ -1843,10 +1859,10 @@ class PlotGptHandle(BasePlotHandle):
             3. 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
             4. 1小时KDJ在低位（J<20）形成金叉 → +5分
 
-            # 可设置上限，比如布林带相关因子总分不超过 20。
+            # TODO：可设置上限，比如布林带相关因子总分不超过 20。
             5. 当前1h最低价 < 下轨,当前1h收盘价回到下轨之上 -> +10 分。
-            6. 1h的rsi从30反弹 -> +5 分。
-            7. 1h的MACD 背离增强: 价格创新低，但 MACD 未创新低，背离 -> +5分。
+                5.1. 1h的rsi从30反弹 -> +5 分。
+                5.2. 1h的MACD 背离增强: 价格创新低，但 MACD 未创新低，背离 -> +5分。
 
         """
         # if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
@@ -1956,9 +1972,9 @@ class PlotGptHandle(BasePlotHandle):
             near_info = None
 
         if near_info and near_info["is_near"]:
-            score_info["1h_low_price_near_support"] = 5 # 1小时最低价靠近支撑位 -> +5 分
+            score_info["1h_low_price_near_bb_support"] = 5 # 1小时最低价靠近支撑位 -> +5 分
         if near_info and near_info["price_structure_valid"]:
-            score_info["1h_low_price_resistance_range"] = 5 # 1小时最低价处于阻力区间内 -> +5 分
+            score_info["1h_low_price_bb_resistance_range"] = 5 # 1小时最低价处于阻力区间内 -> +5 分
 
         # 整体市场情绪因子(5分)
         if self.get_fng_signal(buy=True) is True:
@@ -1975,8 +1991,12 @@ class PlotGptHandle(BasePlotHandle):
 
         for index in (0, 1):
             if kline_1h_strategies.get_long_upper_shadow(index) and kline_1h_strategies.get_fake_breakout_by_bb(index):
+                # TODO: 假突破需要结合当前k线
                 score_info["overheat_fake_breakout"] = - 5 # 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
                 break
+
+        if kline_1h_strategies.get_first_breakout_by_bb():
+            score_info["todo:first_breakout_by_bb"] = -20 # 1小时的当前k线，首次冲高 + 上轨附近 -> -20 分
 
         back_score_info = {}
 
@@ -1995,13 +2015,14 @@ class PlotGptHandle(BasePlotHandle):
         if kdj_1h_strategies.get_curr_golden_cross_by_threshold(Decimal("20")): # 1小时KDJ在低位（J<20）形成金叉 → +5分
             back_score_info["back_kdj_1h_golden_cross_20low"] = 5
 
-        if (self.kline_list_1h[0].low_price < self.bb_list_1h[0].bblower) and (self.kline_list_1h[0].close_price > self.bb_list_1h[0].bblower):
+        if (self.kline_list_1h[0].low_price < self.bb_list_1h[0].bblower) \
+                and (self.kline_list_1h[0].close_price > self.bb_list_1h[0].bblower):
             score_info["todo:bb_1h_lower_get"] = 10
-        if self.rsi_list_1h[1].rsi < self.rsi_list_1h[0].rsi < Decimal("30"):
-            score_info["todo:bb_1h_rsi_up"] = 5
-        if (self.kline_list_1h[0].low_price < self.kline_list_1h[2].low_price) and (
-                self.macd_list_1h[0].macd > self.macd_list_1h[2].macd):
-            score_info["todo:bb_1h_macd_divergence"] = 5
+            if self.rsi_list_1h[1].rsi < self.rsi_list_1h[0].rsi < Decimal("30"):
+                score_info["todo:bb_1h_rsi_up"] = 5
+            if (self.kline_list_1h[0].low_price < self.kline_list_1h[2].low_price) and (
+                    self.macd_list_1h[0].macd > self.macd_list_1h[2].macd):
+                score_info["todo:bb_1h_macd_divergence"] = 5
 
         back_sum_score = sum(back_score_info.values())
         sum_score = sum(score_info.values()) + back_sum_score
