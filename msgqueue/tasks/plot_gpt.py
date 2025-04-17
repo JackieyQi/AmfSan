@@ -1058,9 +1058,12 @@ class PlotGptHandle(BasePlotHandle):
             recommend_ask_price = None
 
             # 海象运算符, py3.8新特性
-            if part_direction := self._get_sell_direction_active_taking_profit(curr_price):
+            if part_direction_info := self._get_sell_direction_active_taking_profit(curr_price):
                 ask_plot_type = 6
                 func_str = "_get_sell_direction_active_taking_profit"
+
+                part_direction = part_direction_info.get("part_direction")
+                recommend_ask_price = part_direction_info.get("recommend_ask_price")
             elif part_direction := self._get_sell_direction_stop_loss(curr_price):
                 ask_plot_type = 7
                 func_str = "_get_sell_direction_stop_loss"
@@ -1436,26 +1439,25 @@ class PlotGptHandle(BasePlotHandle):
 
         if self.kdj_list_1h[0].j_val > 90 and macd_1h_strategies.get_dif_downtrend():
             direction += "强势过热信号，部分止盈。"
-            return direction
+            return {"direction": direction}
 
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
-        bb_info = kline_1h_strategies.get_bollinger_bands()
-        near_info = check_near_high(self.kline_list_1h[:21][::-1], bb_info["bb_mid"], bb_info["bb_upper"], logger)
+        near_info = check_near_high(self.kline_list_1h[:21][::-1], self.bb_list_1h[0].bbmid, self.bb_list_1h[0].bbupper, logger)
         if near_info["is_near"]:
             if (self.rsi_list_1h[0].rsi < Decimal("75")) and (self.macd_list_1h[0].macd < self.macd_list_1h[1].macd):
                 direction += "价格逼近 1小时布林带上轨，RSI < 75 且 MACD 柱状图收缩（即动能减弱），优先止盈。"
-            return direction
+            return {"direction": direction, "recommend_ask_price": curr_price}
 
         if kline_1h_strategies.has_double_top():
             direction += "当前处于1小时双顶形态，止盈离场。"
-            return direction
+            return {"direction": direction}
 
         kline_4h_strategies = CandlestickStrategy(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
         if kline_4h_strategies.get_engulfing_pattern_strategy(window_index=1)["has_bearish_engulfing"] is True:
             direction += "4小时的前k线看跌吞没，止盈离场。"
-            return direction
+            return {"direction": direction}
 
-        return direction
+        return {"direction": direction} if direction else {}
 
     def _get_sell_direction_stop_loss(self, curr_price):
         """
