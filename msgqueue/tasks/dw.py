@@ -1242,7 +1242,7 @@ class IndicatorsCalculateHandle(object):
         return db_klines[::-1][:-1] # 去掉最新k线
 
     async def _init_kdj_data(self):
-        klines_data = await self._get_klines_for_init(KDJIndicator.dataset_length+30)
+        klines_data = await self._get_klines_for_init(KDJIndicator.dataset_length+20)
         if not klines_data:
             return
 
@@ -1266,7 +1266,7 @@ class IndicatorsCalculateHandle(object):
         )
 
     async def _init_macd_data(self):
-        klines_data = await self._get_klines_for_init(MACDIndicator.dataset_length+30)
+        klines_data = await self._get_klines_for_init(MACDIndicator.dataset_length+20)
         if not klines_data:
             return
 
@@ -1287,7 +1287,7 @@ class IndicatorsCalculateHandle(object):
         )
 
     async def _init_rsi_data(self):
-        klines_data = await self._get_klines_for_init(RSIIndicator.dataset_length+30)
+        klines_data = await self._get_klines_for_init(RSIIndicator.dataset_length+20)
         if not klines_data:
             return
 
