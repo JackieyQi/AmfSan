@@ -1021,6 +1021,8 @@ class PlotGptHandle(BasePlotHandle):
     async def check(self, limit_count=7):
         await self.initialize_data()
 
+        if not self.kline_list_1h:
+            return
         open_ts = self.kline_list_1h[0].open_ts
         curr_price = self.kline_list_1h[0].close_price
 
