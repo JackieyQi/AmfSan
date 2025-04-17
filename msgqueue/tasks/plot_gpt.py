@@ -1478,7 +1478,7 @@ class PlotGptHandle(BasePlotHandle):
         if near_info["is_near"]:
             if (self.rsi_list_1h[0].rsi < Decimal("75")) and (self.macd_list_1h[0].macd < self.macd_list_1h[1].macd):
                 direction += "价格逼近 1小时布林带上轨，RSI < 75 且 MACD 柱状图收缩（即动能减弱），优先止盈。"
-            return {"direction": direction, "recommend_ask_price": curr_price}
+                return {"direction": direction, "recommend_ask_price": curr_price}
 
         if kline_1h_strategies.has_double_top():
             direction += "当前处于1小时双顶形态，止盈离场。"
