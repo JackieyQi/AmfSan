@@ -158,16 +158,41 @@ class CandlestickStrategy:
         if self.kline_list[index+1].low_price < self.bb_list[index+1].bbupper < self.kline_list[index+1].high_price:
             return False
 
-        high_price_incre = self.kline_list[index].high_price > \
-                           self.kline_list[index+1].high_price > \
-                           self.kline_list[index+2].high_price
+        trend_str, _ = analyze_list_trend([i.high_price for i in self.kline_list[index:index+3]][::-1])
+        if trend_str != "parabolic_move":
+            return False
 
-        near_info = check_near_high(
-            self.kline_list[index:21+index][::-1], self.bb_list[index].bbmid, self.bb_list[index].bbupper, logger)
-        if high_price_incre and near_info and near_info["is_near"]:
+        if self.is_near_upper(index, tolerance=Decimal("0.2")):
             return True
         else:
             return False
+
+    def is_near_upper(self, index=0, tolerance=Decimal("0.1")):
+        """
+        当前价格接近或突破布林带上轨
+
+            if ratio <= 0.05:
+                score += 5  # 极贴轨
+            elif ratio <= 0.15:
+                score += 3  # 贴轨
+            elif ratio <= 0.3:
+                score += 1  # 靠近但不强
+        """
+        if self.kline_list[index].close_price < self.bb_list[index].bbmid:
+            return False
+
+        band_width = self.bb_list[index].bbupper - self.bb_list[index].bbmid
+        return (self.bb_list[index].bbupper - self.kline_list[index].close_price) / band_width <= tolerance
+
+    def is_near_lower(self, index=0, tolerance=Decimal("0.1")):
+        """
+        当前价格接近或突破布林带下轨
+        """
+        if self.kline_list[index].close_price > self.bb_list[index].bbmid:
+            return False
+
+        band_width = self.bb_list[index].bbmid - self.bb_list[index].bblower
+        return (self.kline_list[index].close_price - self.bb_list[index].bblower) / band_width <= tolerance
 
     def is_along_upper_band(self, n=5, tolerance=Decimal("0.2")):
         """
@@ -1062,7 +1087,7 @@ class PlotGptHandle(BasePlotHandle):
                 ask_plot_type = 6
                 func_str = "_get_sell_direction_active_taking_profit"
 
-                part_direction = part_direction_info.get("part_direction")
+                part_direction = part_direction_info.get("direction")
                 recommend_ask_price = part_direction_info.get("recommend_ask_price")
             elif part_direction := self._get_sell_direction_stop_loss(curr_price):
                 ask_plot_type = 7
@@ -1427,6 +1452,8 @@ class PlotGptHandle(BasePlotHandle):
         """
         主动止盈:
             * 若 KDJ J 值 > 90 且 MACD DIF 下降，视为强势过热信号，部分止盈。
+            * 1小时的RSI > 80 + 当前价格接近或突破布林带上轨 + 成交量放大 -> 止盈离场。
+
             * 价格逼近 1小时布林带上轨：
                     1. 如果 RSI < 75 且 MACD 柱状图收缩（即动能减弱）→ 执行止盈
                     TODO: 2. 如果 RSI > 75 且 KDJ 仍金叉、MACD 扩张 → 等待下一根 K 线确认
@@ -1442,6 +1469,11 @@ class PlotGptHandle(BasePlotHandle):
             return {"direction": direction}
 
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
+        if self.rsi_list_1h[0].rsi > Decimal("80") and kline_1h_strategies.is_near_upper() \
+                and kline_1h_strategies.get_vol_strategy(5).get("has_enhance_spike_volume", False):
+            direction += "止盈离场：1小时的RSI > 80 + 当前价格接近或突破布林带上轨 + 成交量放大"
+            return {"direction": direction}
+
         near_info = check_near_high(self.kline_list_1h[:21][::-1], self.bb_list_1h[0].bbmid, self.bb_list_1h[0].bbupper, logger)
         if near_info["is_near"]:
             if (self.rsi_list_1h[0].rsi < Decimal("75")) and (self.macd_list_1h[0].macd < self.macd_list_1h[1].macd):
@@ -1883,9 +1915,10 @@ class PlotGptHandle(BasePlotHandle):
             1. 当指数<20(极度恐惧)时 -> +5 分。
             2. 当指数>80(极度贪婪)时 -> -5 分。
         高位环境风险惩罚因子(-5分)
-            1. 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
-            2. 1小时的KDJ的前两根线均大于100 -> -5 分
-            3. 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
+            *. 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
+            *. 1小时的KDJ的前两根线均大于100 -> -5 分
+            *. 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
+            *. 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
 
             # TODO: 不执行买入机制
             4. 1小时的当前k线，首次冲高 + 上轨附近 -> -20 分
@@ -2031,6 +2064,9 @@ class PlotGptHandle(BasePlotHandle):
                 # TODO: 假突破需要结合当前k线
                 score_info["overheat_fake_breakout"] = - 5 # 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
                 break
+
+        if self.kline_list_4h[0].high_price > self.bb_list_4h[0].bbupper and kline_4h_strategies.get_crosshairs():
+            score_info["overheat_4h_upper_crosshairs"] = -5 # 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
 
         if kline_1h_strategies.get_first_breakout_by_bb():
             score_info["todo:first_breakout_by_bb"] = -20 # 1小时的当前k线，首次冲高 + 上轨附近 -> -20 分
