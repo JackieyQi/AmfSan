@@ -1887,7 +1887,7 @@ class PlotGptHandle(BasePlotHandle):
                 （开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分）
                 （当前4小时k线形成上影线 -> -2 分）
             3. 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
-            4. 1 小时 EMA12 上升（EMA12 斜率 > 0） → +5 分;动态调整分数：
+            4. 1 小时 EMA12 上升（current_EMA12 > previous_EMA12） → +5 分;动态调整分数：
                 （1小时k线的前根线为长十字线 + 下影线更长 -> -3 分）
             5. 1 小时 MACD 上升 → +5 分;
             6. 日线 MACD > 0 → +2 分
@@ -1957,8 +1957,9 @@ class PlotGptHandle(BasePlotHandle):
         if ema_1h_strategy.get("has_ema_stack"):
             score_info["1h_has_ema_stack"] = 5 # 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
 
-        prev_ema_trend_1h_info = kline_1h_strategies.get_prev_ema_trend_strategy()
-        if prev_ema_trend_1h_info["trend"] in ["parabolic_move", "modest_increase"]:
+        # prev_ema_trend_1h_info = kline_1h_strategies.get_prev_ema_trend_strategy()
+        # if prev_ema_trend_1h_info["trend"] in ["parabolic_move", "modest_increase"]:
+        if self.macd_list_1h[0].ema_12 > self.macd_list_1h[1].ema_12:
             score_info["1h_has_prev_ema_uptrend"] = self._get_adjust_score_1h_has_prev_ema_uptrend(
                 5, kline_1h_strategies
             ) # 1 小时 EMA12 上升（EMA12 斜率 > 0） → +5 分
@@ -2151,20 +2152,16 @@ class PlotGptHandle(BasePlotHandle):
             return score - 10 # J<= 20 -> -10 分
 
     def _get_adjust_score_4h_has_ema_uptrend(self, score, curr_price, kline_4h_strategies):
-        bb_info = kline_4h_strategies.get_bollinger_bands()
-        bb_upper_price = bb_info["bb_upper"]
-        bb_lower_price = bb_info["bb_lower"]
-        bb_mid_price = bb_info["bb_mid"]
         high_price = self.kline_list_4h[0].high_price
         open_price = self.kline_list_4h[0].open_price
 
-        if curr_price < bb_lower_price:
+        if curr_price < self.bb_list_4h[0].bblower:
             score += 2 # 收盘价跌破下轨 -> +2 分
 
-        if (curr_price < bb_upper_price) and (high_price > bb_upper_price):
+        if (curr_price < self.bb_list_4h[0].bbupper) and (high_price > self.bb_list_4h[0].bbupper):
             score -= 3 # 最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分
 
-        if (curr_price > bb_upper_price) and (open_price > bb_upper_price):
+        if (curr_price > self.bb_list_4h[0].bbupper) and (open_price > self.bb_list_4h[0].bbupper):
             score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
 
         if kline_4h_strategies.get_long_upper_shadow():
