@@ -813,6 +813,8 @@ class MACDIndicator:
         # 确保有足够的数据
         if len(prices) < max(fast_period, slow_period) + signal_period:
             return
+        prices_data = prices[:cls.dataset_length]
+        prices = [i.close_price for i in prices_data]
 
         # 计算快速EMA（通常是12日）
         fast_ema = [0] * len(prices)
@@ -861,7 +863,10 @@ class MACDIndicator:
             "slow_ema": decimal2decimal(slow_ema[-1]),
             "dif": decimal2decimal(dif_line[-1]),
             "dea": decimal2decimal(dea_line[-1]),
-            "macd": decimal2decimal(macd_line[-1])
+            "macd": decimal2decimal(macd_line[-1]),
+            "open_price": prices_data[-1].open_price,
+            "close_price": prices_data[-1].close_price,
+            "open_ts": prices_data[-1].open_ts,
         }
 
     @classmethod
@@ -909,6 +914,7 @@ class KDJIndicator:
         """
         if len(k_lines) < n:
             return
+        k_lines = k_lines[:cls.dataset_length]
 
         high_prices = []
         low_prices = []
@@ -945,6 +951,7 @@ class KDJIndicator:
             "k_val": decimal2decimal(k_values[-1]),
             "d_val": decimal2decimal(d_values[-1]),
             "j_val": decimal2decimal(j_values[-1]),
+            "open_ts": k_lines[-1].open_ts,
         }
 
     @classmethod
@@ -990,6 +997,8 @@ class RSIIndicator:
         """
         if len(prices) < (cls.dataset_length-1): # 去掉最新k线
             return
+        prices_data = prices[:cls.dataset_length]
+        prices = [i.close_price for i in prices_data]
 
         scale_factor = leading_zeros(prices[0])
         if scale_factor:
@@ -1019,7 +1028,8 @@ class RSIIndicator:
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
 
-        return {"rsi": float2decimal(rsi), "avg_gain": float2decimal(avg_gain), "avg_loss": float2decimal(avg_loss)}
+        return {"rsi": float2decimal(rsi), "avg_gain": float2decimal(avg_gain), "avg_loss": float2decimal(avg_loss),
+                "open_ts": prices_data[-1].open_ts}
 
     @classmethod
     def calculate_rsi_incremental(cls, previous_rsi, previous_avg_gain, previous_avg_loss,
@@ -1232,7 +1242,7 @@ class IndicatorsCalculateHandle(object):
         return db_klines[::-1][:-1] # 去掉最新k线
 
     async def _init_kdj_data(self):
-        klines_data = await self._get_klines_for_init(KDJIndicator.dataset_length)
+        klines_data = await self._get_klines_for_init(KDJIndicator.dataset_length+30)
         if not klines_data:
             return
 
@@ -1248,7 +1258,7 @@ class IndicatorsCalculateHandle(object):
         await KdjTable.aio_create(
             symbol=self.symbol,
             interval_val=self.interval,
-            open_ts=klines_data[-1].open_ts,
+            open_ts=init_info["open_ts"],
             k_val=init_info["k_val"],
             d_val=init_info["d_val"],
             j_val=init_info["j_val"],
@@ -1256,20 +1266,20 @@ class IndicatorsCalculateHandle(object):
         )
 
     async def _init_macd_data(self):
-        klines_data = await self._get_klines_for_init(MACDIndicator.dataset_length)
+        klines_data = await self._get_klines_for_init(MACDIndicator.dataset_length+30)
         if not klines_data:
             return
 
-        init_info = MACDIndicator.get_origin_macd([i.close_price for i in klines_data])
+        init_info = MACDIndicator.get_origin_macd(klines_data)
         if not init_info:
             return
 
         await MacdTable.aio_create(
             symbol=self.symbol,
             interval_val=self.interval,
-            opening_ts=klines_data[-1].open_ts,
-            opening_price=klines_data[-1].open_price,
-            closing_price=klines_data[-1].close_price,
+            opening_ts=init_info["open_ts"],
+            opening_price=init_info["open_price"],
+            closing_price=init_info["close_price"],
             ema_12=init_info["fast_ema"],
             ema_26=init_info["slow_ema"],
             dea=init_info["dea"],
@@ -1277,18 +1287,18 @@ class IndicatorsCalculateHandle(object):
         )
 
     async def _init_rsi_data(self):
-        klines_data = await self._get_klines_for_init(RSIIndicator.dataset_length)
+        klines_data = await self._get_klines_for_init(RSIIndicator.dataset_length+30)
         if not klines_data:
             return
 
-        init_info = RSIIndicator.get_origin_rsi([i.close_price for i in klines_data])
+        init_info = RSIIndicator.get_origin_rsi(klines_data)
         if not init_info:
             return
 
         await RsiTable.aio_create(
             symbol=self.symbol,
             interval_val=self.interval,
-            open_ts=klines_data[-1].open_ts,
+            open_ts=init_info["open_ts"],
             rsi=init_info["rsi"],
             avg_gain=init_info["avg_gain"],
             avg_loss=init_info["avg_loss"],
