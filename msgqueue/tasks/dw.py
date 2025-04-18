@@ -816,6 +816,8 @@ class MACDIndicator:
         prices_data = prices[:cls.dataset_length]
         prices = [i.close_price for i in prices_data]
 
+        prices, scale = autoscale(prices)
+
         # 计算快速EMA（通常是12日）
         fast_ema = [0] * len(prices)
         # 初始化：使用前N个周期的简单平均值
@@ -859,8 +861,8 @@ class MACDIndicator:
             macd_line[i] = dif_line[i] - dea_line[i]
 
         return {
-            "fast_ema": decimal2decimal(fast_ema[-1]),
-            "slow_ema": decimal2decimal(slow_ema[-1]),
+            "fast_ema": decimal2decimal(fast_ema[-1]/scale),
+            "slow_ema": decimal2decimal(slow_ema[-1]/scale),
             "dif": decimal2decimal(dif_line[-1]),
             "dea": decimal2decimal(dea_line[-1]),
             "macd": decimal2decimal(macd_line[-1]),
@@ -875,6 +877,7 @@ class MACDIndicator:
                                    slow_period=default_slow_period,
                                    signal_period=default_signal_period
                                    ):
+        _, scale = autoscale([price, ])
 
         k_fast = D(2 / (fast_period + 1))
         k_slow = D(2 / (slow_period + 1))
@@ -882,7 +885,8 @@ class MACDIndicator:
 
         fast_ema = price * k_fast + prev_fast_ema * (1 - k_fast)
         slow_ema = price * k_slow + prev_slow_ema * (1 - k_slow)
-        dif = fast_ema - slow_ema
+
+        dif = (fast_ema - slow_ema) * scale
         dea = dif * k_signal + prev_dea * (1 - k_signal)
         macd = dif - dea
         return {
@@ -1027,9 +1031,6 @@ class RSIIndicator:
 
         avg_gain = float2decimal(avg_gain)
         avg_loss = float2decimal(avg_loss)
-        if scale != D("1"):
-            avg_gain = decimal2decimal(avg_gain/scale)
-            avg_loss = decimal2decimal(avg_loss/scale)
 
         return {"rsi": float2decimal(rsi), "avg_gain": avg_gain, "avg_loss": avg_loss,
                 "open_ts": prices_data[-1].open_ts}
@@ -1050,9 +1051,11 @@ class RSIIndicator:
         返回:
         当前RSI值, 当前平均上涨, 当前平均下跌
         """
+        _, scale = autoscale([previous_price, current_price])
+
         period = D(period)
         # 计算当前价格变化
-        price_change = current_price - previous_price
+        price_change = (current_price - previous_price) * scale
 
         # 确定上涨或下跌
         current_gain = max(0, price_change)
