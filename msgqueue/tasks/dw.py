@@ -223,7 +223,7 @@ async def save_indicators_job(*args, **kwargs):
 
             if redis_client.get(f"s_indicators:{symbol}:{_interval}"):
                 continue
-            redis_client.set(f"s_kdj:{symbol}:{_interval}", 1, 1024)
+            redis_client.set(f"s_indicators:{symbol}:{_interval}", 1, 1024)
 
             await push_symbol_mq({
                 "bp": "save_indicators_job_by_symbol",
