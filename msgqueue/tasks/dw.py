@@ -19,7 +19,7 @@ from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
 from utils.common import decimal2str, str2decimal, locking, \
-    set_lock_latest, leading_zeros, decimal2decimal, float2decimal
+    set_lock_latest, leading_zeros, decimal2decimal, float2decimal, autoscale
 from utils.hrequest import http_get_request
 from exts import async_database
 from cache import AllCache, RedisPoolContext
@@ -1000,11 +1000,7 @@ class RSIIndicator:
         prices_data = prices[:cls.dataset_length]
         prices = [i.close_price for i in prices_data]
 
-        # TODO:高位小数的精度丢失，其他指标同样存在
-        # scale_factor = leading_zeros(prices[0])
-        # if scale_factor:
-        #     for i, val in enumerate(prices):
-        #         prices[i] = val * scale_factor
+        prices, scale = autoscale(prices)
 
         # 计算价格变化
         deltas = np.diff([float(i) for i in prices])
@@ -1029,7 +1025,13 @@ class RSIIndicator:
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
 
-        return {"rsi": float2decimal(rsi), "avg_gain": float2decimal(avg_gain), "avg_loss": float2decimal(avg_loss),
+        avg_gain = float2decimal(avg_gain)
+        avg_loss = float2decimal(avg_loss)
+        if scale != D("1"):
+            avg_gain = decimal2decimal(avg_gain/scale)
+            avg_loss = decimal2decimal(avg_loss/scale)
+
+        return {"rsi": float2decimal(rsi), "avg_gain": avg_gain, "avg_loss": avg_loss,
                 "open_ts": prices_data[-1].open_ts}
 
     @classmethod

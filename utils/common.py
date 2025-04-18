@@ -4,6 +4,7 @@
 import hashlib
 import functools
 import time
+import numpy as np
 from datetime import datetime, timedelta
 from decimal import ROUND_DOWN, Decimal, getcontext
 from uuid import uuid4
@@ -123,6 +124,15 @@ def leading_zeros(val: Decimal):
         no_zero_decimal_part = decimal_part.lstrip("0")
         num_zeros = len(decimal_part) - len(no_zero_decimal_part)
         return Decimal(10 ** num_zeros)
+
+
+def autoscale(prices):
+    max_decimal = max([abs(p) for p in prices])
+    if max_decimal == 0 or max_decimal > Decimal("0.0001"):
+        return prices, Decimal(1)
+    scale_exp = abs(int(np.floor(np.log10(float(max_decimal))))) + 1
+    scale = Decimal(10) ** scale_exp
+    return [p * scale for p in prices], scale
 
 
 def usdt2busd(val: str):
