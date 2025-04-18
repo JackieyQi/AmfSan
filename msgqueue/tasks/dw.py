@@ -1000,10 +1000,11 @@ class RSIIndicator:
         prices_data = prices[:cls.dataset_length]
         prices = [i.close_price for i in prices_data]
 
-        scale_factor = leading_zeros(prices[0])
-        if scale_factor:
-            for i, val in enumerate(prices):
-                prices[i] = val * scale_factor
+        # TODO:高位小数的精度丢失，其他指标同样存在
+        # scale_factor = leading_zeros(prices[0])
+        # if scale_factor:
+        #     for i, val in enumerate(prices):
+        #         prices[i] = val * scale_factor
 
         # 计算价格变化
         deltas = np.diff([float(i) for i in prices])
