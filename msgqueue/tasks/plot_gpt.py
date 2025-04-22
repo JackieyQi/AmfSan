@@ -2122,8 +2122,9 @@ class PlotGptHandle(BasePlotHandle):
                 score_info.update(back_score_info)
                 return score_info
 
-        # if sum_score >= 60 or back_sum_score >= 15:
-        #     return score_info
+            if sum_score >= 60 or back_sum_score >= 15:
+                score_info.update(back_score_info)
+                return score_info
         return
 
     def _get_adjust_score_kdj_1h_no_death_cross(self, score, kdj_1h_strategies):
