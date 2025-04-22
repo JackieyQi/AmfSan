@@ -10,7 +10,7 @@ from cache.order import (LimitPriceNoticeValueCache,
                          MarketPriceCache)
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     SymbolPlotTableCache, CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable
+from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable, BollTable
 from models.order import SymbolPriceChangeHistoryTable
 from models.user import UserSymbolPlotTable as SymbolPlotTable
 from settings.constants import *
@@ -254,10 +254,11 @@ class SymbolHandle(object):
             macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == self.symbol).aio_execute()
             kdj_del_rows = await KdjTable.delete().where(KdjTable.symbol == self.symbol).aio_execute()
             rsi_del_rows = await RsiTable.delete().where(RsiTable.symbol == self.symbol).aio_execute()
+            boll_del_rows = await BollTable.delete().where(BollTable.symbol == self.symbol).aio_execute()
 
         return {
             "plot_row": plot_row, "kline_del_rows": kline_del_rows, "macd_del_rows": macd_del_rows,
-            "kdj_del_rows": kdj_del_rows, "rsi_del_rows": rsi_del_rows,
+            "kdj_del_rows": kdj_del_rows, "rsi_del_rows": rsi_del_rows, "boll_del_rows": boll_del_rows,
         }
 
     def add_macd_gate(self, interval=""):

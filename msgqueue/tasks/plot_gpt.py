@@ -1055,6 +1055,7 @@ class PlotGptHandle(BasePlotHandle):
             depth_bid_price = depth_prices_data["bid_price"]
             depth_ask_price = depth_prices_data["ask_price"]
             recommend_bid_price = depth_prices_data["recommend_bid_price"]
+            recommend_bid_price = decimal2decimal((recommend_bid_price+curr_price)/Decimal("2"))
 
             atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
             sl_price = decimal2decimal(atr_price_info["sl_price"])
@@ -2116,8 +2117,12 @@ class PlotGptHandle(BasePlotHandle):
         """
         if sum_score >= 40:
             logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, score_info:{score_info}, back_score_info:{back_score_info}")
-        if sum_score >= 60 or back_sum_score >= 15:
-            return score_info
+            # TODO: bb price check
+            if self.bb_list_1h[0].bblower < current_price <= (self.bb_list_1h[0].bblower + self.bb_list_1h[0].bbmid)/Decimal("2"):
+                return score_info
+
+        # if sum_score >= 60 or back_sum_score >= 15:
+        #     return score_info
         return
 
     def _get_adjust_score_kdj_1h_no_death_cross(self, score, kdj_1h_strategies):
