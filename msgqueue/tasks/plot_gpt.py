@@ -222,6 +222,10 @@ class CandlestickStrategy:
             if (self.kline_list[i].close_price - self.bb_list[i].bblower) / (
                     self.bb_list[i].bbmid - self.bb_list[i].bblower) <= tolerance:
                 count += 1
+            elif (self.macd_list[i].ema_12 < self.macd_list[i].ema_26) \
+                    and (self.macd_list[i+3].ema_12 >= self.macd_list[i+3].ema_26):
+                # 死叉附近
+                count += 1
         return count > n * 0.7  # 至少70%贴近上轨
 
     def get_ema_strategy(self, is_bid=False, is_ask=False):
