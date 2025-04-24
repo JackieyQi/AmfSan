@@ -2096,6 +2096,10 @@ class PlotGptHandle(BasePlotHandle):
         if kdj_1h_strategies.get_curr_golden_cross_by_threshold(Decimal("20")): # 1小时KDJ在低位（J<20）形成金叉 → +5分
             back_score_info["back_kdj_1h_golden_cross_20low"] = 5
 
+        if self.bb_list_1h[1].bblower < self.kline_list_1h[1].close_price <= (
+                self.bb_list_1h[1].bblower + self.bb_list_1h[1].bbmid) / Decimal("2"):
+            back_score_info["back_bb_1h_up"] = 5
+
         if kline_1h_strategies.is_along_lower_band(n=4):
             back_score_info["back_is_along_lower_band"] = -10
 
@@ -2121,14 +2125,10 @@ class PlotGptHandle(BasePlotHandle):
         """
         if sum_score >= 40:
             logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, score_info:{score_info}, back_score_info:{back_score_info}")
-            # TODO: bb price check
-            if self.bb_list_1h[0].bblower < current_price <= (self.bb_list_1h[0].bblower + self.bb_list_1h[0].bbmid)/Decimal("2"):
-                score_info.update(back_score_info)
-                return score_info
 
-            if sum_score >= 60 or back_sum_score >= 15:
-                score_info.update(back_score_info)
-                return score_info
+        if sum_score >= 60 or back_sum_score >= 15:
+            score_info.update(back_score_info)
+            return score_info
         return
 
     def _get_adjust_score_kdj_1h_no_death_cross(self, score, kdj_1h_strategies):
