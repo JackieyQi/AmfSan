@@ -896,35 +896,10 @@ class PlotGptHandle(BasePlotHandle):
                 "atr_sl_price": decimal2decimal(atr_price_info["sl_price"]),
                 "atr_tp_price": decimal2decimal(atr_price_info["tp_price"])}
 
-    def get_previous_high_price(self, kline_list, window_size=6):
-        """
-        Donchian Channel: 唐奇安通道策略
-        """
-        high_list = [i.high_price for i in kline_list]
-        return max(high_list[:window_size])
+    def get_recommend_price(self, curr_price):
+        depth_prices_data = self.get_depth_prices(curr_price)
 
-    def _check_kdj_uptrend(self, kdj_list):
-        """检查KDJ是否处于递增趋势(基于每一组数据的离散值->离散值的数组)"""
-
-        for i in range(1, len(kdj_list)):
-            curr_kdj = kdj_list[i]
-            last_kdj = kdj_list[i-1]
-
-            curr_cv = calculate_cv([curr_kdj.k_val, curr_kdj.d_val, curr_kdj.j_val], num=8)
-            last_cv = calculate_cv([last_kdj.k_val, last_kdj.d_val, last_kdj.j_val], num=8)
-            if curr_cv <= last_cv:
-                return False
-        return True
-
-    def _check_kdj_golden_cross_count(self, kdj_list, threshold=0):
-        """检查 KDJ历史金叉数量"""
-        crossovers_data = analyze_crossovers(kdj_list)
-        return crossovers_data["golden_cross"] > threshold
-
-    def _check_kdj_golden_cross(self, kdj_list):
-        """检查 KDJ当前金叉"""
-        return (kdj_list[1].k_val < kdj_list[1].d_val and
-                kdj_list[0].k_val > kdj_list[0].d_val)
+        atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
 
     def _check_kdj_golden_cross_by_threshold(self, kdj_list, threshold):
         """检查 KDJ当前低位金叉"""
@@ -1925,6 +1900,7 @@ class PlotGptHandle(BasePlotHandle):
             *. 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
             *. 1小时的KDJ的前两根线均大于100 -> -5 分
             *. 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
+            *. 1小时的当前价格 > (上轨 + 中轨)/2 -> -5 分
             *. 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
 
             # TODO: 不执行买入机制
@@ -1936,6 +1912,8 @@ class PlotGptHandle(BasePlotHandle):
             3. 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
             4. 1小时KDJ在低位（J<20）形成金叉 → +5分
             5. 1小时的K线沿着下轨运行 -> -10 分
+            *. 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分
+            *. 1小时的中轨大于当前价 -> +8分;中轨 <= 价格 < 中轨 + (上轨-中轨)*10% -> +5分
 
             # TODO：可设置上限，比如布林带相关因子总分不超过 20。
             5. 当前1h最低价 < 下轨,当前1h收盘价回到下轨之上 -> +10 分。
@@ -2062,16 +2040,19 @@ class PlotGptHandle(BasePlotHandle):
 
         # 高位环境风险惩罚因子(-10分)
         if self.rsi_list_1h[0].rsi > Decimal("80") or self.rsi_list_1h[1].rsi > Decimal("80"):
-            score_info["overheat_risk_rsi_1h_too_high"] = - 5 # 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
+            score_info["overheat_risk_rsi_1h_too_high"] = -5 # 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
 
         if self.kdj_list_1h[1].j_val > Decimal("100") and self.kdj_list_1h[2].j_val > Decimal("100"):
-            score_info["overheat_risk_kdj_1h_too_hot"] = - 5 # 1小时的KDJ的前两根线均大于100 -> -5 分
+            score_info["overheat_risk_kdj_1h_too_hot"] = -5 # 1小时的KDJ的前两根线均大于100 -> -5 分
 
         for index in (0, 1):
             if kline_1h_strategies.get_long_upper_shadow(index) and kline_1h_strategies.get_fake_breakout_by_bb(index):
                 # TODO: 假突破需要结合当前k线
-                score_info["overheat_fake_breakout"] = - 5 # 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
+                score_info["overheat_fake_breakout"] = -5 # 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
                 break
+
+        if current_price > (self.bb_list_1h[0].bbupper + self.bb_list_1h[0].bbmid)/Decimal("2"):
+            score_info["overheat_1h_bb_price_too_high"] = -5 # 1小时的当前价格 > (上轨 + 中轨)/2 -> -5 分
 
         if self.kline_list_4h[0].high_price > self.bb_list_4h[0].bbupper and kline_4h_strategies.get_crosshairs():
             score_info["overheat_4h_upper_crosshairs"] = -5 # 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
@@ -2098,10 +2079,15 @@ class PlotGptHandle(BasePlotHandle):
 
         if self.bb_list_1h[1].bblower < self.kline_list_1h[1].close_price <= (
                 self.bb_list_1h[1].bblower + self.bb_list_1h[1].bbmid) / Decimal("2"):
-            back_score_info["back_bb_1h_up"] = 5
+            back_score_info["back_low_bb_1h_level"] = 5 # 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分
+
+        if self.bb_list_1h[0].bbmid > current_price:
+            back_score_info["back_mid_bb_1h_level"] = 8 # 1小时的中轨大于当前价 -> +8分;中轨 <= 价格 < 中轨 + (上轨-中轨)*10% -> +5分
+        elif self.bb_list_1h[0].bbmid <= current_price < (self.bb_list_1h[0].bbmid +(self.bb_list_1h[0].bbupper-self.bb_list_1h[0].bbmid)*Decimal("0.1")):
+            back_score_info["back_mid_bb_1h_level"] = 5
 
         if kline_1h_strategies.is_along_lower_band(n=4):
-            back_score_info["back_is_along_lower_band"] = -10
+            back_score_info["back_is_along_lower_band"] = -10 # 1小时的K线沿着下轨运行 -> -10 分
 
         if (self.kline_list_1h[0].low_price < self.bb_list_1h[0].bblower) \
                 and (self.kline_list_1h[0].close_price > self.bb_list_1h[0].bblower):
