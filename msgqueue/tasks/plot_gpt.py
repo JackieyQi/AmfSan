@@ -1938,8 +1938,9 @@ class PlotGptHandle(BasePlotHandle):
             3. 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
             4. 1小时KDJ在低位（J<20）形成金叉 → +5分
             5. 1小时的K线沿着下轨运行 -> -10 分
+            *. 1小时的K线的ema下跌扩大 -> -10 分
             *. 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分
-            *. 1小时的中轨大于当前价 -> +8分;中轨 <= 价格 < 中轨 + (上轨-中轨)*10% -> +5分
+            *. 1小时的中轨大于当前价 -> +8分;中轨 <= 当前价格 < 中轨 + (上轨-中轨)*10% -> +5分
 
             # TODO：可设置上限，比如布林带相关因子总分不超过 20。
             5. 当前1h最低价 < 下轨,当前1h收盘价回到下轨之上 -> +10 分。
@@ -2110,7 +2111,7 @@ class PlotGptHandle(BasePlotHandle):
                 self.bb_list_1h[1].bblower + self.bb_list_1h[1].bbmid) / Decimal("2"):
             back_score_info["back_low_bb_1h_level"] = 5 # 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分
 
-        if self.bb_list_1h[0].bbmid > current_price:
+        if current_price < self.bb_list_1h[0].bbmid:
             back_score_info["back_mid_bb_1h_level"] = 8 # 1小时的中轨大于当前价 -> +8分;中轨 <= 价格 < 中轨 + (上轨-中轨)*10% -> +5分
         elif self.bb_list_1h[0].bbmid <= current_price < (self.bb_list_1h[0].bbmid +(self.bb_list_1h[0].bbupper-self.bb_list_1h[0].bbmid)*Decimal("0.1")):
             back_score_info["back_mid_bb_1h_level"] = 5
@@ -2118,8 +2119,12 @@ class PlotGptHandle(BasePlotHandle):
         if kline_1h_strategies.is_along_lower_band(n=4):
             back_score_info["back_is_along_lower_band"] = -10 # 1小时的K线沿着下轨运行 -> -10 分
 
+        if kline_1h_strategies.get_ema_trend()["trend"] == "downward_spiral":
+            back_score_info["back_1h_ema_downward_spiral"] = -10 # 1小时的K线的ema下跌扩大 -> -10 分
+
         if (self.kline_list_1h[0].low_price < self.bb_list_1h[0].bblower) \
-                and (self.kline_list_1h[0].close_price > self.bb_list_1h[0].bblower):
+                and (self.kline_list_1h[0].close_price > self.bb_list_1h[0].bblower) \
+                and kline_1h_strategies.get_ema_trend()["trend"] != "downward_spiral":
             score_info["todo:bb_1h_lower_get"] = 10
             if self.rsi_list_1h[1].rsi < self.rsi_list_1h[0].rsi < Decimal("30"):
                 score_info["todo:bb_1h_rsi_up"] = 5
