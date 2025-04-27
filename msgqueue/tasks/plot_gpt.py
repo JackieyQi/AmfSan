@@ -21,7 +21,7 @@ from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
-from utils.common import ts2bjfmt, decimal2decimal, decimal2str
+from utils.common import ts2bjfmt, decimal2decimal, decimal2str, autoscale
 from utils.hrequest import http_get_request
 from utils.indicators import analyze_list_trend, calculate_bollinger_bands, calculate_cv, analyze_crossovers, \
     enhanced_analyze_list_trend_by_groups, RollingCounter, check_near_low, get_atr_price, check_near_high
@@ -277,6 +277,15 @@ class CandlestickStrategy:
         trend_info = enhanced_analyze_list_trend_by_groups(
             [i.ema_12 for i in self.macd_list[1:19]][::-1], group_size=group_size)
         return trend_info
+
+    def get_ema_trend(self, window_size=7):
+        trend_list = []
+        for i in self.macd_list[:window_size][::-1]:
+            trend_list.append(i.ema_12 - i.ema_26)
+
+        diff_prices, _ = autoscale(trend_list)
+        trend, trend_stats = analyze_list_trend(diff_prices)
+        return trend_stats
 
     def has_double_top(self, total_size=10, window_size=1):
         """
@@ -898,8 +907,27 @@ class PlotGptHandle(BasePlotHandle):
 
     def get_recommend_price(self, curr_price):
         depth_prices_data = self.get_depth_prices(curr_price)
+        most_bid_price = depth_prices_data["bid_price"]
+        most_ask_price = depth_prices_data["ask_price"]
 
-        atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
+        atr_window_size = 6
+        atr_price_info = get_atr_price(
+            self.kline_list_1h[:atr_window_size+1][::-1], curr_price, window_size=atr_window_size)
+        sl_price = decimal2decimal(atr_price_info["sl_price"])
+        tp_price = decimal2decimal(atr_price_info["tp_price"])
+
+        recommend_bid_price = (most_bid_price + sl_price + curr_price)/Decimal("3")
+        if recommend_bid_price > self.bb_list_1h[0].bbupper:
+            recommend_bid_price = self.bb_list_1h[0].bbupper
+
+        recommend_ask_price = (most_ask_price + tp_price + curr_price)/Decimal("3")
+
+        return {
+            "sl_price": sl_price,
+            "tp_price": tp_price,
+            "recommend_bid_price": decimal2decimal(recommend_bid_price),
+            "recommend_ask_price": decimal2decimal(recommend_ask_price),
+        }
 
     def _check_kdj_golden_cross_by_threshold(self, kdj_list, threshold):
         """检查 KDJ当前低位金叉"""
@@ -1030,21 +1058,18 @@ class PlotGptHandle(BasePlotHandle):
             for k, v in score_info.items():
                 score_detail_text += f"{k}:{v}分;"
 
-            depth_prices_data = self.get_depth_prices(curr_price)
-            depth_bid_price = depth_prices_data["bid_price"]
-            depth_ask_price = depth_prices_data["ask_price"]
-            recommend_bid_price = depth_prices_data["recommend_bid_price"]
-            recommend_bid_price = decimal2decimal((recommend_bid_price+curr_price)/Decimal("2"))
+            recommend_price_data = self.get_recommend_price(curr_price)
+            recommend_bid_price = recommend_price_data["recommend_bid_price"]
+            recommend_sl_price = recommend_price_data["sl_price"]
+            recommend_tp_price = recommend_price_data["tp_price"]
 
-            atr_price_info = get_atr_price(self.kline_list_1h[:7][::-1], curr_price)
-            sl_price = decimal2decimal(atr_price_info["sl_price"])
-            tp_price = decimal2decimal(atr_price_info["tp_price"])
             self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                  f"symbol={self.symbol}&low_price={sl_price}" \
-                                  f"&high_price={tp_price}"
+                                       f"symbol={self.symbol}" \
+                                       f"&low_price={recommend_sl_price}" \
+                                       f"&high_price={recommend_tp_price}"
 
             redis_client = AllCache.get_client()
-            redis_client.set(f"sl_tp:{self.symbol}", f"{sl_price}:{tp_price}")
+            redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
 
             direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
                         f"\n<br> 总分: {sum(score_info.values())}。" \
@@ -1901,6 +1926,7 @@ class PlotGptHandle(BasePlotHandle):
             *. 1小时的KDJ的前两根线均大于100 -> -5 分
             *. 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
             *. 1小时的当前价格 > (上轨 + 中轨)/2 -> -5 分
+            *. 1小时的EMA12和EMA26的距离下降且扩大 -> -5 分
             *. 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
 
             # TODO: 不执行买入机制
@@ -2053,6 +2079,9 @@ class PlotGptHandle(BasePlotHandle):
 
         if current_price > (self.bb_list_1h[0].bbupper + self.bb_list_1h[0].bbmid)/Decimal("2"):
             score_info["overheat_1h_bb_price_too_high"] = -5 # 1小时的当前价格 > (上轨 + 中轨)/2 -> -5 分
+
+        if kline_1h_strategies.get_ema_trend()["trend"] == "downward_spiral":
+            score_info["overheat_ema_downward_spiral"] = -5 # 1小时的EMA12和EMA26的距离下降且扩大 -> -5 分
 
         if self.kline_list_4h[0].high_price > self.bb_list_4h[0].bbupper and kline_4h_strategies.get_crosshairs():
             score_info["overheat_4h_upper_crosshairs"] = -5 # 4小时的当前k线最高价突破上轨且为十字线 -> -5 分

@@ -49,6 +49,7 @@ def analyze_list_trend(decimal_array, num=8):
     else:
         # trend = "无明显趋势"
         trend = "range_bound"
+    trend_stats["trend"] = trend
     return trend, trend_stats
 
 
@@ -431,6 +432,17 @@ def check_near_low(klines_data, low_level, high_level, logger,
 
 
 def check_near_high(klines_data, low_level, high_level, logger,
+                    percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
+    curr_price = klines_data[-1].close_price
+    band_with = high_level - low_level
+    if (high_level - band_with*Decimal("0.1")) < curr_price < (high_level + band_with*Decimal("0.1")):
+        is_near = True
+    else:
+        is_near = False
+    return {"is_near": is_near}
+
+# TODO
+def check_near_high_todo(klines_data, low_level, high_level, logger,
                     percentage_threshold=0.03, atr_multiplier=0.5, atr_window_size=6):
     """
 
