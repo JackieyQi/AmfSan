@@ -149,7 +149,10 @@ async def check_gpt_plot_job_by_symbol(val):
     if not symbol:
         logger.error(f"check_gpt_plot_job_by_symbol, {val}")
         return
+    a = time.time()
+    logger.info(f"check_gpt_plot_job_by_symbol, check time, start, {symbol}, {a}")
     await PlotGptHandle(symbol).check()
+    logger.info(f"check_gpt_plot_job_by_symbol, check time, end, {symbol}, {time.time()-a}")
 
 
 async def check_kdj_cv(*args, **kwargs):
