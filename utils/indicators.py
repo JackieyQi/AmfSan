@@ -437,6 +437,8 @@ def check_near_high(klines_data, low_level, high_level, logger,
     band_with = high_level - low_level
     if (high_level - band_with*Decimal("0.1")) < curr_price < (high_level + band_with*Decimal("0.1")):
         is_near = True
+    elif (high_level - band_with*Decimal("0.1")) < klines_data[-1].high_price < (high_level + band_with*Decimal("0.1")):
+        is_near = True
     else:
         is_near = False
     return {"is_near": is_near}

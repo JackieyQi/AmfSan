@@ -230,6 +230,9 @@ class CandlestickStrategy:
 
     def get_ema_strategy(self, is_bid=False, is_ask=False):
         """
+        bullish stack（多头叠加、多头堆叠）
+            eg: EMA12 > EMA26 > EMA50
+
         1. 双均线策略（Golden Cross & Death Cross）:
             *计算 短期均线（如 5 日均线）和 长期均线（如 20 日均线）
                 短期均线上穿长期均线，买入（金叉）
@@ -270,6 +273,12 @@ class CandlestickStrategy:
             return strategies
         return strategies
 
+    def has_ema_bullish_alignment(self, index=0):
+        """
+        EMA多头排列
+        """
+        return self.macd_list[index].ema_12 >= self.macd_list[index].ema_26
+
     def get_prev_ema_trend_strategy(self, group_size=7):
         """
         增强版EMA趋势分析，结合历史趋势进行相对判断
@@ -280,7 +289,7 @@ class CandlestickStrategy:
 
     def get_ema_trend(self, window_size=7):
         trend_list = []
-        for i in self.macd_list[:window_size][::-1]:
+        for i in self.macd_list[:window_size-1][::-1]:
             trend_list.append(i.ema_12 - i.ema_26)
 
         diff_prices, _ = autoscale(trend_list)
@@ -921,6 +930,8 @@ class PlotGptHandle(BasePlotHandle):
             recommend_bid_price = self.bb_list_1h[0].bbupper
 
         recommend_ask_price = (most_ask_price + tp_price + curr_price)/Decimal("3")
+        if recommend_ask_price > self.bb_list_1h[0].bbupper:
+            recommend_ask_price = self.bb_list_1h[0].bbupper
 
         return {
             "sl_price": sl_price,
@@ -1885,32 +1896,49 @@ class PlotGptHandle(BasePlotHandle):
 
     async def get_buy_score_info(self, current_price):
         """
+        结构分-离散状态(定性)-固定分
+        趋势分-连续变化(定量)-动态分
+
         偏向趋势跟随 + 突破确认 + 触底反弹(是否单独计分50：15)：总分100分
         趋势因子(35分)：
-            1. 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
-            2. 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +3 分;动态调整分数：
-                （收盘价跌破下轨 -> +2 分）
-                （最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分）
-                （开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分）
-                （当前4小时k线形成上影线 -> -2 分）
-            3. 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
-            4. 1 小时 EMA12 上升（current_EMA12 > previous_EMA12） → +5 分;动态调整分数：
-                （1小时k线的前根线为长十字线 + 下影线更长 -> -3 分）
-            5. 1 小时 MACD 上升 → +5 分;
-            6. 日线 MACD > 0 → +2 分
-            7. 4 小时 MACD > 0 → +5 分;动态调整分数：（macd当前线三连降 -> -3 分）
+            *. 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
+            *. 4 小时 EMA12+EMA26的趋势得分 -> 动态调整分数：
+                *. (curr_ema12 < prev_ema12,短期动能减弱 -> -3 分)
+                *.（curr_ema12 >= prev_ema12 → +3 分）
+                *. (curr_ema26 < prev_ema26,中期动能减弱 -> -5 分)
+                *. (ema12和ema26差距在缩小，动能衰减 -> -2 分)
+                *. (ema12和ema26差距在扩大，趋势加速 -> +2 分)
+            *. 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
+            *. 1 小时 EMA12和EMA26 上升（current_EMA12 > previous_EMA12）（current_EMA26 > previous_EMA26） → +5 分;动态调整分数：
+                *.（1小时k线的前根线为长十字线 + 下影线更长 -> -3 分）
+                *. (curr_ema12 < prev_ema12,短期动能减弱 -> -1.5 分)
+                *.（curr_ema12 >= prev_ema12 → +1.5 分）
+                *. (curr_ema26 < prev_ema26,中期动能减弱 -> -2.5 分)
+            *. 1 小时 MACD 的相对趋势上升 → +5 分;
+                *. (macd没有三连升 -> -3 分)
+            *. 日线 MACD > 0 → +2 分
+            *. 4 小时 MACD > 0 → +5 分;动态调整分数：
+                *.（macd当前线三连降 -> -3 分）
         短期动能因子(35分)
-            1. 4 小时 KDJ 3 连升 → +10 分;动态调整分数：（J<= 20 -> -10 分）（20<J<=95 -> 不扣分）（95 < J ≤ 100 -> 按比例递减, 10 - (J-95) * 1）（ J > 100 -> -10 分）
+            *. 4 小时 KDJ 3 连升 → +10 分;动态调整分数：（J<= 20 -> -10 分）（20<J<=95 -> 不扣分）（95 < J ≤ 100 -> 按比例递减, 10 - (J-95) * 1）（ J > 100 -> -10 分）
+            *. 4 小时 KDJ 刚好处于金叉 → +5 分。
             2. 4 小时 RSI-6 突破 60，增强趋势信号 → +3 分。
             3. 4 小时 RSI-6 在 45-65（中期健康区间） → +3 分。
             4. 4 小时 RSI-6 连续 3 根 K 线递增 → +3 分。
             5. 1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。
             6. 1小时 RSI-6 连续3根线递增 -> +5 分。
             7. 1小时 RSI-6 突破 65 后回踩 60，视为回调进场点（多单）-> +3 分。
-            8. 1小时RSI-6从低位突破50 -> +5 分。
+            8. 1小时 RSI-6 从低位突破50 -> +5 分。
             9. 1 小时 KDJ 2 连升 → +5 分。
-            10. 4 小时 KDJ 刚好处于金叉 → +5 分。
+
             11. 1 小时 KDJ 没死叉 → +5 分；动态调整分数：（KDJ 处于震荡状态 -> -2 分）（当前RSI>70 -> -2 分）
+
+            *. 4小时的布林带的得分：
+                *.（最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分）
+                *.（开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分）
+            *. 4小时的K线形态的得分：
+                *.（当前4小时k线形成上影线 -> -2 分）
+
         成交量因子(20分)
             1. 4 小时成交量 > 5 根均值 且 > 10 根均值 → +10 分。
             2. 1 小时成交量 > 5 根均值 * 1.3 → +5 分；动态调整分数：（当前k线的最高价未突破前5根线的最高价 -> -3 分）
@@ -1939,8 +1967,8 @@ class PlotGptHandle(BasePlotHandle):
             4. 1小时KDJ在低位（J<20）形成金叉 → +5分
             5. 1小时的K线沿着下轨运行 -> -10 分
             *. 1小时的K线的ema下跌扩大 -> -10 分
-            *. 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分
-            *. 1小时的中轨大于当前价 -> +8分;中轨 <= 当前价格 < 中轨 + (上轨-中轨)*10% -> +5分
+            *. 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分;1小时的中轨大于当前价 -> +8分;中轨 <= 当前价格 < 中轨 + (上轨-中轨)*10% -> +5分
+                *.（当前价跌破4小时下轨 -> +2 分）
 
             # TODO：可设置上限，比如布林带相关因子总分不超过 20。
             5. 当前1h最低价 < 下轨,当前1h收盘价回到下轨之上 -> +10 分。
@@ -1948,9 +1976,6 @@ class PlotGptHandle(BasePlotHandle):
                 5.2. 1h的MACD 背离增强: 价格创新低，但 MACD 未创新低，背离 -> +5分。
 
         """
-        # if self.macd_list_1d[0].macd < 0 and self.macd_list_4h[0].macd < 0:
-        #     return
-
         score_info = {}
 
         # 趋势因子(35分)
@@ -1959,39 +1984,39 @@ class PlotGptHandle(BasePlotHandle):
         if ema_4h_strategy.get("has_ema_stack"):
             score_info["4h_has_ema_stack"] = 10 # 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
 
-        if ema_4h_strategy.get("has_ema_uptrend"):
-            score_info["4h_has_ema_uptrend"] = self._get_adjust_score_4h_has_ema_uptrend(
-                3, current_price, kline_4h_strategies
-            ) # 4 小时 EMA12 上升（current_EMA12 > prev_EMA12） → +3 分
+        score_info["4h_has_ema_uptrend"] = self._get_adjust_score_4h_has_ema_uptrend(
+            0, kline_4h_strategies) # 4小时 EMA12和EMA26的趋势动态得分 →
 
         kline_1h_strategies = CandlestickStrategy(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
-        ema_1h_strategy = kline_1h_strategies.get_ema_strategy(is_bid=True)
-        if ema_1h_strategy.get("has_ema_stack"):
+        if kline_1h_strategies.has_ema_bullish_alignment():
             score_info["1h_has_ema_stack"] = 5 # 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
 
         # prev_ema_trend_1h_info = kline_1h_strategies.get_prev_ema_trend_strategy()
         # if prev_ema_trend_1h_info["trend"] in ["parabolic_move", "modest_increase"]:
-        if self.macd_list_1h[0].ema_12 > self.macd_list_1h[1].ema_12:
-            score_info["1h_has_prev_ema_uptrend"] = self._get_adjust_score_1h_has_prev_ema_uptrend(
-                5, kline_1h_strategies
-            ) # 1 小时 EMA12 上升（EMA12 斜率 > 0） → +5 分
+        score_info["1h_has_ema_uptrend"] = self._get_adjust_score_1h_has_ema_uptrend(
+            0, kline_1h_strategies) # 1小时 EMA12和EMA26的趋势动态得分 →
 
         macd_1h_strategies = MacdStrategy(self.macd_list_1h)
         prev_macd_trend_1h_info = macd_1h_strategies.get_prev_trend_strategy()
         if prev_macd_trend_1h_info["trend"] in ["parabolic_move", "modest_increase"]:
-            score_info["1h_has_prev_macd_uptrend"] = 5 # 1 小时 MACD 上升 → +5 分
+            score_info["1h_macd_uptrend"] = self._get_adjust_score_1h_macd_trend(
+                5) # 1 小时 MACD 上升 → +5 分
 
         if self.macd_list_1d[0].macd > 0:
             score_info["macd_1d>0"] = 2 # 日线 MACD > 0 → +2 分
 
         macd_4h_strategies = MacdStrategy(self.macd_list_4h)
         if self.macd_list_4h[0].macd > 0:
-            score_info["macd_4h>0"] = self._get_adjust_score_macd_gt0(5, macd_4h_strategies) # 4 小时 MACD > 0 → +5 分
+            score_info["4h_macd_uptrend"] = self._get_adjust_score_4h_macd_uptrend(
+                5, macd_4h_strategies) # 4 小时 MACD > 0 → +5 分
 
         # 短期动能因子(35分)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
         if kdj_4h_strategies.get_uptrend(3):
             score_info["kdj_4h_up"] = self._get_adjust_score_kdj_4h_up(10) # 4 小时 KDJ 3 连升 → +10 分
+
+        if kdj_4h_strategies.get_curr_golden_cross():
+            score_info["kdj_4h_golden_cross"] = 5 # 4 小时 KDJ 刚好处于金叉 → +5 分
 
         rsi_4h_strategies = RsiStrategy(self.rsi_list_4h)
         if rsi_4h_strategies.get_breakout():
@@ -2021,12 +2046,15 @@ class PlotGptHandle(BasePlotHandle):
         if kdj_1h_up_signal:
             score_info["kdj_1h_up_signal"] = 5  # 1 小时 KDJ 2 连升 → +5 分
 
-        if kdj_4h_strategies.get_curr_golden_cross():
-            score_info["kdj_4h_golden_cross"] = 5 # 4 小时 KDJ 刚好处于金叉 → +5 分
-
         if self.kdj_list_1h[0].k_val >= self.kdj_list_1h[0].d_val:
             score_info["kdj_1h_no_death_cross"] = \
                 self._get_adjust_score_kdj_1h_no_death_cross(5, kdj_1h_strategies) # 1 小时 KDJ 没死叉 → +5 分
+
+        score_info["4h_boll"] = self._get_adjust_score_4h_boll(
+            0, current_price, kline_4h_strategies
+        )  # 4 小时 EMA12和EMA26的趋势动态得分 →
+
+        score_info["4h_kline"] = self._get_adjust_score_4h_kline(0, kline_4h_strategies)
 
         # 成交量因子(20分)
         vol_4h_5_strategy = kline_4h_strategies.get_vol_strategy(5)
@@ -2097,8 +2125,8 @@ class PlotGptHandle(BasePlotHandle):
                 and (self.rsi_list_4h[0].rsi > self.rsi_list_4h[1].rsi):# 4小时 RSI < 30 且 近2根K线开始反弹（当前 RSI > 前一 RSI）→ +5 分
             back_score_info["back_rsi_4h_lt20_uptrend"] = 5
 
-        if (self.rsi_list_1h[0].rsi >= Decimal("30")) and (self.rsi_list_1h[1].rsi < Decimal("25")): # 1小时RSI-6从低于25上穿30 -> +5 分。
-            back_score_info["back_rsi_1h_low_up_25to30"] = 5
+        if (self.rsi_list_1h[0].rsi >= Decimal("30")) and (self.rsi_list_1h[1].rsi < Decimal("25")):
+            back_score_info["back_rsi_1h_low_up_25to30"] = 5 # 1小时RSI-6从低于25上穿30 -> +5 分。
 
         if self.kdj_list_1h[0].j_val > Decimal("20") \
                 and self.kdj_list_1h[1].j_val <= Decimal("15"): # 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
@@ -2110,8 +2138,7 @@ class PlotGptHandle(BasePlotHandle):
         if self.bb_list_1h[1].bblower < self.kline_list_1h[1].close_price <= (
                 self.bb_list_1h[1].bblower + self.bb_list_1h[1].bbmid) / Decimal("2"):
             back_score_info["back_low_bb_1h_level"] = 5 # 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分
-
-        if current_price < self.bb_list_1h[0].bbmid:
+        elif current_price < self.bb_list_1h[0].bbmid:
             back_score_info["back_mid_bb_1h_level"] = 8 # 1小时的中轨大于当前价 -> +8分;中轨 <= 价格 < 中轨 + (上轨-中轨)*10% -> +5分
         elif self.bb_list_1h[0].bbmid <= current_price < (self.bb_list_1h[0].bbmid +(self.bb_list_1h[0].bbupper-self.bb_list_1h[0].bbmid)*Decimal("0.1")):
             back_score_info["back_mid_bb_1h_level"] = 5
@@ -2121,6 +2148,10 @@ class PlotGptHandle(BasePlotHandle):
 
         if kline_1h_strategies.get_ema_trend()["trend"] == "downward_spiral":
             back_score_info["back_1h_ema_downward_spiral"] = -10 # 1小时的K线的ema下跌扩大 -> -10 分
+
+        # TODO:
+        # if current_price < self.bb_list_4h[0].bblower:
+        #     score += 2 # 当前价跌破4小时下轨 -> +2 分
 
         if (self.kline_list_1h[0].low_price < self.bb_list_1h[0].bblower) \
                 and (self.kline_list_1h[0].close_price > self.bb_list_1h[0].bblower) \
@@ -2146,10 +2177,26 @@ class PlotGptHandle(BasePlotHandle):
         if sum_score >= 40:
             logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, score_info:{score_info}, back_score_info:{back_score_info}")
 
-        if sum_score >= 60 or back_sum_score >= 15:
+        if sum_score >= 60 or (sum_score >= 40 and back_sum_score >= 15):
             score_info.update(back_score_info)
             return score_info
         return
+
+    def _get_adjust_score_4h_boll(self, score, curr_price, kline_4h_strategies):
+        high_price = self.kline_list_4h[0].high_price
+        open_price = self.kline_list_4h[0].open_price
+
+        if (curr_price < self.bb_list_4h[0].bbupper) and (high_price > self.bb_list_4h[0].bbupper):
+            score -= 3 # 最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分
+
+        if (curr_price > self.bb_list_4h[0].bbupper) and (open_price > self.bb_list_4h[0].bbupper):
+            score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
+        return score
+
+    def _get_adjust_score_4h_kline(self, score, kline_4h_strategies):
+        if kline_4h_strategies.get_long_upper_shadow():
+            score -= 2 # 当前4小时k线形成上影线 -> -2 分
+        return score
 
     def _get_adjust_score_kdj_1h_no_death_cross(self, score, kdj_1h_strategies):
         """
@@ -2184,21 +2231,20 @@ class PlotGptHandle(BasePlotHandle):
         else:
             return score - 10 # J<= 20 -> -10 分
 
-    def _get_adjust_score_4h_has_ema_uptrend(self, score, curr_price, kline_4h_strategies):
-        high_price = self.kline_list_4h[0].high_price
-        open_price = self.kline_list_4h[0].open_price
+    def _get_adjust_score_4h_has_ema_uptrend(self, score, kline_4h_strategies):
+        if self.macd_list_4h[0].ema_12 < self.macd_list_4h[1].ema_12:
+            score -= 3 # curr_ema12 < prev_ema12,短期动能减弱 -> -3 分
+        else:
+            score += 3 # current_EMA12 > prev_EMA12 → +3 分
 
-        if curr_price < self.bb_list_4h[0].bblower:
-            score += 2 # 收盘价跌破下轨 -> +2 分
+        if self.macd_list_4h[0].ema_26 < self.macd_list_4h[1].ema_26:
+            score -= 5 # curr_ema26 < prev_ema26,中期动能减弱 -> -5 分
 
-        if (curr_price < self.bb_list_4h[0].bbupper) and (high_price > self.bb_list_4h[0].bbupper):
-            score -= 3 # 最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分
-
-        if (curr_price > self.bb_list_4h[0].bbupper) and (open_price > self.bb_list_4h[0].bbupper):
-            score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
-
-        if kline_4h_strategies.get_long_upper_shadow():
-            score -= 2 # 当前4小时k线形成上影线 -> -2 分
+        diff_trend = kline_4h_strategies.get_ema_trend(window_size=5)
+        if diff_trend["trend"] == "downward_spiral":
+            score -= 2 # ema12和ema26差距在缩小，动能衰减 -> -2 分
+        elif diff_trend["trend"] == "parabolic_move":
+            score += 2 # ema12和ema26差距在扩大，趋势加速 -> +2 分
         return score
 
     def _get_adjust_score_vol_1h_up_13x(self, score, curr_price, vol_1h_strategy):
@@ -2208,12 +2254,25 @@ class PlotGptHandle(BasePlotHandle):
             score -= 3 # 当前k线的最高价未突破前5根线的最高价 -> -3 分
         return score
 
-    def _get_adjust_score_macd_gt0(self, score, macd_strategies):
+    def _get_adjust_score_1h_macd_trend(self, score):
+        if not (self.macd_list_1h[0].macd > self.macd_list_1h[1].macd > self.macd_list_1h[2].macd):
+            score -= 3 # macd没有三连升 -> -3 分
+        return score
+
+    def _get_adjust_score_4h_macd_uptrend(self, score, macd_strategies):
         if macd_strategies.get_downtrend():
             score -= 3 # macd当前线三连降 -> -3 分
         return score
 
-    def _get_adjust_score_1h_has_prev_ema_uptrend(self, score, kline_1h_strategies):
+    def _get_adjust_score_1h_has_ema_uptrend(self, score, kline_1h_strategies):
+        if self.macd_list_4h[0].ema_12 < self.macd_list_4h[1].ema_12:
+            score -= 1.5 # curr_ema12 < prev_ema12,短期动能减弱 -> -1.5 分
+        else:
+            score += 1.5 # current_EMA12 > prev_EMA12 → +1.5 分
+
+        if self.macd_list_4h[0].ema_26 < self.macd_list_4h[1].ema_26:
+            score -= 2.5 # curr_ema26 < prev_ema26,中期动能减弱 -> -2.5 分
+
         if kline_1h_strategies.get_corsshairs_and_long_lower_shadow(index=1):
             score -= 3 # 1小时k线的前根线为长十字线 + 下影线更长 -> -3 分
         return score
