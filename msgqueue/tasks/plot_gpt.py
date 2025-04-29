@@ -1898,6 +1898,7 @@ class PlotGptHandle(BasePlotHandle):
         """
         结构分-离散状态(定性)-固定分
         趋势分-连续变化(定量)-动态分
+        趋势判断(>30分) → 多因子组合 → 加权得分 → 信号触发
 
         偏向趋势跟随 + 突破确认 + 触底反弹(是否单独计分50：15)：总分100分
         趋势因子(35分)：
@@ -1910,10 +1911,10 @@ class PlotGptHandle(BasePlotHandle):
                 *. (ema12和ema26差距在扩大，趋势加速 -> +2 分)
             *. 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
             *. 1 小时 EMA12和EMA26 上升（current_EMA12 > previous_EMA12）（current_EMA26 > previous_EMA26） → +5 分;动态调整分数：
-                *.（1小时k线的前根线为长十字线 + 下影线更长 -> -3 分）
                 *. (curr_ema12 < prev_ema12,短期动能减弱 -> -1.5 分)
                 *.（curr_ema12 >= prev_ema12 → +1.5 分）
                 *. (curr_ema26 < prev_ema26,中期动能减弱 -> -2.5 分)
+                *. (1小时的EMA12和EMA26的近7根线的距离趋势下降且扩大 -> -5 分)
             *. 1 小时 MACD 的相对趋势上升 → +5 分;
                 *. (macd没有三连升 -> -3 分)
             *. 日线 MACD > 0 → +2 分
@@ -1925,23 +1926,39 @@ class PlotGptHandle(BasePlotHandle):
                 *. (4 小时 KDJ 刚好处于金叉 → +5 分。)
             *. 1 小时 KDJ 动态得分：
                 *. (1 小时 KDJ 2 连升 → +5 分。)
-                *. (1 小时 KDJ 没死叉 → +5 分；动态调整分数：（KDJ 处于震荡状态 -> -2 分）（当前RSI>70 -> -2 分）)
+                *. (1 小时 KDJ 没死叉 → +5 分；动态调整分数：
+                    *.（KDJ 处于震荡状态 -> -2 分）（当前RSI>70 -> -2 分）)
+                *. (1小时的KDJ的前两根线均大于100 -> -5 分)
+                *. (1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。)
+                *. (1小时KDJ在低位（J<20）形成金叉 → +5分)
             *. 4 小时 RSI 动态得分:
                 *. (4 小时 RSI-6 突破 60，增强趋势信号 → +3 分。)
                 *. (4 小时 RSI-6 在 45-65（中期健康区间） → +3 分。)
                 *. (4 小时 RSI-6 连续 3 根 K 线递增 → +3 分。)
                 *. (4 小时 RSI-6 上涨背离 -> -5分)
                 *. (4 小时 RSI-6 下跌背离 -> +5分)
+                *. 4小时 RSI < 30 且 近2根K线开始反弹（当前 RSI > 前一 RSI）→ +5 分
             *. 1 小时 RSI 动态得分：
                 *. (1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。)
                 *. (1小时 RSI-6 连续3根线递增 -> +5 分。)
                 *. (1小时 RSI-6 突破 65 后回踩 60，视为回调进场点（多单）-> +3 分。)
                 *. (1小时 RSI-6 从低位突破50 -> +5 分。)
+                *. (1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分)
+                *. (1小时RSI-6从低于25上穿30 -> +5 分。)
             *. 4小时的布林带的得分：
                 *.（最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分）
                 *.（开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分）
+                *.（4小时的当前k线最高价突破上轨且为十字线 -> -5 分）
+            *. 1小时的布林带的得分：
+                *. 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
+                *. 1小时的当前价格 > (上轨 + 中轨)/2 -> -5 分
+                *. 1小时的当前k线，首次冲高 + 上轨附近 -> -20 分
+                *. 1小时的K线沿着下轨运行 -> -10 分
+                *. 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分;1小时的中轨大于当前价 -> +8分;中轨 <= 当前价格 < 中轨 + (上轨-中轨)*10% -> +5分
             *. 4小时的K线形态的得分：
                 *.（当前4小时k线形成上影线 -> -2 分）
+            *. 1小时的k线形态的得分：
+                *.（1小时k线的前根线为长十字线 + 下影线更长 -> -3 分）
 
         成交量因子(20分)
             1. 4 小时成交量 > 5 根均值 且 > 10 根均值 → +10 分。
@@ -1954,31 +1971,7 @@ class PlotGptHandle(BasePlotHandle):
             1. 当指数<20(极度恐惧)时 -> +5 分。
             2. 当指数>80(极度贪婪)时 -> -5 分。
         高位环境风险惩罚因子(-5分)
-            *. 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
-            *. 1小时的KDJ的前两根线均大于100 -> -5 分
-            *. 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
-            *. 1小时的当前价格 > (上轨 + 中轨)/2 -> -5 分
-            *. 1小时的EMA12和EMA26的距离下降且扩大 -> -5 分
-            *. 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
-
-            # TODO: 不执行买入机制
-            4. 1小时的当前k线，首次冲高 + 上轨附近 -> -20 分
-
         触底反弹因子（20分）
-            1. 4小时 RSI < 30 且 近2根K线开始反弹（当前 RSI > 前一 RSI）→ +5 分
-            2. 1小时RSI-6从低于25上穿30 -> +5 分。
-            3. 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
-            4. 1小时KDJ在低位（J<20）形成金叉 → +5分
-            5. 1小时的K线沿着下轨运行 -> -10 分
-            *. 1小时的K线的ema下跌扩大 -> -10 分
-            *. 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分;1小时的中轨大于当前价 -> +8分;中轨 <= 当前价格 < 中轨 + (上轨-中轨)*10% -> +5分
-                *.（当前价跌破4小时下轨 -> +2 分）
-
-            # TODO：可设置上限，比如布林带相关因子总分不超过 20。
-            5. 当前1h最低价 < 下轨,当前1h收盘价回到下轨之上 -> +10 分。
-                5.1. 1h的rsi从30反弹 -> +5 分。
-                5.2. 1h的MACD 背离增强: 价格创新低，但 MACD 未创新低，背离 -> +5分。
-
         """
         score_info = {}
 
@@ -2014,6 +2007,10 @@ class PlotGptHandle(BasePlotHandle):
             score_info["4h_macd_uptrend"] = self._get_adjust_score_4h_macd_uptrend(
                 5, macd_4h_strategies) # 4 小时 MACD > 0 → +5 分
 
+        logger.info(f"get_buy_score_info, {self.symbol}, trend score:{sum(score_info.values())}")
+        if sum(score_info.values()) < 30:
+            return
+
         # 短期动能因子(35分)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
         score_info["kdj_4h"] = self._get_adjust_score_kdj_4h(0, kdj_4h_strategies)
@@ -2031,7 +2028,12 @@ class PlotGptHandle(BasePlotHandle):
             0, current_price, kline_4h_strategies
         )
 
+        score_info["boll_1h"] = self._get_adjust_score_boll_1h(
+            0, current_price, kline_1h_strategies
+        )
+
         score_info["kline_4h"] = self._get_adjust_score_kline_4h(0, kline_4h_strategies)
+        score_info["kline_1h"] = self._get_adjust_score_kline_1h(0, kline_1h_strategies)
 
         # 成交量因子(20分)
         vol_4h_5_strategy = kline_4h_strategies.get_vol_strategy(5)
@@ -2070,96 +2072,19 @@ class PlotGptHandle(BasePlotHandle):
         elif self.get_fng_signal(buy=True) is False:
             score_info["fng_lt_20"] = -5 # 当指数>80(极度贪婪)时 -> -5 分。
 
-        # 高位环境风险惩罚因子(-10分)
-        if self.rsi_list_1h[0].rsi > Decimal("80") or self.rsi_list_1h[1].rsi > Decimal("80"):
-            score_info["overheat_risk_rsi_1h_too_high"] = -5 # 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
-
-        if self.kdj_list_1h[1].j_val > Decimal("100") and self.kdj_list_1h[2].j_val > Decimal("100"):
-            score_info["overheat_risk_kdj_1h_too_hot"] = -5 # 1小时的KDJ的前两根线均大于100 -> -5 分
-
-        for index in (0, 1):
-            if kline_1h_strategies.get_long_upper_shadow(index) and kline_1h_strategies.get_fake_breakout_by_bb(index):
-                # TODO: 假突破需要结合当前k线
-                score_info["overheat_fake_breakout"] = -5 # 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
-                break
-
-        if current_price > (self.bb_list_1h[0].bbupper + self.bb_list_1h[0].bbmid)/Decimal("2"):
-            score_info["overheat_1h_bb_price_too_high"] = -5 # 1小时的当前价格 > (上轨 + 中轨)/2 -> -5 分
-
-        if kline_1h_strategies.get_ema_trend()["trend"] == "downward_spiral":
-            score_info["overheat_ema_downward_spiral"] = -5 # 1小时的EMA12和EMA26的距离下降且扩大 -> -5 分
-
-        if self.kline_list_4h[0].high_price > self.bb_list_4h[0].bbupper and kline_4h_strategies.get_crosshairs():
-            score_info["overheat_4h_upper_crosshairs"] = -5 # 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
-
-        if kline_1h_strategies.get_first_breakout_by_bb():
-            score_info["todo:first_breakout_by_bb"] = -20 # 1小时的当前k线，首次冲高 + 上轨附近 -> -20 分
-
-        back_score_info = {}
-
+        # 高位环境风险惩罚因子(保留标签，进行状态识别)
         # 触底反弹因子(20分)
-        if (self.rsi_list_4h[0].rsi < Decimal("30")) \
-                and (self.rsi_list_4h[0].rsi > self.rsi_list_4h[1].rsi):# 4小时 RSI < 30 且 近2根K线开始反弹（当前 RSI > 前一 RSI）→ +5 分
-            back_score_info["back_rsi_4h_lt20_uptrend"] = 5
 
-        if (self.rsi_list_1h[0].rsi >= Decimal("30")) and (self.rsi_list_1h[1].rsi < Decimal("25")):
-            back_score_info["back_rsi_1h_low_up_25to30"] = 5 # 1小时RSI-6从低于25上穿30 -> +5 分。
-
-        if self.kdj_list_1h[0].j_val > Decimal("20") \
-                and self.kdj_list_1h[1].j_val <= Decimal("15"): # 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
-            back_score_info["back_kdj_1h_pullback_15to20"] = 5
-
-        if kdj_1h_strategies.get_curr_golden_cross_by_threshold(Decimal("20")): # 1小时KDJ在低位（J<20）形成金叉 → +5分
-            back_score_info["back_kdj_1h_golden_cross_20low"] = 5
-
-        if self.bb_list_1h[1].bblower < self.kline_list_1h[1].close_price <= (
-                self.bb_list_1h[1].bblower + self.bb_list_1h[1].bbmid) / Decimal("2"):
-            back_score_info["back_low_bb_1h_level"] = 5 # 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分
-        elif current_price < self.bb_list_1h[0].bbmid:
-            back_score_info["back_mid_bb_1h_level"] = 8 # 1小时的中轨大于当前价 -> +8分;中轨 <= 价格 < 中轨 + (上轨-中轨)*10% -> +5分
-        elif self.bb_list_1h[0].bbmid <= current_price < (self.bb_list_1h[0].bbmid +(self.bb_list_1h[0].bbupper-self.bb_list_1h[0].bbmid)*Decimal("0.1")):
-            back_score_info["back_mid_bb_1h_level"] = 5
-
-        if kline_1h_strategies.is_along_lower_band(n=4):
-            back_score_info["back_is_along_lower_band"] = -10 # 1小时的K线沿着下轨运行 -> -10 分
-
-        if kline_1h_strategies.get_ema_trend()["trend"] == "downward_spiral":
-            back_score_info["back_1h_ema_downward_spiral"] = -10 # 1小时的K线的ema下跌扩大 -> -10 分
-
-        # TODO:
-        # if current_price < self.bb_list_4h[0].bblower:
-        #     score += 2 # 当前价跌破4小时下轨 -> +2 分
-
-        if (self.kline_list_1h[0].low_price < self.bb_list_1h[0].bblower) \
-                and (self.kline_list_1h[0].close_price > self.bb_list_1h[0].bblower) \
-                and kline_1h_strategies.get_ema_trend()["trend"] != "downward_spiral":
-            score_info["todo:bb_1h_lower_get"] = 10
-            if self.rsi_list_1h[1].rsi < self.rsi_list_1h[0].rsi < Decimal("30"):
-                score_info["todo:bb_1h_rsi_up"] = 5
-            if (self.kline_list_1h[0].low_price < self.kline_list_1h[2].low_price) and (
-                    self.macd_list_1h[0].macd > self.macd_list_1h[2].macd):
-                score_info["todo:bb_1h_macd_divergence"] = 5
-
-        back_sum_score = sum(back_score_info.values())
-        sum_score = sum(score_info.values()) + back_sum_score
-
-        # TODO:可以考虑“评分走势”的平滑机制
-        """
-        TODO: 可以考虑“评分走势”的平滑机制
-        你现在是「即时分数」，也就是当前K线满足条件就加分，其实可以进一步强化稳定性，比如：
-            额外思路：
-            用滑动窗口打分：近3根K线的得分平均 > 60，再考虑买入。
-            或者 评分突然从 <50 跳到 >70，说明趋势刚启动，作为额外信号。
-        """
+        sum_score = sum(score_info.values())
         if sum_score >= 40:
-            logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, score_info:{score_info}, back_score_info:{back_score_info}")
+            logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, score_info:{score_info}")
 
-        if sum_score >= 60 or (sum_score >= 40 and back_sum_score >= 15):
-            score_info.update(back_score_info)
+        if sum_score >= 60:
             return score_info
         return
 
     def _get_adjust_score_boll_4h(self, score, curr_price, kline_4h_strategies):
+        curr_score_info = {}
         high_price = self.kline_list_4h[0].high_price
         open_price = self.kline_list_4h[0].open_price
 
@@ -2168,11 +2093,49 @@ class PlotGptHandle(BasePlotHandle):
 
         if (curr_price > self.bb_list_4h[0].bbupper) and (open_price > self.bb_list_4h[0].bbupper):
             score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
-        return score
+
+        if self.kline_list_4h[0].high_price > self.bb_list_4h[0].bbupper and kline_4h_strategies.get_crosshairs():
+            curr_score_info["overheat_4h_upper_crosshairs"] = -5 # 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
+
+        return score + sum(curr_score_info.values())
+
+    def _get_adjust_score_boll_1h(self, score, curr_price, kline_1h_strategies):
+        curr_score_info = {}
+
+        for index in (0, 1):
+            if kline_1h_strategies.get_long_upper_shadow(index) and kline_1h_strategies.get_fake_breakout_by_bb(index):
+                # TODO: 假突破需要结合当前k线->回测判断是否需要 close_p<bbupper
+                curr_score_info["overheat_fake_breakout"] = -5 # 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
+                break
+
+        if curr_price > (self.bb_list_1h[0].bbupper + self.bb_list_1h[0].bbmid)/Decimal("2"):
+            curr_score_info["overheat_1h_bb_price_too_high"] = -5 # 1小时的当前价格 > (上轨 + 中轨)/2 -> -5 分
+
+        if kline_1h_strategies.get_first_breakout_by_bb():
+            curr_score_info["first_breakout_by_bb"] = -20 # 1小时的当前k线，首次冲高 + 上轨附近 -> -20 分
+
+        if kline_1h_strategies.is_along_lower_band(n=4):
+            curr_score_info["back_is_along_lower_band"] = -10 # 1小时的K线沿着下轨运行 -> -10 分
+
+        if self.bb_list_1h[1].bblower < self.kline_list_1h[1].close_price <= (
+                self.bb_list_1h[1].bblower + self.bb_list_1h[1].bbmid) / Decimal("2"):
+            curr_score_info["back_low_bb_1h_level"] = 5 # 1小时的前k线收盘价在布林带的下半带的1/2的区间内 -> +5 分
+        elif curr_price < self.bb_list_1h[0].bbmid:
+            curr_score_info["back_mid_bb_1h_level"] = 8 # 1小时的中轨大于当前价 -> +8分;中轨 <= 价格 < 中轨 + (上轨-中轨)*10% -> +5分
+        elif self.bb_list_1h[0].bbmid <= curr_price < (
+                self.bb_list_1h[0].bbmid +(self.bb_list_1h[0].bbupper-self.bb_list_1h[0].bbmid)*Decimal("0.1")):
+            curr_score_info["back_mid_bb_1h_level"] = 5
+
+        return score + sum(curr_score_info.values())
 
     def _get_adjust_score_kline_4h(self, score, kline_4h_strategies):
         if kline_4h_strategies.get_long_upper_shadow():
             score -= 2 # 当前4小时k线形成上影线 -> -2 分
+        return score
+
+    def _get_adjust_score_kline_1h(self, score, kline_1h_strategies):
+        if kline_1h_strategies.get_corsshairs_and_long_lower_shadow(index=1):
+            score -= 3 # 1小时k线的前根线为长十字线 + 下影线更长 -> -3 分
         return score
 
     def _get_adjust_score_kdj_1h_no_death_cross(self, score, kdj_1h_strategies):
@@ -2227,6 +2190,16 @@ class PlotGptHandle(BasePlotHandle):
             curr_score_info["kdj_1h_no_death_cross"] = \
                 self._get_adjust_score_kdj_1h_no_death_cross(5, kdj_1h_strategies) # 1 小时 KDJ 没死叉 → +5 分
 
+        if self.kdj_list_1h[1].j_val > Decimal("100") and self.kdj_list_1h[2].j_val > Decimal("100"):
+            curr_score_info["overheat_risk_kdj_1h_too_hot"] = -5 # 1小时的KDJ的前两根线均大于100 -> -5 分
+
+        if self.kdj_list_1h[0].j_val > Decimal("20") \
+                and self.kdj_list_1h[1].j_val <= Decimal("15"): # 1小时KDJ的J值从低位(<=15)上升至20以上 → +5 分。
+            curr_score_info["back_kdj_1h_pullback_15to20"] = 5
+
+        if kdj_1h_strategies.get_curr_golden_cross_by_threshold(Decimal("20")): # 1小时KDJ在低位（J<20）形成金叉 → +5分
+            curr_score_info["back_kdj_1h_golden_cross_20low"] = 5
+
         return score + sum(curr_score_info.values())
 
     def _get_adjust_score_rsi_4h(self, score, rsi_4h_strategies, kline_4h_strategies):
@@ -2250,6 +2223,10 @@ class PlotGptHandle(BasePlotHandle):
                 self.rsi_list_4h[0].rsi < min([i.rsi for i in self.rsi_list_4h[1:window+1]])):
             curr_score_info["rsi_4h_bullish_divergence"] = 5 # 4 小时 RSI-6 下跌背离 -> +5分
 
+        if (self.rsi_list_4h[0].rsi < Decimal("30")) \
+                and (self.rsi_list_4h[0].rsi > self.rsi_list_4h[1].rsi):
+            curr_score_info["back_rsi_4h_lt20_uptrend"] = 5 # 4小时 RSI < 30 且 近2根K线开始反弹（当前 RSI > 前一 RSI）→ +5 分
+
         return score + sum(curr_score_info.values())
 
     def _get_adjust_score_rsi_1h(self, score, rsi_1h_strategies):
@@ -2265,6 +2242,12 @@ class PlotGptHandle(BasePlotHandle):
 
         if rsi_1h_strategies.get_breakout_from_low():
             curr_score_info["rsi_1h_breakout_from_low"] = 5 # 1小时 RSI-6 从低位突破50 -> +5 分。
+
+        if self.rsi_list_1h[0].rsi > Decimal("80") or self.rsi_list_1h[1].rsi > Decimal("80"):
+            curr_score_info["overheat_risk_rsi_1h_too_high"] = -5 # 1小时的当前线RSI大于80或者前线RSI大于80 -> -5 分
+
+        if (self.rsi_list_1h[0].rsi >= Decimal("30")) and (self.rsi_list_1h[1].rsi < Decimal("25")):
+            curr_score_info["back_rsi_1h_low_up_25to30"] = 5 # 1小时RSI-6从低于25上穿30 -> +5 分。
 
         return score + sum(curr_score_info.values())
 
@@ -2310,8 +2293,9 @@ class PlotGptHandle(BasePlotHandle):
         if self.macd_list_4h[0].ema_26 < self.macd_list_4h[1].ema_26:
             score -= 2.5 # curr_ema26 < prev_ema26,中期动能减弱 -> -2.5 分
 
-        if kline_1h_strategies.get_corsshairs_and_long_lower_shadow(index=1):
-            score -= 3 # 1小时k线的前根线为长十字线 + 下影线更长 -> -3 分
+        if kline_1h_strategies.get_ema_trend()["trend"] == "downward_spiral":
+            score -= 5 # 1小时的EMA12和EMA26的近7根线的距离趋势下降且扩大 -> -5 分
+
         return score
 
     async def check_bb_price_breakout(self, current_price):
