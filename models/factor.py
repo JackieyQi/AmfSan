@@ -31,6 +31,12 @@ class CandlestickFactor:
     def is_new_high_price(self, window_size):
         return self.kline_list[0].high_price < self.get_donchian_channel(window_size)["max_price"]
 
+    def is_bullish_k(self, index=0):
+        return self.kline_list[index].open_price < self.kline_list[index].close_price
+
+    def is_bearish_k(self, index=0):
+        return self.kline_list[index].open_price > self.kline_list[index].close_price
+
     def get_engulfing_pattern_factor(self, window_index=0):
         """
         形态策略: 吞没形态（Engulfing Pattern）:
@@ -72,7 +78,7 @@ class CandlestickFactor:
 
         return real_body < range_total_body * scale
 
-    def get_long_lower_shadow(self, index=0, scale=Decimal("1.5")):
+    def is_long_lower_shadow_k(self, index=0, scale=Decimal("1.5")):
         """
         长下影线可能是诱空 -> +2 分
         :return:
@@ -154,9 +160,14 @@ class CandlestickFactor:
         """
         k线的假跌破
         """
-        break_line = self.bb_list[index].bblower if is_low else self.bb_list[index].bbmid
-        if (self.kline_list[index].low_price < break_line) \
-                and (self.kline_list[index].close_price > break_line):
+        if is_low:
+            break_line = self.bb_list[index].bblower
+            is_near = self.is_near_lower(index)
+        else:
+            break_line = self.bb_list[index].bbmid
+            is_near = self.is_near_mid(index)
+
+        if is_near and (self.kline_list[index].close_price > break_line):
             return True
         else:
             return False
@@ -197,6 +208,16 @@ class CandlestickFactor:
 
         band_width = self.bb_list[index].bbupper - self.bb_list[index].bbmid
         return (self.bb_list[index].bbupper - self.kline_list[index].close_price) / band_width <= tolerance
+
+    def is_near_mid(self, index=0, tolerance=Decimal("0.02")):
+        """
+        当前价格接近或突破布林带中轨
+        """
+        if self.kline_list[index].close_price < self.bb_list[index].bblower:
+            return False
+
+        band_width = self.bb_list[index].bbupper - self.bb_list[index].bbmid
+        return (self.kline_list[index].close_price - self.bb_list[index].bbmid) / band_width <= tolerance
 
     def is_near_lower(self, index=0, tolerance=Decimal("0.1")):
         """
@@ -313,6 +334,12 @@ class CandlestickFactor:
         diff_prices, _ = autoscale(trend_list)
         trend, trend_stats = analyze_list_trend(diff_prices)
         return trend_stats
+
+    def is_ema_bullish_stack(self, window_size=7):
+        return all((self.macd_list[i].ema_12 - self.macd_list[i].ema_26) > 0 for i in range(window_size-1))
+
+    def is_ema12_continue_down(self, window_size=7):
+        return all(self.macd_list[i].ema_12 > self.macd_list[i - 1].ema_12 for i in range(1, window_size))
 
     def is_ema12_continue_up(self, window_size=7):
         return all(self.macd_list[i].ema_12 < self.macd_list[i - 1].ema_12 for i in range(1, window_size))
@@ -494,14 +521,14 @@ class KdjFactor:
                 self.kdj_list[0].k_val < self.kdj_list[0].d_val)
         return current or last
 
-    def is_j_bullish_divergence(self, is_new_low_price, index=0):
+    def is_j_bullish_divergence(self, is_new_low_price, index=0, j_threshold=Decimal("20")):
         """ KDJ极端空头+J值底部背离(价格创新低，J 没创新低) """
         k = self.kdj_list[index].k_val
         d = self.kdj_list[index].d_val
         j = self.kdj_list[index].j_val
 
         if k < d and (k-j) >= 2*(d-k):
-            if is_new_low_price and self.kdj_list[index+1].j_val <= j < Decimal("20"):
+            if is_new_low_price and self.kdj_list[index+1].j_val <= j < j_threshold:
                 return True
         return False
 
@@ -532,12 +559,12 @@ class RsiFactor:
         """
         return self.rsi_list[0].rsi > self.rsi_list[1].rsi > self.rsi_list[2].rsi
 
-    def get_rebound(self):
+    def get_rebound(self, threshold=Decimal("40")):
         """
         1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。
         """
         return (self.rsi_list[0].rsi > self.rsi_list[1].rsi) \
-               and (self.rsi_list[1].rsi < Decimal("40")) and (self.rsi_list[1].rsi < self.rsi_list[2].rsi)
+               and (self.rsi_list[1].rsi < threshold) and (self.rsi_list[1].rsi < self.rsi_list[2].rsi)
 
     def get_breakout_from_low(self, index=0):
         """

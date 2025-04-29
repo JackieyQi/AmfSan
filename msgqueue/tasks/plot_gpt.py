@@ -24,7 +24,7 @@ from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from models.factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
-from models.strategy import ModelBollMidRebound
+from models.strategy import ModelBollMidRebound, ModelBollLowRebound
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt, decimal2decimal, decimal2str
 from utils.hrequest import http_get_request
@@ -1110,26 +1110,6 @@ class PlotGptHandle(BasePlotHandle):
 
         return score
 
-    async def check_bb_price_breakout(self, current_price):
-        # TODO
-        last_k = self.kline_list_1h[1]
-        last_bb = self.bb_list_1h[1]
-        curr_bb = self.bb_list_1h[0]
-        #
-        # if curr_bb.bbmid <= current_price and cu:
-        #     near_info = check_near_high(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price, logger)
-        # elif bb_lower_price <= current_price < bb_mid_price:
-        #     near_info = check_near_low(self.kline_list_1h[:21][::-1], bb_lower_price, bb_mid_price, logger)
-        # else:
-        #     near_info = None
-
-        if (last_k.high_price > last_bb.bbupper) or (self.kline_list_1h[0].high_price > curr_bb.bbupper):
-            return "🌟🌟🌟🌟🌟 bb upper breakout"
-        if (last_k.low_price < last_bb.bblower) or (self.kline_list_1h[0].low_price < curr_bb.bblower):
-            if self.kdj_list_1h[0].j_val > self.kdj_list_1h[1].j_val:
-                return "🚨🚨🚨🚨🚨 bb lower breakout, kdj j up。 结合kdj是否都低于30，ema是否大趋势"
-        return
-
     async def get_buy_by_model_detect(self, curr_price):
         kline_4h_factors = CandlestickFactor(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
         kline_1h_factors = CandlestickFactor(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
@@ -1145,4 +1125,12 @@ class PlotGptHandle(BasePlotHandle):
                 kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
             model_recommend_price_data = model_boll_mid_rebound.get_recommend_price(self.kline_list_1h[0].low_price)
             return {"model_name": model_boll_mid_rebound.name, "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
+
+        model_boll_low_rebound = ModelBollLowRebound(curr_price)
+        if model_boll_low_rebound.is_detected(
+                kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
+            model_recommend_price_data = model_boll_low_rebound.get_recommend_price(self.kline_list_1h[0].low_price)
+            return {"model_name": model_boll_low_rebound.name,
+                    "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
+
         return
