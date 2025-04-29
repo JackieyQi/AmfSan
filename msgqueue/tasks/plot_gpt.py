@@ -20,6 +20,7 @@ from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
 from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
+from models.strategy import detect_model_boll_mid_rebound
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt, decimal2decimal, decimal2str, autoscale
 from utils.hrequest import http_get_request
@@ -53,7 +54,13 @@ class CandlestickStrategy:
         for i in self.kline_list[1:window_size+1]:
             high_list.append(i.high_price)
             low_list.append(i.low_price)
-        return {"max_price": max(high_list[:window_size]), "min_price": min(low_list[:window_size])}
+        return {"max_price": max(high_list), "min_price": min(low_list)}
+
+    def is_new_low_price(self, window_size):
+        return self.kline_list[0].low_price < self.get_donchian_channel(window_size)["min_price"]
+
+    def is_new_high_price(self, window_size):
+        return self.kline_list[0].high_price < self.get_donchian_channel(window_size)["max_price"]
 
     def get_engulfing_pattern_strategy(self, window_index=0):
         """
@@ -163,12 +170,24 @@ class CandlestickStrategy:
         return {"bb_upper": self.bb_list[index].bbupper,
                 "bb_lower": self.bb_list[index].bblower, "bb_mid": self.bb_list[index].bbmid}
 
-    def get_fake_breakout_by_bb(self, index=0):
+    def get_fake_breakout_by_bb(self, index=0, is_up=True):
         """
         k线的假突破
         """
-        if (self.kline_list[index].high_price > self.bb_list[index].bbupper) \
-                and (self.kline_list[index].close_price < self.bb_list[index].bbupper):
+        break_line = self.bb_list[index].bbupper if is_up else self.bb_list[index].bbmid
+        if (self.kline_list[index].high_price > break_line) \
+                and (self.kline_list[index].close_price < break_line):
+            return True
+        else:
+            return False
+
+    def get_fake_breakdown_by_bb(self, index=0, is_low=True):
+        """
+        k线的假跌破
+        """
+        break_line = self.bb_list[index].bblower if is_low else self.bb_list[index].bbmid
+        if (self.kline_list[index].low_price < break_line) \
+                and (self.kline_list[index].close_price > break_line):
             return True
         else:
             return False
@@ -317,6 +336,24 @@ class CandlestickStrategy:
         trend_list = []
         for i in self.macd_list[:window_size-1][::-1]:
             trend_list.append(i.ema_12 - i.ema_26)
+
+        diff_prices, _ = autoscale(trend_list)
+        trend, trend_stats = analyze_list_trend(diff_prices)
+        return trend_stats
+
+    def get_ema12_trend(self, window_size=7):
+        trend_list = []
+        for i in self.macd_list[:window_size-1][::-1]:
+            trend_list.append(i.ema_12)
+
+        diff_prices, _ = autoscale(trend_list)
+        trend, trend_stats = analyze_list_trend(diff_prices)
+        return trend_stats
+
+    def get_ema26_trend(self, window_size=7):
+        trend_list = []
+        for i in self.macd_list[:window_size-1][::-1]:
+            trend_list.append(i.ema_26)
 
         diff_prices, _ = autoscale(trend_list)
         trend, trend_stats = analyze_list_trend(diff_prices)
@@ -492,6 +529,17 @@ class KdjStrategy:
                 self.kdj_list[0].k_val < self.kdj_list[0].d_val)
         return current or last
 
+    def is_j_bullish_divergence(self, is_new_low_price, index=0):
+        """ KDJ极端空头+J值下跌背离(价格创新低，J 没创新低) """
+        k = self.kdj_list[index].k_val
+        d = self.kdj_list[index].d_val
+        j = self.kdj_list[index].j_val
+
+        if k < d and (k-j) >= 2*(d-k):
+            if is_new_low_price and j >= self.kdj_list[index+1].j_val:
+                return True
+        return False
+
 
 class RsiStrategy:
     def __init__(self, rsi_list):
@@ -526,11 +574,12 @@ class RsiStrategy:
         return (self.rsi_list[0].rsi > self.rsi_list[1].rsi) \
                and (self.rsi_list[1].rsi < Decimal("40")) and (self.rsi_list[1].rsi < self.rsi_list[2].rsi)
 
-    def get_breakout_from_low(self):
+    def get_breakout_from_low(self, index=0):
         """
         1小时RSI-6从低位突破50 -> +5 分。
         """
-        return self.get_breakout(threshold=Decimal("50")) and min([i.rsi for i in self.rsi_list[:5]]) < Decimal(40)
+        return self.get_breakout(index=index, threshold=Decimal("50")) \
+                and min([i.rsi for i in self.rsi_list[index:5+index]]) < Decimal(40)
 
     def get_healthy_bound(self):
         """
@@ -539,11 +588,11 @@ class RsiStrategy:
         """
         return Decimal("45") < self.rsi_list[0].rsi < Decimal("65")
 
-    def get_breakout(self, threshold=Decimal("60")):
+    def get_breakout(self, index=0, threshold=Decimal("60")):
         """
         4 小时 RSI-6 突破 60，增强趋势信号 → +3 分。
         """
-        return self.rsi_list[0].rsi > threshold > self.rsi_list[1].rsi
+        return self.rsi_list[index].rsi > threshold > self.rsi_list[index+1].rsi
 
 
 class PlotGptHandle(BasePlotHandle):
@@ -1061,13 +1110,13 @@ class PlotGptHandle(BasePlotHandle):
         # await self.bull_run_strategy()
 
         if not await self.has_limit_price_check((0, 1, 3)):
-            score_info = await self.get_buy_score_info(curr_price)
-            if not score_info:
-                return
+            strategy_text = ""
 
-            score_detail_text = ""
-            for k, v in score_info.items():
-                score_detail_text += f"{k}:{v}分;"
+            if score_info := await self.get_buy_score_info(curr_price):
+                for k, v in score_info.items():
+                    strategy_text += f"{k}:{v}分;"
+            else:
+                return
 
             recommend_price_data = self.get_recommend_price(curr_price)
             recommend_bid_price = recommend_price_data["recommend_bid_price"]
@@ -1084,7 +1133,7 @@ class PlotGptHandle(BasePlotHandle):
 
             direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
                         f"\n<br> 总分: {sum(score_info.values())}。" \
-                        f"\n<br> 分数详情： {score_detail_text}。" \
+                        f"\n<br> 策略详情： {strategy_text}。" \
                         f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
                         f"当前价: {decimal2str(curr_price)}。<br><br>"
             func_str = "get_buy_score_info"
@@ -2008,10 +2057,6 @@ class PlotGptHandle(BasePlotHandle):
             score_info["4h_macd_uptrend"] = self._get_adjust_score_4h_macd_uptrend(
                 5, macd_4h_strategies) # 4 小时 MACD > 0 → +5 分
 
-        logger.info(f"get_buy_score_info, {self.symbol}, trend score:{sum(score_info.values())}, score info:{score_info}")
-        if sum(score_info.values()) < 17: # 固定结构分
-            return
-
         # 短期动能因子(35分)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
         score_info["kdj_4h"] = self._get_adjust_score_kdj_4h(0, kdj_4h_strategies)
@@ -2075,6 +2120,10 @@ class PlotGptHandle(BasePlotHandle):
 
         # 高位环境风险惩罚因子(保留标签，进行状态识别)
         # 触底反弹因子(20分)
+
+        if detect_model_boll_mid_rebound(
+                kline_4h_strategies, kline_1h_strategies, kdj_1h_strategies, rsi_1h_strategies):
+            score_info["model_boll_mid_rebound"] = 100
 
         sum_score = sum(score_info.values())
         if sum_score >= 40:
