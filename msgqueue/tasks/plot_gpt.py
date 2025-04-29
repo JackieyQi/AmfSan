@@ -121,6 +121,32 @@ class CandlestickStrategy:
             lower_shadow_body > range_total_body*Decimal("0.3")
         )
 
+    def has_double_top(self, total_size=10, window_size=1):
+        """
+        是否双顶形态
+        :return:
+        """
+        first_peak_price = 0
+        second_peak_price = 0
+        for i in range(window_size, total_size-window_size):
+            left = self.kline_list[i-window_size: i]
+            left_prices = [v.high_price for v in left]
+
+            right = self.kline_list[i+1: i+window_size+1]
+            right_prices = [v.high_price for v in right]
+
+            if self.kline_list[i].high_price > max(left_prices) and self.kline_list[i].high_price > max(right_prices):
+                if not first_peak_price:
+                    first_peak_price = self.kline_list[i].high_price
+                if not second_peak_price:
+                    second_peak_price = self.kline_list[i].high_price
+                break
+
+        if first_peak_price and second_peak_price and (first_peak_price < second_peak_price):
+            return True
+        else:
+            return False
+
     def get_bollinger_bands(self, index=0):
         """
         布林带策略：
@@ -295,32 +321,6 @@ class CandlestickStrategy:
         diff_prices, _ = autoscale(trend_list)
         trend, trend_stats = analyze_list_trend(diff_prices)
         return trend_stats
-
-    def has_double_top(self, total_size=10, window_size=1):
-        """
-        是否双顶形态
-        :return:
-        """
-        first_peak_price = 0
-        second_peak_price = 0
-        for i in range(window_size, total_size-window_size):
-            left = self.kline_list[i-window_size: i]
-            left_prices = [v.high_price for v in left]
-
-            right = self.kline_list[i+1: i+window_size+1]
-            right_prices = [v.high_price for v in right]
-
-            if self.kline_list[i].high_price > max(left_prices) and self.kline_list[i].high_price > max(right_prices):
-                if not first_peak_price:
-                    first_peak_price = self.kline_list[i].high_price
-                if not second_peak_price:
-                    second_peak_price = self.kline_list[i].high_price
-                break
-
-        if first_peak_price and second_peak_price and (first_peak_price < second_peak_price):
-            return True
-        else:
-            return False
 
     def get_vol_strategy(self, window_size, rate_threshold=Decimal("1.3")):
         """
@@ -1920,19 +1920,23 @@ class PlotGptHandle(BasePlotHandle):
             *. 4 小时 MACD > 0 → +5 分;动态调整分数：
                 *.（macd当前线三连降 -> -3 分）
         短期动能因子(35分)
-            *. 4 小时 KDJ 3 连升 → +10 分;动态调整分数：（J<= 20 -> -10 分）（20<J<=95 -> 不扣分）（95 < J ≤ 100 -> 按比例递减, 10 - (J-95) * 1）（ J > 100 -> -10 分）
-            *. 4 小时 KDJ 刚好处于金叉 → +5 分。
-            2. 4 小时 RSI-6 突破 60，增强趋势信号 → +3 分。
-            3. 4 小时 RSI-6 在 45-65（中期健康区间） → +3 分。
-            4. 4 小时 RSI-6 连续 3 根 K 线递增 → +3 分。
-            5. 1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。
-            6. 1小时 RSI-6 连续3根线递增 -> +5 分。
-            7. 1小时 RSI-6 突破 65 后回踩 60，视为回调进场点（多单）-> +3 分。
-            8. 1小时 RSI-6 从低位突破50 -> +5 分。
-            9. 1 小时 KDJ 2 连升 → +5 分。
-
-            11. 1 小时 KDJ 没死叉 → +5 分；动态调整分数：（KDJ 处于震荡状态 -> -2 分）（当前RSI>70 -> -2 分）
-
+            *. 4 小时 KDJ 动态得分：
+                *. (4 小时 KDJ 3 连升 → +10 分;动态调整分数)：（J<= 20 -> -10 分）（20<J<=95 -> 不扣分）（95 < J ≤ 100 -> 按比例递减, 10 - (J-95) * 1）（ J > 100 -> -10 分）
+                *. (4 小时 KDJ 刚好处于金叉 → +5 分。)
+            *. 1 小时 KDJ 动态得分：
+                *. (1 小时 KDJ 2 连升 → +5 分。)
+                *. (1 小时 KDJ 没死叉 → +5 分；动态调整分数：（KDJ 处于震荡状态 -> -2 分）（当前RSI>70 -> -2 分）)
+            *. 4 小时 RSI 动态得分:
+                *. (4 小时 RSI-6 突破 60，增强趋势信号 → +3 分。)
+                *. (4 小时 RSI-6 在 45-65（中期健康区间） → +3 分。)
+                *. (4 小时 RSI-6 连续 3 根 K 线递增 → +3 分。)
+                *. (4 小时 RSI-6 上涨背离 -> -5分)
+                *. (4 小时 RSI-6 下跌背离 -> +5分)
+            *. 1 小时 RSI 动态得分：
+                *. (1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。)
+                *. (1小时 RSI-6 连续3根线递增 -> +5 分。)
+                *. (1小时 RSI-6 突破 65 后回踩 60，视为回调进场点（多单）-> +3 分。)
+                *. (1小时 RSI-6 从低位突破50 -> +5 分。)
             *. 4小时的布林带的得分：
                 *.（最高价突破上轨但当前价低于上轨，可能是假突破 -> -3 分）
                 *.（开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分）
@@ -2012,49 +2016,22 @@ class PlotGptHandle(BasePlotHandle):
 
         # 短期动能因子(35分)
         kdj_4h_strategies = KdjStrategy(self.kdj_list_4h)
-        if kdj_4h_strategies.get_uptrend(3):
-            score_info["kdj_4h_up"] = self._get_adjust_score_kdj_4h_up(10) # 4 小时 KDJ 3 连升 → +10 分
-
-        if kdj_4h_strategies.get_curr_golden_cross():
-            score_info["kdj_4h_golden_cross"] = 5 # 4 小时 KDJ 刚好处于金叉 → +5 分
-
-        rsi_4h_strategies = RsiStrategy(self.rsi_list_4h)
-        if rsi_4h_strategies.get_breakout():
-            score_info["rsi_4h_breakout_60"] = 3
-
-        if rsi_4h_strategies.get_healthy_bound():
-            score_info["rsi_4h_healthy_bound_45to65"] = 3
-
-        if rsi_4h_strategies.get_uptrend():
-            score_info["rsi_4h_uptrend"] = 3
-
-        rsi_1h_strategies = RsiStrategy(self.rsi_list_1h)
-        if rsi_1h_strategies.get_rebound():
-            score_info["rsi_1h_rebound_40"] = 5
-
-        if rsi_1h_strategies.get_uptrend():
-            score_info["rsi_1h_uptrend"] = 5
-
-        if rsi_1h_strategies.get_pullback_entry():
-            score_info["rsi_1h_pullback_65to60"] = 3
-
-        if rsi_1h_strategies.get_breakout_from_low():
-            score_info["rsi_1h_breakout_from_low"] = 5
+        score_info["kdj_4h"] = self._get_adjust_score_kdj_4h(0, kdj_4h_strategies)
 
         kdj_1h_strategies = KdjStrategy(self.kdj_list_1h)
-        kdj_1h_up_signal = kdj_1h_strategies.get_uptrend(2)
-        if kdj_1h_up_signal:
-            score_info["kdj_1h_up_signal"] = 5  # 1 小时 KDJ 2 连升 → +5 分
+        score_info["kdj_1h"] = self._get_adjust_score_kdj_1h(0, kdj_1h_strategies)
 
-        if self.kdj_list_1h[0].k_val >= self.kdj_list_1h[0].d_val:
-            score_info["kdj_1h_no_death_cross"] = \
-                self._get_adjust_score_kdj_1h_no_death_cross(5, kdj_1h_strategies) # 1 小时 KDJ 没死叉 → +5 分
+        rsi_4h_strategies = RsiStrategy(self.rsi_list_4h)
+        score_info["rsi_4h"] = self._get_adjust_score_rsi_4h(0, rsi_4h_strategies, kline_4h_strategies)
 
-        score_info["4h_boll"] = self._get_adjust_score_4h_boll(
+        rsi_1h_strategies = RsiStrategy(self.rsi_list_1h)
+        score_info["rsi_1h"] = self._get_adjust_score_rsi_1h(0, rsi_1h_strategies)
+
+        score_info["boll_4h"] = self._get_adjust_score_boll_4h(
             0, current_price, kline_4h_strategies
-        )  # 4 小时 EMA12和EMA26的趋势动态得分 →
+        )
 
-        score_info["4h_kline"] = self._get_adjust_score_4h_kline(0, kline_4h_strategies)
+        score_info["kline_4h"] = self._get_adjust_score_kline_4h(0, kline_4h_strategies)
 
         # 成交量因子(20分)
         vol_4h_5_strategy = kline_4h_strategies.get_vol_strategy(5)
@@ -2182,7 +2159,7 @@ class PlotGptHandle(BasePlotHandle):
             return score_info
         return
 
-    def _get_adjust_score_4h_boll(self, score, curr_price, kline_4h_strategies):
+    def _get_adjust_score_boll_4h(self, score, curr_price, kline_4h_strategies):
         high_price = self.kline_list_4h[0].high_price
         open_price = self.kline_list_4h[0].open_price
 
@@ -2193,7 +2170,7 @@ class PlotGptHandle(BasePlotHandle):
             score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
         return score
 
-    def _get_adjust_score_4h_kline(self, score, kline_4h_strategies):
+    def _get_adjust_score_kline_4h(self, score, kline_4h_strategies):
         if kline_4h_strategies.get_long_upper_shadow():
             score -= 2 # 当前4小时k线形成上影线 -> -2 分
         return score
@@ -2230,6 +2207,66 @@ class PlotGptHandle(BasePlotHandle):
             return score - 10 # J > 100 -> -10 分
         else:
             return score - 10 # J<= 20 -> -10 分
+
+    def _get_adjust_score_kdj_4h(self, score, kdj_4h_strategies):
+        curr_score_info = {}
+        if kdj_4h_strategies.get_uptrend(3):
+            curr_score_info["kdj_4h_up"] = self._get_adjust_score_kdj_4h_up(10) # 4 小时 KDJ 3 连升 → +10 分
+
+        if kdj_4h_strategies.get_curr_golden_cross():
+            curr_score_info["kdj_4h_golden_cross"] = 5 # 4 小时 KDJ 刚好处于金叉 → +5 分
+
+        return score + sum(curr_score_info.values())
+
+    def _get_adjust_score_kdj_1h(self, score, kdj_1h_strategies):
+        curr_score_info = {}
+        if kdj_1h_strategies.get_uptrend(2):
+            curr_score_info["kdj_1h_up_signal"] = 5  # 1 小时 KDJ 2 连升 → +5 分
+
+        if self.kdj_list_1h[0].k_val >= self.kdj_list_1h[0].d_val:
+            curr_score_info["kdj_1h_no_death_cross"] = \
+                self._get_adjust_score_kdj_1h_no_death_cross(5, kdj_1h_strategies) # 1 小时 KDJ 没死叉 → +5 分
+
+        return score + sum(curr_score_info.values())
+
+    def _get_adjust_score_rsi_4h(self, score, rsi_4h_strategies, kline_4h_strategies):
+        curr_score_info = {}
+        if rsi_4h_strategies.get_breakout(threshold=Decimal("60")):
+            curr_score_info["rsi_4h_breakout_60"] = 3 # 4 小时 RSI-6 突破 60，增强趋势信号 → +3 分。
+
+        if rsi_4h_strategies.get_healthy_bound():
+            curr_score_info["rsi_4h_healthy_bound_45to65"] = 3 # 4 小时 RSI-6 在 45-65（中期健康区间） → +3 分。
+
+        if rsi_4h_strategies.get_uptrend():
+            curr_score_info["rsi_4h_uptrend"] = 3 # 4 小时 RSI-6 连续 3 根 K 线递增 → +3 分。
+
+        window = 4
+        prices = kline_4h_strategies.get_donchian_channel(window_size=window)
+        if self.kline_list_4h[0].high_price > prices["max_price"] and not (
+                self.rsi_list_4h[0].rsi > max([i.rsi for i in self.rsi_list_4h[1:window+1]])):
+            curr_score_info["rsi_4h_bearish_divergence"] = -5 # 4 小时 RSI-6 上涨背离 -> -5分
+
+        if self.kline_list_4h[0].low_price < prices["min_price"] and not (
+                self.rsi_list_4h[0].rsi < min([i.rsi for i in self.rsi_list_4h[1:window+1]])):
+            curr_score_info["rsi_4h_bullish_divergence"] = 5 # 4 小时 RSI-6 下跌背离 -> +5分
+
+        return score + sum(curr_score_info.values())
+
+    def _get_adjust_score_rsi_1h(self, score, rsi_1h_strategies):
+        curr_score_info = {}
+        if rsi_1h_strategies.get_rebound():
+            curr_score_info["rsi_1h_rebound_40"] = 5 # 1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。
+
+        if rsi_1h_strategies.get_uptrend():
+            curr_score_info["rsi_1h_uptrend"] = 5 # 1小时 RSI-6 连续3根线递增 -> +5 分
+
+        if rsi_1h_strategies.get_pullback_entry():
+            curr_score_info["rsi_1h_pullback_65to60"] = 3 # 1小时 RSI-6 突破 65 后回踩 60，视为回调进场点（多单）-> +3 分。
+
+        if rsi_1h_strategies.get_breakout_from_low():
+            curr_score_info["rsi_1h_breakout_from_low"] = 5 # 1小时 RSI-6 从低位突破50 -> +5 分。
+
+        return score + sum(curr_score_info.values())
 
     def _get_adjust_score_4h_has_ema_uptrend(self, score, kline_4h_strategies):
         if self.macd_list_4h[0].ema_12 < self.macd_list_4h[1].ema_12:
