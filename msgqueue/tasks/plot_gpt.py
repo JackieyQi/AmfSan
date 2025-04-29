@@ -2,9 +2,13 @@
 # -*- coding: UTF-8 -*-
 """
 🧠
-* 1小时线、4小时线和日线的联合判断，能够有效过滤掉单一时间周期的噪声和假信号。
-* MACD看趋势，KDJ看转折，MACD的金叉/死叉确认主趋势，而KDJ的超买超卖区间判断买卖点。
-* “多周期共振”是关键，仅依赖1小时线或4小时线的信号容易出现误判。
+| 特点 | 策略一：多因子打分 | 策略二：结构优先+条件打分 |
+|------|--------------------|----------------------------|
+| 灵活性 | 高，可动态加权 | 中等，依赖特定结构 |
+| 可解释性 | 中等（需说明每个因子） | 强（结构清晰） |
+| 胜率控制 | 可精细调参 | 靠结构识别精度 |
+| 回测难度 | 适中 | 稍高（结构识别复杂） |
+| 易错点 | 冗余因子、过拟合 | 结构识别不稳、主观性强 |
 
 """
 
@@ -409,12 +413,13 @@ class PlotGptHandle(BasePlotHandle):
             strategy_text = ""
             recommend_bid_price = None
 
-            if score_info := await self.get_buy_score_info(curr_price):
+            if score_info := await self.get_buy_by_multi_factor_score(curr_price):
                 for k, v in score_info.items():
                     strategy_text += f"{k}:{v}分;"
 
-            elif model_recommend_price_data := await self.get_buy_model_info(curr_price):
-                recommend_bid_price = model_recommend_price_data["recommend_bid_price"]
+            elif model_info := await self.get_buy_by_model_detect(curr_price):
+                recommend_bid_price = model_info["recommend_bid_price"]
+                strategy_text += model_info["model_name"]
 
             else:
                 return
@@ -659,7 +664,7 @@ class PlotGptHandle(BasePlotHandle):
         kline_1h_factors = CandlestickFactor(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
         window = 3
         max_price = kline_1h_factors.get_donchian_channel(window_size=window)["max_price"]
-        vol_1h_factor = kline_1h_factors.get_vol_factor(window, rate_threshold=Decimal("1.2"))
+        vol_1h_factor = kline_1h_factors.get_vol_factor(window, rate_threshold=Decimal("2"))
         if vol_1h_factor.get("has_enhance_spike_volume") and self.kline_list_1h[0].high_price < max_price:
             score_info["vol_1h_stagflation"] = 15
 
@@ -702,13 +707,13 @@ class PlotGptHandle(BasePlotHandle):
         """
         self.prompt_text += "输出买入的建议概率。"
 
-    async def get_buy_score_info(self, current_price):
+    async def get_buy_by_multi_factor_score(self, current_price):
         """
+        多因子打分策略:
+
         结构分-离散状态(定性)-固定分
         趋势分-连续变化(定量)-动态分
-        趋势判断(>30分) → 多因子组合 → 加权得分 → 信号触发
 
-        偏向趋势跟随 + 突破确认 + 触底反弹(是否单独计分50：15)：总分100分
         趋势因子(35分)：
             *. 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
             *. 4 小时 EMA12+EMA26的趋势得分 -> 动态分数：
@@ -886,7 +891,7 @@ class PlotGptHandle(BasePlotHandle):
 
         if sum_score >= 60:
             return score_info
-        return
+        return {}
 
     def _get_adjust_score_boll_4h(self, score, curr_price, kline_4h_factors):
         curr_score_info = {}
@@ -1125,7 +1130,7 @@ class PlotGptHandle(BasePlotHandle):
                 return "🚨🚨🚨🚨🚨 bb lower breakout, kdj j up。 结合kdj是否都低于30，ema是否大趋势"
         return
 
-    async def get_buy_model_info(self, curr_price):
+    async def get_buy_by_model_detect(self, curr_price):
         kline_4h_factors = CandlestickFactor(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
         kline_1h_factors = CandlestickFactor(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
         macd_4h_factors = MacdFactor(self.macd_list_4h)
@@ -1138,5 +1143,6 @@ class PlotGptHandle(BasePlotHandle):
         model_boll_mid_rebound = ModelBollMidRebound(curr_price)
         if model_boll_mid_rebound.is_detected(
                 kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
-            return model_boll_mid_rebound.get_recommend_price(self.kline_list_1h[0].low_price)
+            model_recommend_price_data = model_boll_mid_rebound.get_recommend_price(self.kline_list_1h[0].low_price)
+            return {"model_name": model_boll_mid_rebound.name, "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
         return
