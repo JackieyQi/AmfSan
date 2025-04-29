@@ -42,9 +42,9 @@ def detect_model_boll_mid_rebound(kline_4h_strategies, kline_1h_strategies, kdj_
     :return:
     """
     score = 0
-    # 前置条件：更大周期的4小时的EMA12和EMA26明显上升趋势
-    if (kline_4h_strategies.get_ema12_trend(window_size=5)["trend"] == "parabolic_move") \
-            and (kline_4h_strategies.get_ema26_trend(window_size=5)["trend"] == "parabolic_move"):
+    # 前置条件：更大周期的4小时的EMA12和EMA26连续上升趋势
+    if kline_4h_strategies.is_ema12_continue_up(window_size=5) \
+            and kline_4h_strategies.is_ema26_continue_up(window_size=5):
         score += 10
 
         # 条件A：当前最低价跌破中轨，收盘价回到中轨上方

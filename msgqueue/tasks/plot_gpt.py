@@ -341,23 +341,11 @@ class CandlestickStrategy:
         trend, trend_stats = analyze_list_trend(diff_prices)
         return trend_stats
 
-    def get_ema12_trend(self, window_size=7):
-        trend_list = []
-        for i in self.macd_list[:window_size-1][::-1]:
-            trend_list.append(i.ema_12)
+    def is_ema12_continue_up(self, window_size=7):
+        return all(self.macd_list[i].ema_12 < self.macd_list[i - 1].ema_12 for i in range(1, window_size))
 
-        diff_prices, _ = autoscale(trend_list)
-        trend, trend_stats = analyze_list_trend(diff_prices)
-        return trend_stats
-
-    def get_ema26_trend(self, window_size=7):
-        trend_list = []
-        for i in self.macd_list[:window_size-1][::-1]:
-            trend_list.append(i.ema_26)
-
-        diff_prices, _ = autoscale(trend_list)
-        trend, trend_stats = analyze_list_trend(diff_prices)
-        return trend_stats
+    def is_ema26_continue_up(self, window_size=7):
+        return all(self.macd_list[i].ema_26 < self.macd_list[i - 1].ema_26 for i in range(1, window_size))
 
     def get_vol_strategy(self, window_size, rate_threshold=Decimal("1.3")):
         """
