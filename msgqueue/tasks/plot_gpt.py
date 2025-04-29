@@ -2007,7 +2007,7 @@ class PlotGptHandle(BasePlotHandle):
             score_info["4h_macd_uptrend"] = self._get_adjust_score_4h_macd_uptrend(
                 5, macd_4h_strategies) # 4 小时 MACD > 0 → +5 分
 
-        logger.info(f"get_buy_score_info, {self.symbol}, trend score:{sum(score_info.values())}")
+        logger.info(f"get_buy_score_info, {self.symbol}, trend score:{sum(score_info.values())}, score info:{score_info}")
         if sum(score_info.values()) < 30:
             return
 
