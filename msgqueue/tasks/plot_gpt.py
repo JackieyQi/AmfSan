@@ -1903,17 +1903,18 @@ class PlotGptHandle(BasePlotHandle):
         偏向趋势跟随 + 突破确认 + 触底反弹(是否单独计分50：15)：总分100分
         趋势因子(35分)：
             *. 4 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +10 分 *（趋势核心）*
-            *. 4 小时 EMA12+EMA26的趋势得分 -> 动态调整分数：
+            *. 4 小时 EMA12+EMA26的趋势得分 -> 动态分数：
                 *. (curr_ema12 < prev_ema12,短期动能减弱 -> -3 分)
                 *.（curr_ema12 >= prev_ema12 → +3 分）
                 *. (curr_ema26 < prev_ema26,中期动能减弱 -> -5 分)
                 *. (ema12和ema26差距在缩小，动能衰减 -> -2 分)
                 *. (ema12和ema26差距在扩大，趋势加速 -> +2 分)
-            *. 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA2 多头排列） → +5 分 *（短期趋势确认）*
-            *. 1 小时 EMA12和EMA26 上升（current_EMA12 > previous_EMA12）（current_EMA26 > previous_EMA26） → +5 分;动态调整分数：
+            *. 1 小时 EMA12 > EMA26（current_EMA12 > current_EMA26 多头排列） → +5 分 *（短期趋势确认）*
+            *. 1 小时 EMA12+EMA26的趋势得分 -> 动态分数：
                 *. (curr_ema12 < prev_ema12,短期动能减弱 -> -1.5 分)
                 *.（curr_ema12 >= prev_ema12 → +1.5 分）
                 *. (curr_ema26 < prev_ema26,中期动能减弱 -> -2.5 分)
+                *.（curr_ema26 > prev_ema26 → +2.5 分)
                 *. (1小时的EMA12和EMA26的近7根线的距离趋势下降且扩大 -> -5 分)
             *. 1 小时 MACD 的相对趋势上升 → +5 分;
                 *. (macd没有三连升 -> -3 分)
@@ -2000,7 +2001,7 @@ class PlotGptHandle(BasePlotHandle):
                 5) # 1 小时 MACD 上升 → +5 分
 
         if self.macd_list_1d[0].macd > 0:
-            score_info["macd_1d>0"] = 2 # 日线 MACD > 0 → +2 分
+            score_info["1d_macd>0"] = 2 # 日线 MACD > 0 → +2 分
 
         macd_4h_strategies = MacdStrategy(self.macd_list_4h)
         if self.macd_list_4h[0].macd > 0:
@@ -2008,7 +2009,7 @@ class PlotGptHandle(BasePlotHandle):
                 5, macd_4h_strategies) # 4 小时 MACD > 0 → +5 分
 
         logger.info(f"get_buy_score_info, {self.symbol}, trend score:{sum(score_info.values())}, score info:{score_info}")
-        if sum(score_info.values()) < 30:
+        if sum(score_info.values()) < 17: # 固定结构分
             return
 
         # 短期动能因子(35分)
@@ -2285,13 +2286,15 @@ class PlotGptHandle(BasePlotHandle):
         return score
 
     def _get_adjust_score_1h_has_ema_uptrend(self, score, kline_1h_strategies):
-        if self.macd_list_4h[0].ema_12 < self.macd_list_4h[1].ema_12:
+        if self.macd_list_1h[0].ema_12 < self.macd_list_1h[1].ema_12:
             score -= 1.5 # curr_ema12 < prev_ema12,短期动能减弱 -> -1.5 分
         else:
             score += 1.5 # current_EMA12 > prev_EMA12 → +1.5 分
 
-        if self.macd_list_4h[0].ema_26 < self.macd_list_4h[1].ema_26:
+        if self.macd_list_1h[0].ema_26 < self.macd_list_1h[1].ema_26:
             score -= 2.5 # curr_ema26 < prev_ema26,中期动能减弱 -> -2.5 分
+        elif self.macd_list_1h[0].ema_26 > self.macd_list_1h[1].ema_26:
+            score += 2.5 # curr_ema26 > prev_ema26 → +2.5 分
 
         if kline_1h_strategies.get_ema_trend()["trend"] == "downward_spiral":
             score -= 5 # 1小时的EMA12和EMA26的近7根线的距离趋势下降且扩大 -> -5 分
