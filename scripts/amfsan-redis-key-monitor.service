@@ -1,0 +1,14 @@
+[Unit]
+Description=AmfSan Redis Key Monitor Service
+After=redis.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/AmfSan/scripts/monitor_redis_key.sh
+Restart=always
+User=user
+StandardOutput=append:/tmp/amfsan_redis_monitor.log
+StandardError=append:/tmp/amfsan_redis_monitor.log
+
+[Install]
+WantedBy=multi-user.target
