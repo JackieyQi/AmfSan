@@ -24,7 +24,7 @@ from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from models.factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
-from models.strategy import ModelBollMidRebound, ModelBollLowRebound
+from models.strategy import ModelBollMidRebound, ModelBollLowReboundBullishDown, ModelBollLowReboundBullishSideways
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt, decimal2decimal, decimal2str
 from utils.hrequest import http_get_request
@@ -147,7 +147,7 @@ class PlotGptHandle(BasePlotHandle):
 
     def get_rsi_query(self, interval, limit_count=18):
         query = (
-            RsiTable.select(RsiTable.rsi).where(
+            RsiTable.select(RsiTable.rsi, RsiTable.open_ts).where(
                 RsiTable.symbol == self.symbol,
                 RsiTable.interval_val == interval,
             ).order_by(RsiTable.id.desc()).limit(limit_count)
@@ -156,7 +156,7 @@ class PlotGptHandle(BasePlotHandle):
 
     def get_bb_query(self, interval, limit_count=18):
         query = (
-            BollTable.select(BollTable.bbupper, BollTable.bbmid, BollTable.bblower).where(
+            BollTable.select(BollTable.bbupper, BollTable.bbmid, BollTable.bblower, BollTable.open_ts).where(
                 BollTable.symbol == self.symbol,
                 BollTable.interval_val == interval,
             ).order_by(BollTable.id.desc()).limit(limit_count)
@@ -1126,11 +1126,18 @@ class PlotGptHandle(BasePlotHandle):
             model_recommend_price_data = model_boll_mid_rebound.get_recommend_price(self.kline_list_1h[0].low_price)
             return {"model_name": model_boll_mid_rebound.name, "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
-        model_boll_low_rebound = ModelBollLowRebound(curr_price)
-        if model_boll_low_rebound.is_detected(
+        model_b = ModelBollLowReboundBullishSideways(curr_price)
+        if model_b.is_detected(
                 kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
-            model_recommend_price_data = model_boll_low_rebound.get_recommend_price(self.kline_list_1h[0].low_price)
-            return {"model_name": model_boll_low_rebound.name,
+            model_recommend_price_data = model_b.get_recommend_price(self.kline_list_1h[0].low_price)
+            return {"model_name": model_b.name,
+                    "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
+
+        model_c = ModelBollLowReboundBullishDown(curr_price)
+        if model_c.is_detected(
+                kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
+            model_recommend_price_data = model_c.get_recommend_price(self.kline_list_1h[0].low_price)
+            return {"model_name": model_c.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         return

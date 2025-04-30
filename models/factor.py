@@ -37,6 +37,15 @@ class CandlestickFactor:
     def is_bearish_k(self, index=0):
         return self.kline_list[index].open_price > self.kline_list[index].close_price
 
+    def is_bullish_engulfing_k(self, index=0):
+        """
+        看涨吞没：当前 K 线阳线，实体部分完全包住前一根阴线 → 买入信号
+        """
+        return (self.kline_list[index+1].open_price > self.kline_list[index+1].close_price) \
+            and (self.kline_list[index].open_price < self.kline_list[index].close_price) \
+            and (self.kline_list[index].open_price <= self.kline_list[index+1].close_price) \
+            and (self.kline_list[index].close_price > self.kline_list[index+1].open_price)
+
     def get_engulfing_pattern_factor(self, window_index=0):
         """
         形态策略: 吞没形态（Engulfing Pattern）:
@@ -145,6 +154,17 @@ class CandlestickFactor:
         return {"bb_upper": self.bb_list[index].bbupper,
                 "bb_lower": self.bb_list[index].bblower, "bb_mid": self.bb_list[index].bbmid}
 
+    def is_breakdown_by_bb(self, window_size=7, is_low=True):
+        if is_low:
+            prices_dict = {i.open_ts: i.bblower for i in self.bb_list[:window_size-1]}
+        else:
+            prices_dict = {i.open_ts: i.bbmid for i in self.bb_list[:window_size-1]}
+
+        for i in self.kline_list[:window_size-1]:
+            if i.open_ts in prices_dict and i.close_price < prices_dict[i.open_ts]:
+                return True
+        return False
+
     def get_fake_breakout_by_bb(self, index=0, is_up=True):
         """
         k线的假突破
@@ -162,12 +182,13 @@ class CandlestickFactor:
         """
         if is_low:
             break_line = self.bb_list[index].bblower
-            is_near = self.is_near_lower(index)
+            is_near = self.is_near_lower(index=index, tolerance=Decimal("0.02"))
         else:
             break_line = self.bb_list[index].bbmid
-            is_near = self.is_near_mid(index)
+            is_near = self.is_near_mid(index=index)
 
-        if is_near and (self.kline_list[index].close_price > break_line):
+        if (self.kline_list[index].low_price < break_line) \
+                and ((self.kline_list[index].close_price > break_line) or is_near):
             return True
         else:
             return False
@@ -217,7 +238,7 @@ class CandlestickFactor:
             return False
 
         band_width = self.bb_list[index].bbupper - self.bb_list[index].bbmid
-        return (self.kline_list[index].close_price - self.bb_list[index].bbmid) / band_width <= tolerance
+        return abs(self.kline_list[index].close_price - self.bb_list[index].bbmid) / band_width <= tolerance
 
     def is_near_lower(self, index=0, tolerance=Decimal("0.1")):
         """
@@ -227,7 +248,7 @@ class CandlestickFactor:
             return False
 
         band_width = self.bb_list[index].bbmid - self.bb_list[index].bblower
-        return (self.kline_list[index].close_price - self.bb_list[index].bblower) / band_width <= tolerance
+        return abs(self.kline_list[index].close_price - self.bb_list[index].bblower) / band_width <= tolerance
 
     def is_along_upper_band(self, n=5, tolerance=Decimal("0.2")):
         """

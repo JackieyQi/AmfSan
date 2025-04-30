@@ -68,10 +68,10 @@ class ModelBollMidRebound(object):
         return self.score >= 22.5  # 大于总分的1/2
 
 
-class ModelBollLowRebound(object):
+class ModelBollLowReboundBullishSideways(object):
     def __init__(self, curr_price):
-        self.name = "model_boll_low_rebound"
-        self.name_str = "布林带下轨反弹结构"
+        self.name = "model_boll_low_rebound_bullish_sideways"
+        self.name_str = "多头排列+震荡，布林带下轨反弹结构"
         self.curr_price = curr_price
         self.score = 0
 
@@ -105,5 +105,46 @@ class ModelBollLowRebound(object):
                     self.score += 5
 
                 # 子因子B4：成交量放大: volume > vol_ma * 1.5
+
+        return self.score >= 25  # 任一子因子满足
+
+
+class ModelBollLowReboundBullishDown(object):
+    def __init__(self, curr_price):
+        self.name = "model_boll_low_rebound_bullish_Down"
+        self.name_str = "多头排列+下跌，布林带下轨反弹结构"
+        self.curr_price = curr_price
+        self.score = 0
+
+    def get_recommend_price(self, curr_low_price):
+        return {
+            "recommend_bid_price": self.curr_price
+        }
+
+    def is_detected(self, kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
+        # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根连续下降+4小时附近没有收盘价跌破下轨
+        if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
+                and kline_4h_factors.is_ema12_continue_down(window_size=5) \
+                and not kline_4h_factors.is_breakdown_by_bb(window_size=5):
+            self.score += 10
+
+            # 条件C：前4根线至少3根线击破下轨且收盘价反弹+当前最低价跌破下轨，收盘价回到下轨上方
+            window_size = 4
+            fake_list = [kline_1h_factors.get_fake_breakdown_by_bb(index=i, is_low=True) for i in range(4)]
+            is_1h_structure = sum(fake_list) > (window_size/2)
+            if is_1h_structure:
+                self.score += 10
+
+                # 子因子C1：反弹K线结构:长下影阳线
+                if kline_1h_factors.is_bullish_k() and kline_1h_factors.is_long_lower_shadow_k(scale=Decimal("2")):
+                    self.score += 5
+
+                # 子因子C2：反弹K线结构:看涨吞没
+                if kline_1h_factors.is_bullish_engulfing_k():
+                    self.score += 5
+
+                # 子因子C3： 1小时 RSI-6 低于35(短期超卖)且反弹
+                if rsi_1h_factors.get_rebound(threshold=Decimal("35")):
+                    self.score += 5
 
         return self.score >= 25  # 任一子因子满足
