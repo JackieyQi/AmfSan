@@ -138,22 +138,6 @@ class CandlestickFactor:
         else:
             return False
 
-    def get_bollinger_bands(self, index=0):
-        """
-        布林带策略：
-            买入：价格突破上轨，趋势延续
-            卖出：价格跌破下轨，趋势反转
-        """
-
-        # macd_list = self.macd_list[1:27]
-        # close_prices = [row.closing_price for row in macd_list]
-        # ema_values = [row.ema_26 for row in macd_list]
-        #
-        # bb_upper, bb_lower = calculate_bollinger_bands(close_prices[::-1], ema_values[::-1])
-        # bb_mid = (bb_upper + bb_lower) / Decimal(2)
-        return {"bb_upper": self.bb_list[index].bbupper,
-                "bb_lower": self.bb_list[index].bblower, "bb_mid": self.bb_list[index].bbmid}
-
     def is_breakdown_by_bb(self, window_size=7, is_low=True):
         if is_low:
             prices_dict = {i.open_ts: i.bblower for i in self.bb_list[:window_size-1]}
@@ -182,7 +166,7 @@ class CandlestickFactor:
         """
         if is_low:
             break_line = self.bb_list[index].bblower
-            is_near = self.is_near_lower(index=index, tolerance=Decimal("0.02"))
+            is_near = self.is_near_lower(index=index, tolerance=Decimal("0.13"))
         else:
             break_line = self.bb_list[index].bbmid
             is_near = self.is_near_mid(index=index)

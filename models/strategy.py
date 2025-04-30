@@ -25,7 +25,7 @@ TODO: 可以考虑“评分走势”的平滑机制
 class ModelBollMidRebound(object):
     def __init__(self, curr_price):
         self.name = "model_boll_mid_rebound"
-        self.name_str = "布林带中轨反弹结构"
+        self.name_str = "强趋势上升，布林带中轨反弹结构"
         self.curr_price = curr_price
         self.score = 0
 

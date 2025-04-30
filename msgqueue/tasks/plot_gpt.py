@@ -860,16 +860,12 @@ class PlotGptHandle(BasePlotHandle):
             score_info["vol_4h_1h_up"] = 5 # 4 小时成交量 > 5 根均值 且 1 小时成交量 > 5 根均值 → +5 分
 
         # 支持阻力因子(10分)
-        bb_info = kline_1h_factors.get_bollinger_bands()
-        bb_upper_price = bb_info["bb_upper"]
-        bb_lower_price = bb_info["bb_lower"]
-        bb_mid_price = bb_info["bb_mid"]
-        if bb_mid_price <= current_price < bb_upper_price:
-            near_info = check_near_low(self.kline_list_1h[:21][::-1], bb_mid_price, bb_upper_price, logger)
-        elif bb_lower_price <= current_price < bb_mid_price:
-            near_info = check_near_low(self.kline_list_1h[:21][::-1], bb_lower_price, bb_mid_price, logger)
-        else:
-            near_info = None
+        near_info = None
+        if kline_1h_factors.is_ema12_continue_down(window_size=3):
+            if self.bb_list_1h[0].bbmid <= current_price < self.bb_list_1h[0].bbupper:
+                near_info = check_near_low(self.kline_list_1h[:21][::-1], self.bb_list_1h[0].bbmid, self.bb_list_1h[0].bbupper, logger)
+            elif self.bb_list_1h[0].bblower <= current_price < self.bb_list_1h[0].bbmid:
+                near_info = check_near_low(self.kline_list_1h[:21][::-1], self.bb_list_1h[0].bblower, self.bb_list_1h[0].bbmid, logger)
 
         if near_info and near_info["is_near"]:
             score_info["1h_low_price_near_bb_support"] = 5 # 1小时最低价靠近支撑位 -> +5 分
