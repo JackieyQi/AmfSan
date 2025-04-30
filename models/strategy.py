@@ -116,9 +116,13 @@ class ModelBollLowReboundBullishDown(object):
         self.curr_price = curr_price
         self.score = 0
 
-    def get_recommend_price(self, curr_low_price):
+    def get_recommend_price(self, kline_1h_factors):
+        if kline_1h_factors.is_along_lower_band(n=7):
+            recommend_bid_price = None
+        else:
+            recommend_bid_price = self.curr_price
         return {
-            "recommend_bid_price": self.curr_price
+            "recommend_bid_price": recommend_bid_price
         }
 
     def is_detected(self, kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):

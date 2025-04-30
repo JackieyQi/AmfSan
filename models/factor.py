@@ -278,9 +278,7 @@ class CandlestickFactor:
             if (self.kline_list[i].close_price - self.bb_list[i].bblower) / (
                     self.bb_list[i].bbmid - self.bb_list[i].bblower) <= tolerance:
                 count += 1
-            elif (self.macd_list[i].ema_12 < self.macd_list[i].ema_26) \
-                    and (self.macd_list[i+3].ema_12 >= self.macd_list[i+3].ema_26):
-                # 死叉附近
+            elif self.kline_list[i].low_price < self.bb_list[i].bblower:
                 count += 1
         return count > n * 0.7  # 至少70%贴近上轨
 

@@ -1136,7 +1136,7 @@ class PlotGptHandle(BasePlotHandle):
         model_c = ModelBollLowReboundBullishDown(curr_price)
         if model_c.is_detected(
                 kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
-            model_recommend_price_data = model_c.get_recommend_price(self.kline_list_1h[0].low_price)
+            model_recommend_price_data = model_c.get_recommend_price(kline_1h_factors)
             return {"model_name": model_c.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
