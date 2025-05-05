@@ -587,6 +587,7 @@ class PlotGptHandle(BasePlotHandle):
                     TODO: 2. 如果 RSI > 75 且 KDJ 仍金叉、MACD 扩张 → 等待下一根 K 线确认
                     TODO: 3. 如果连续3根K线都在上轨附近但价格未放量上涨 → 止盈
 
+            TODO:* 前k的最高价突破中轨 + 当前k为十字线时，触发卖出。
         :return:
         """
         direction = ""
@@ -613,7 +614,7 @@ class PlotGptHandle(BasePlotHandle):
             return {"direction": direction}
 
         kline_4h_factors = CandlestickFactor(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
-        if kline_4h_factors.get_engulfing_pattern_factor(window_index=1)["has_bearish_engulfing"] is True:
+        if kline_4h_factors.is_bearish_engulfing_k(index=1):
             direction += "4小时的前k线看跌吞没，止盈离场。"
             return {"direction": direction}
 
@@ -1124,14 +1125,14 @@ class PlotGptHandle(BasePlotHandle):
 
         model_b = ModelBollLowReboundBullishSideways(curr_price)
         if model_b.is_detected(
-                kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
+                kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
             model_recommend_price_data = model_b.get_recommend_price(self.kline_list_1h[0].low_price)
             return {"model_name": model_b.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         model_c = ModelBollLowReboundBullishDown(curr_price)
         if model_c.is_detected(
-                kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
+                kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
             model_recommend_price_data = model_c.get_recommend_price(kline_1h_factors)
             return {"model_name": model_c.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}

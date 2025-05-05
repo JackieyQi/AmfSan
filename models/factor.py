@@ -13,20 +13,21 @@ class CandlestickFactor:
         self.macd_list = macd_list
         self.bb_list = bb_list
 
-    def get_donchian_channel(self, window_size=6):
+    def get_donchian_channel(self, index=0, window_size=6):
         """
         突破策略: 唐奇安通道策略（Donchian Channel）:
             价格突破过去 20 天最高价，买入
             价格跌破过去 20 天最低价，卖出
         """
         high_list, low_list = [], []
-        for i in self.kline_list[1:window_size+1]:
+        for i in self.kline_list[index+1:window_size+index+1]:
             high_list.append(i.high_price)
             low_list.append(i.low_price)
         return {"max_price": max(high_list), "min_price": min(low_list)}
 
-    def is_new_low_price(self, window_size):
-        return self.kline_list[0].low_price < self.get_donchian_channel(window_size)["min_price"]
+    def is_new_low_price(self, window_size, index=0):
+        return self.kline_list[index].low_price < self.get_donchian_channel(
+            index=index, window_size=window_size)["min_price"]
 
     def is_new_high_price(self, window_size):
         return self.kline_list[0].high_price < self.get_donchian_channel(window_size)["max_price"]
@@ -46,29 +47,14 @@ class CandlestickFactor:
             and (self.kline_list[index].open_price <= self.kline_list[index+1].close_price) \
             and (self.kline_list[index].close_price > self.kline_list[index+1].open_price)
 
-    def get_engulfing_pattern_factor(self, window_index=0):
+    def is_bearish_engulfing_k(self, index=0):
         """
-        形态策略: 吞没形态（Engulfing Pattern）:
-            看涨吞没：当前 K 线阳线，实体部分完全包住前一根阴线 → 买入信号
-            看跌吞没：当前 K 线阴线，实体部分完全包住前一根阳线 → 卖出信号
-        :return:
+        看跌吞没：当前 K 线阴线，实体部分完全包住前一根阳线 → 卖出信号
         """
-        curr_index = window_index
-        last_index = window_index + 1
-        has_bullish_engulfing, has_bearish_engulfing = False, False
-
-        if (self.kline_list[last_index].open_price > self.kline_list[last_index].close_price) \
-                and (self.kline_list[curr_index].open_price < self.kline_list[curr_index].close_price) \
-                and (self.kline_list[curr_index].open_price < self.kline_list[last_index].close_price) \
-                and (self.kline_list[curr_index].close_price > self.kline_list[last_index].open_price):
-            has_bullish_engulfing = True
-
-        if (self.kline_list[last_index].open_price < self.kline_list[last_index].close_price) \
-                and (self.kline_list[curr_index].open_price > self.kline_list[curr_index].close_price) \
-                and (self.kline_list[curr_index].open_price > self.kline_list[last_index].close_price) \
-                and (self.kline_list[curr_index].close_price < self.kline_list[last_index].open_price):
-            has_bearish_engulfing = True
-        return {"has_bullish_engulfing": has_bullish_engulfing, "has_bearish_engulfing": has_bearish_engulfing}
+        return (self.kline_list[index+1].open_price < self.kline_list[index+1].close_price) \
+            and (self.kline_list[index].open_price > self.kline_list[index].close_price) \
+            and (self.kline_list[index].open_price >= self.kline_list[index+1].close_price) \
+            and (self.kline_list[index].close_price < self.kline_list[index+1].open_price)
 
     def get_long_upper_shadow(self, index=0, scale=Decimal("1.5")):
         """
@@ -387,11 +373,17 @@ class MacdFactor:
         # 时间倒序
         self.macd_list = macd_list
 
-    def get_curr_golden_cross(self):
+    def is_golden_cross(self, index=0):
         """
         macd滞后性强，短线交易中不考虑死叉
         """
-        return self.macd_list[0].macd >= 0 and self.macd_list[1].macd < 0
+        return self.macd_list[index].macd >= 0 and self.macd_list[index+1].macd < 0
+
+    def is_death_cross(self, index=0):
+        """
+        macd滞后性强，建议更大周期做辅助判断
+        """
+        return self.macd_list[index].macd < 0 and self.macd_list[index+1].macd >= 0
 
     def get_bullish_stack(self):
         """
@@ -562,12 +554,12 @@ class RsiFactor:
         """
         return self.rsi_list[0].rsi > self.rsi_list[1].rsi > self.rsi_list[2].rsi
 
-    def get_rebound(self, threshold=Decimal("40")):
+    def get_rebound(self, index=0, threshold=Decimal("40")):
         """
         1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。
         """
-        return (self.rsi_list[0].rsi > self.rsi_list[1].rsi) \
-               and (self.rsi_list[1].rsi < threshold) and (self.rsi_list[1].rsi < self.rsi_list[2].rsi)
+        return (self.rsi_list[index].rsi > self.rsi_list[index+1].rsi) \
+               and (self.rsi_list[index+1].rsi < threshold) and (self.rsi_list[index+1].rsi < self.rsi_list[index+2].rsi)
 
     def get_breakout_from_low(self, index=0):
         """

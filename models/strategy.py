@@ -20,7 +20,17 @@ TODO: 可以考虑“评分走势”的平滑机制
 """
 
 
-# Multi-Factor Condition Tree
+class ModeExcludeFactor:
+    @staticmethod
+    def has_bearish(kline_4h_factors, macd_4h_factors):
+        is_4h_ema12_continue_down = kline_4h_factors.is_ema12_continue_down(window_size=3)
+        is_4h_macd_death_cross = any([macd_4h_factors.is_death_cross(index=i) for i in range(2)])
+
+        if (is_4h_ema12_continue_down or is_4h_macd_death_cross) and kline_4h_factors.is_bearish_engulfing_k():
+            return True
+
+        return False
+
 
 class ModelBollMidRebound(object):
     def __init__(self, curr_price):
@@ -37,6 +47,9 @@ class ModelBollMidRebound(object):
 
     def is_detected(
             self, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+            return False
+
         # 前置条件：更大周期的4小时的EMA12和EMA26连续上升趋势+4小时MACD没有连续递减
         if kline_4h_factors.is_ema12_continue_up(window_size=5) \
                 and kline_4h_factors.is_ema26_continue_up(window_size=5) \
@@ -80,28 +93,32 @@ class ModelBollLowReboundBullishSideways(object):
             "recommend_bid_price": self.curr_price
         }
 
-    def is_detected(self, kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
+    def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
         # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根没有连续下降
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+            return False
+
         if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
                 and not kline_4h_factors.is_ema12_continue_down(window_size=5):
             self.score += 10
 
-            # 条件B：当前最低价跌破下轨，收盘价回到下轨上方
-            is_1h_structure = kline_1h_factors.get_fake_breakdown_by_bb(index=0, is_low=True)
+            # 条件B：前k线的最低价跌破下轨，收盘价回到下轨上方
+            is_1h_structure = kline_1h_factors.get_fake_breakdown_by_bb(index=1, is_low=True)
             if is_1h_structure:
                 self.score += 10
 
-                # 子因子B1：反弹K线结构:长下影阳线
-                if kline_1h_factors.is_bullish_k() and kline_1h_factors.is_long_lower_shadow_k(scale=Decimal("2")):
+                # 子因子B1：反弹K线结构:前k线长下影阳线
+                if kline_1h_factors.is_bullish_k() \
+                        and kline_1h_factors.is_long_lower_shadow_k(index=1, scale=Decimal("2")):
                     self.score += 5
 
                 # 子因子B2：1小时的KDJ的J底部背离
-                is_new_low_price = kline_1h_factors.is_new_low_price(3)
-                if kdj_1h_factors.is_j_bullish_divergence(is_new_low_price, j_threshold=Decimal("10")):
+                is_new_low_price = kline_1h_factors.is_new_low_price(3, index=1)
+                if kdj_1h_factors.is_j_bullish_divergence(is_new_low_price, index=1, j_threshold=Decimal("10")):
                     self.score += 5
 
                 # 子因子B3： 1小时 RSI-6 低于20(短期超卖)且反弹
-                if rsi_1h_factors.get_rebound(threshold=Decimal("20")):
+                if rsi_1h_factors.get_rebound(index=1, threshold=Decimal("20")):
                     self.score += 5
 
                 # 子因子B4：成交量放大: volume > vol_ma * 1.5
@@ -125,7 +142,10 @@ class ModelBollLowReboundBullishDown(object):
             "recommend_bid_price": recommend_bid_price
         }
 
-    def is_detected(self, kline_4h_factors, kline_1h_factors, kdj_1h_factors, rsi_1h_factors):
+    def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+            return False
+
         # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根连续下降+4小时附近没有收盘价跌破下轨
         if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
                 and kline_4h_factors.is_ema12_continue_down(window_size=5) \
