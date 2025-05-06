@@ -24,7 +24,8 @@ from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from models.factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
-from models.strategy import ModelBollMidRebound, ModelBollLowReboundBullishDown, ModelBollLowReboundBullishSideways
+from models.strategy import ModelBollMidRebound, ModelBollLowReboundBullishDown, ModelBollLowReboundBullishSideways, \
+    ModelLTypeRebound
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt, decimal2decimal, decimal2str
 from utils.hrequest import http_get_request
@@ -882,6 +883,9 @@ class PlotGptHandle(BasePlotHandle):
         # 高位环境风险惩罚因子(保留标签，进行状态识别)
         # 触底反弹因子(20分)
 
+        # TODO:暂停多因子的独立叠加的计分
+        return {}
+
         sum_score = sum(score_info.values())
         if sum_score >= 40:
             logger.info(f"plot_gpt get_buy_score_info finish, symbol:{self.symbol}, score:{sum_score}, score_info:{score_info}")
@@ -1108,6 +1112,7 @@ class PlotGptHandle(BasePlotHandle):
         return score
 
     async def get_buy_by_model_detect(self, curr_price):
+        kline_1d_factors = CandlestickFactor(None, self.macd_list_1d, None)
         kline_4h_factors = CandlestickFactor(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
         kline_1h_factors = CandlestickFactor(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
         macd_4h_factors = MacdFactor(self.macd_list_4h)
@@ -1135,6 +1140,12 @@ class PlotGptHandle(BasePlotHandle):
                 kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
             model_recommend_price_data = model_c.get_recommend_price(kline_1h_factors)
             return {"model_name": model_c.name,
+                    "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
+
+        model_d = ModelLTypeRebound(curr_price)
+        if model_d.is_detected(kline_1d_factors, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors):
+            model_recommend_price_data = model_d.get_recommend_price(self.bb_list_1h)
+            return {"model_name": model_d.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         return

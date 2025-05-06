@@ -235,13 +235,13 @@ class CandlestickFactor:
                 count += 1
         return count > n * 0.5  # 至少70%贴近上轨
 
-    def is_along_lower_band(self, n=3, tolerance=Decimal("0.02")):
+    def is_along_lower_band(self, index=0, n=3, tolerance=Decimal("0.02")):
         """
         判断是否沿着下轨轨运行
         :param tolerance: 容差范围，比如 0.02 表示距离上轨在 2% 以内算“贴近”
         """
         count = 0
-        for i in range(n-1, -1, -1):
+        for i in range(index+n-1, index-1, -1):
             if self.kline_list[i].close_price > self.bb_list[i].bbmid:
                 continue
 
@@ -255,6 +255,41 @@ class CandlestickFactor:
     def get_boll_bandwidth_trend(self, window_size=24):
         bandwidth_list = [i.bbupper - i.bblower for i in self.bb_list[:window_size-1]][::-1]
         return enhanced_analyze_list_trend_by_groups(bandwidth_list)
+
+    def has_l_shape(self):
+        """
+        判断当前是否处于布林带的L形态，
+        """
+        if not (self.bb_list[0].bblower < self.kline_list[0].open_price < self.bb_list[0].bbmid):
+            return False
+        if not (self.bb_list[0].bblower < self.kline_list[0].close_price < self.bb_list[0].bbmid):
+            return False
+
+        index = 0
+        while index:
+            if self.kline_list[index].high_price > self.bb_list[index].mid:
+                return False
+
+            if self.is_near_lower(index=index):
+                if index == 0:
+                    return False
+
+                if self.is_along_lower_band(index=index, n=5):
+                    return True
+
+            if index > 9:
+                return False
+            index += 1
+
+        # if not self.is_along_lower_band(index=2, n=5):
+        #     return False
+        #
+        # # 至少1根长下影阳线或锤头线，表示买盘尝试抄底；
+        # has_last_k = self.is_bullish_k(index=1) and self.is_long_lower_shadow_k(index=1, scale=Decimal("2"))
+        # has_curr_k = self.is_bullish_k(index=0) and self.is_long_lower_shadow_k(index=0, scale=Decimal("2"))
+        # if has_last_k or has_curr_k:
+        #     return True
+        # return False
 
     def get_ema_factor(self, is_bid=False, is_ask=False):
         """

@@ -50,8 +50,9 @@ class ModelBollMidRebound(object):
         if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
             return False
 
-        # 前置条件：更大周期的4小时的EMA12和EMA26连续上升趋势+4小时MACD没有连续递减
-        if kline_4h_factors.is_ema12_continue_up(window_size=5) \
+        # 前置条件：4小时多头排列+4小时的EMA12和EMA26连续上升趋势+4小时MACD没有连续递减
+        if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
+                and kline_4h_factors.is_ema12_continue_up(window_size=5) \
                 and kline_4h_factors.is_ema26_continue_up(window_size=5) \
                 and not macd_4h_factors.is_continue_down():
             self.score += 10
@@ -84,7 +85,7 @@ class ModelBollMidRebound(object):
 class ModelBollLowReboundBullishSideways(object):
     def __init__(self, curr_price):
         self.name = "model_boll_low_rebound_bullish_sideways"
-        self.name_str = "多头排列+震荡，布林带下轨反弹结构"
+        self.name_str = "4小时多头排列+震荡，布林带下轨反弹结构"
         self.curr_price = curr_price
         self.score = 0
 
@@ -172,3 +173,38 @@ class ModelBollLowReboundBullishDown(object):
                     self.score += 5
 
         return self.score >= 25  # 任一子因子满足
+
+
+class ModelLTypeRebound(object):
+    def __init__(self, curr_price):
+        self.name = "model_l_type_rebound"
+        self.name_str = "日线EMA多头+4小时布林带形成L形状，1小时布林带下轨反弹结构"
+        self.curr_price = curr_price
+        self.score = 0
+
+    def get_recommend_price(self, bb_list_1h):
+        return {
+            "recommend_bid_price": bb_list_1h.bblower,
+        }
+
+    def is_detected(self, kline_1d_factors, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+            return False
+
+        # 前置条件：更大周期的日线的EMA多头排列+4小时布林带形成L形状
+        if kline_1d_factors.is_ema_bullish_stack(window_size=5) \
+                and kline_4h_factors.has_l_shape():
+            self.score += 10
+
+            # 条件D：当前k线的最低价跌破下轨，收盘价回到下轨上方
+            is_1h_structure = kline_1h_factors.get_fake_breakdown_by_bb(index=0, is_low=True)
+            if is_1h_structure:
+                self.score += 10
+
+                # 子因子D1：1小时的KDJ的J底部背离
+                is_new_low_price = kline_1h_factors.is_new_low_price(3, index=1)
+                if kdj_1h_factors.is_j_bullish_divergence(is_new_low_price, index=1, j_threshold=Decimal("10")):
+                    self.score += 5
+
+        # TODO:
+        return self.score >= 20  # 任一子因子满足
