@@ -235,9 +235,11 @@ class ModelWTypeRebound(object):
 
     def is_detected(self, kline_list_1h, bb_list_1h, rsi_list_1h, kline_1h_factors):
         window_size = 15
-        low_prices_list = [i.low_price for i in kline_list_1h[:window_size]][::-1]
+        low_prices_list = [i.low_price for i in kline_list_1h[:window_size]]
         p1_price = min(low_prices_list)
-        p1_index = window_size -1 - low_prices_list.index(p1_price)
+        p1_index = low_prices_list.index(p1_price)
+        if p1_index == 0 or p1_index == 14:
+            return False
 
         # p1前部分沿下轨/TODO:快速下落
         if not (kline_1h_factors.is_along_lower_band(index=p1_index, n=window_size-p1_index)
@@ -249,6 +251,8 @@ class ModelWTypeRebound(object):
             return False
 
         high_prices_list = [i.high_price for i in kline_list_1h[:p1_index]]
+        if not high_prices_list:
+            return False
         p2_price = max(high_prices_list)
         p2_index = high_prices_list.index(p2_price)
         # p2中间高点超过布林带中轨
@@ -256,6 +260,8 @@ class ModelWTypeRebound(object):
             return False
 
         low_prices_list = [i.low_price for i in kline_list_1h[:p2_index]]
+        if not low_prices_list:
+            return False
         p3_price = max(low_prices_list)
         p3_index = low_prices_list.index(p3_price)
 
