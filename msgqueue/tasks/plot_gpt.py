@@ -95,27 +95,27 @@ class PlotGptHandle(BasePlotHandle):
             _kdj_list_1d = await _query.aio_execute()
             self._kdj_list_1d = list(_kdj_list_1d)
 
-            _query = self.get_kdj_query("4h", limit_count=8)
+            _query = self.get_kdj_query("4h", limit_count=30)
             _kdj_list_4h = await _query.aio_execute()
             self._kdj_list_4h = list(_kdj_list_4h)
 
-            _query = self.get_kdj_query("1h", limit_count=8)
+            _query = self.get_kdj_query("1h", limit_count=30)
             _kdj_list_1h = await _query.aio_execute()
             self._kdj_list_1h = list(_kdj_list_1h)
 
-            _query = self.get_rsi_query("1h", limit_count=8)
+            _query = self.get_rsi_query("1h", limit_count=30)
             _rsi_list_1h = await _query.aio_execute()
             self.rsi_list_1h = list(_rsi_list_1h)
 
-            _query = self.get_rsi_query("4h", limit_count=8)
+            _query = self.get_rsi_query("4h", limit_count=30)
             _rsi_list_4h = await _query.aio_execute()
             self.rsi_list_4h = list(_rsi_list_4h)
 
-            _query = self.get_bb_query("1h", limit_count=8)
+            _query = self.get_bb_query("1h", limit_count=30)
             _bb_list_1h = await _query.aio_execute()
             self.bb_list_1h = list(_bb_list_1h)
 
-            _query = self.get_bb_query("4h", limit_count=8)
+            _query = self.get_bb_query("4h", limit_count=30)
             _bb_list_4h = await _query.aio_execute()
             self.bb_list_4h = list(_bb_list_4h)
 

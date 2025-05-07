@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 # -*- coding: UTF-8 -*-
 
+import logging
 from decimal import Decimal
 from utils.common import decimal2decimal
 
@@ -18,6 +19,8 @@ TODO: 可以考虑“评分走势”的平滑机制
     用滑动窗口打分：近3根K线的得分平均 > 60，再考虑买入。
     或者 评分突然从 <50 跳到 >70，说明趋势刚启动，作为额外信号。
 """
+
+logger = logging.getLogger(__name__)
 
 
 class ModeExcludeFactor:
