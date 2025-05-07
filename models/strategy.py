@@ -212,3 +212,20 @@ class ModelLTypeRebound(object):
 
         # TODO:
         return self.score >= 20  # 任一子因子满足
+
+
+class ModelWTypeRebound(object):
+    def __init__(self, curr_price):
+        self.name = "model_w_type_rebound"
+        self.name_str = "日线EMA多头+4小时布林带形成L形状，1小时布林带下轨反弹结构"
+        self.curr_price = curr_price
+        self.score = 0
+
+    def get_recommend_price(self, bb_list_1h):
+        return {
+            "recommend_bid_price": bb_list_1h.bblower,
+        }
+
+    def is_detected(self, kline_1d_factors, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors):
+        pass
+

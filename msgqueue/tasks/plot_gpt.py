@@ -901,7 +901,7 @@ class PlotGptHandle(BasePlotHandle):
         # 触底反弹因子(20分)
 
         # TODO:暂停多因子的独立叠加的计分
-        return {}
+        # return {}
 
         sum_score = sum(score_info.values())
         if sum_score >= 40:
