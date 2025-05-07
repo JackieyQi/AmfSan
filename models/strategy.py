@@ -215,6 +215,13 @@ class ModelLTypeRebound(object):
 
 
 class ModelWTypeRebound(object):
+    """
+    结构判断：
+        定义时间窗 window_size=15（蜡烛图长度）：
+            P1：找到过去15根内最低点（第一个低点）；
+            P2：在 P1 后蜡烛内找到中间高点；
+            P3：P2 后内再出现次低点，价格接近 P1，且不明显创新低
+    """
     def __init__(self, curr_price):
         self.name = "model_w_type_rebound"
         self.name_str = "日线EMA多头+4小时布林带形成L形状，1小时布林带下轨反弹结构"
@@ -223,9 +230,48 @@ class ModelWTypeRebound(object):
 
     def get_recommend_price(self, bb_list_1h):
         return {
-            "recommend_bid_price": bb_list_1h.bblower,
+            "recommend_bid_price": self.curr_price,
         }
 
-    def is_detected(self, kline_1d_factors, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors):
-        pass
+    def is_detected(self, kline_list_1h, bb_list_1h, rsi_list_1h, kline_1h_factors):
+        window_size = 15
+        low_prices_list = [i.low_price for i in kline_list_1h[:window_size]][::-1]
+        p1_price = min(low_prices_list)
+        p1_index = window_size -1 - low_prices_list.index(p1_price)
 
+        # p1前部分沿下轨/TODO:快速下落
+        if not (kline_1h_factors.is_along_lower_band(index=p1_index, n=window_size-p1_index)
+                or (
+                        kline_list_1h[window_size-1].open_price > (bb_list_1h[window_size-1].bbupper + bb_list_1h[window_size-1].bbmid)/Decimal("2")
+                        and p1_price < (bb_list_1h[p1_index].bbmid + bb_list_1h[p1_index].bblower)/Decimal("2")
+                )
+        ):
+            return False
+
+        high_prices_list = [i.high_price for i in kline_list_1h[:p1_index]]
+        p2_price = max(high_prices_list)
+        p2_index = high_prices_list.index(p2_price)
+        # p2中间高点超过布林带中轨
+        if not (bb_list_1h[p2_index].bbmid < p2_index < (bb_list_1h[p2_index] + bb_list_1h[p2_index])/Decimal("2")):
+            return False
+
+        low_prices_list = [i.low_price for i in kline_list_1h[:p2_index]]
+        p3_price = max(low_prices_list)
+        p3_index = low_prices_list.index(p3_price)
+
+        if not (p3_price >= p1_price * Decimal("0.97")):
+            return False
+
+        if p3_index != 1:
+            return False
+
+        # 上面逻辑：价格结构满足 P1-P2-P3 的模式
+
+        # 子因子W1：RSI 增强, RSI(P3) > RSI(P1)
+        if rsi_list_1h[p3_index].rsi > rsi_list_1h[p1_index].rsi:
+            self.score += 5
+
+        # 子因子W2：成交量增加, vol(P3) > 1.5 * avg_vol
+        # 子因子W3：MACD 金叉 / 柱体翻红	DIF>DEA 且 MACD>0
+
+        return self.score >= 5
