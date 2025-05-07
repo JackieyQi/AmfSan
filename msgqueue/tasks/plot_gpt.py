@@ -577,6 +577,19 @@ class PlotGptHandle(BasePlotHandle):
         ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
         """
 
+    def is_bb_lower2mid_taking_profit(self):
+        """
+        价格从下轨到达中轨，优先止盈
+        """
+        kline_1h_factors = CandlestickFactor(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
+
+        if self.kline_list_1h[2].high_price < self.bb_list_1h[2].bbmid \
+                and not kline_1h_factors.is_near_mid(index=2, tolerance=Decimal("0.2")):
+            if kline_1h_factors.is_near_mid(index=1, tolerance=Decimal("0.2")):
+                if self.macd_list_1h[0].macd < 0 or self.kdj_list_1h[0].j_val > 80 or (self.rsi_list_1h[0].rsi < Decimal("75")):
+                    return True
+            return False
+
     def _get_sell_direction_active_taking_profit(self, curr_price):
         """
         主动止盈:
@@ -609,6 +622,10 @@ class PlotGptHandle(BasePlotHandle):
             if (self.rsi_list_1h[0].rsi < Decimal("75")) and (self.macd_list_1h[0].macd < self.macd_list_1h[1].macd):
                 direction += "价格逼近 1小时布林带上轨，RSI < 75 且 MACD 柱状图收缩（即动能减弱），优先止盈。"
                 return {"direction": direction, "recommend_ask_price": curr_price}
+
+        if self.is_bb_lower2mid_taking_profit():
+            direction += "价格 1小时布林带下轨抵达中轨，(macd<0)/(kdj.j>80)/(RSI<75)，优先止盈。"
+            return {"direction": direction}
 
         if kline_1h_factors.has_double_top():
             direction += "当前处于1小时双顶形态，止盈离场。"
@@ -1131,7 +1148,7 @@ class PlotGptHandle(BasePlotHandle):
         model_b = ModelBollLowReboundBullishSideways(curr_price)
         if model_b.is_detected(
                 kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
-            model_recommend_price_data = model_b.get_recommend_price(self.kline_list_1h[0].low_price)
+            model_recommend_price_data = model_b.get_recommend_price(self.kline_list_1h, self.bb_list_1h)
             return {"model_name": model_b.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 

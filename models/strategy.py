@@ -85,20 +85,24 @@ class ModelBollMidRebound(object):
 class ModelBollLowReboundBullishSideways(object):
     def __init__(self, curr_price):
         self.name = "model_boll_low_rebound_bullish_sideways"
-        self.name_str = "4小时多头排列+震荡，布林带下轨反弹结构"
+        self.name_str = "4小时多头排列+震荡，1小时布林带下轨反弹结构"
         self.curr_price = curr_price
         self.score = 0
 
-    def get_recommend_price(self, curr_low_price):
+    def get_recommend_price(self, kline_list_1h, bb_list_1h):
+        if kline_list_1h[0].high_price > (bb_list_1h[0].bblower + bb_list_1h[0].bbmid)/Decimal("2"):
+            recommend_bid_price = None
+        else:
+            recommend_bid_price = self.curr_price
         return {
-            "recommend_bid_price": self.curr_price
+            "recommend_bid_price": recommend_bid_price
         }
 
     def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
-        # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根没有连续下降
         if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
             return False
 
+        # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根没有连续下降
         if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
                 and not kline_4h_factors.is_ema12_continue_down(window_size=5):
             self.score += 10
