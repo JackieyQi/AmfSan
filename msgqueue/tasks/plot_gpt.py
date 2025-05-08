@@ -470,13 +470,16 @@ class PlotGptHandle(BasePlotHandle):
                 ask_plot_type = 8
                 func_str = "_get_exit_score"
             else:
-                redis_client = AllCache.get_client()
-                cache_data = redis_client.get(f"sl_tp:{self.symbol}")
-                func_str = "tp_sl"
+                # redis_client = AllCache.get_client()
+                # cache_data = redis_client.get(f"sl_tp:{self.symbol}")
+                # if not cache_data:
+                #     return
 
-                if not cache_data:
-                    return
-                sl_price, tp_price = map(Decimal, cache_data.split(":"))
+                func_str = "tp_sl"
+                limit_price = MarketPriceLimitCache.hget(self.symbol)
+                set_time, limit_low_price, limit_high_price = limit_price.split(":")
+
+                sl_price, tp_price = map(Decimal, (limit_low_price, limit_high_price))
 
                 if curr_price >= tp_price:
                     part_direction += "当前价格触及止盈价，止盈离场。"
