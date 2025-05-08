@@ -5,6 +5,8 @@ import logging
 from decimal import Decimal
 from utils.common import decimal2decimal
 
+from .factor import CandlestickFactor
+
 """
 结构场景 + 条件链判断
 """
@@ -38,7 +40,7 @@ class ModeExcludeFactor:
 class ModelBollMidRebound(object):
     def __init__(self, curr_price):
         self.name = "model_boll_mid_rebound"
-        self.name_str = "强趋势上升，布林带中轨反弹结构"
+        self.name_str = "4小时强趋势上升，布林带中轨反弹结构"
         self.curr_price = curr_price
         self.score = 0
 
@@ -137,7 +139,7 @@ class ModelBollLowReboundBullishSideways(object):
 class ModelBollLowReboundBullishDown(object):
     def __init__(self, curr_price):
         self.name = "model_boll_low_rebound_bullish_Down"
-        self.name_str = "多头排列+下跌，布林带下轨反弹结构"
+        self.name_str = "4小时多头排列+下跌，1小时布林带下轨反弹结构"
         self.curr_price = curr_price
         self.score = 0
 
@@ -227,7 +229,7 @@ class ModelWTypeRebound(object):
     """
     def __init__(self, curr_price):
         self.name = "model_w_type_rebound"
-        self.name_str = "日线EMA多头+4小时布林带形成L形状，1小时布林带下轨反弹结构"
+        self.name_str = "1小时布林带形成W形状，1小时布林带下轨反弹结构"
         self.curr_price = curr_price
         self.score = 0
 
@@ -236,39 +238,50 @@ class ModelWTypeRebound(object):
             "recommend_bid_price": self.curr_price,
         }
 
-    def is_detected(self, kline_list_1h, bb_list_1h, rsi_list_1h, kline_4h_factors, kline_1h_factors, macd_4h_factors):
+    def is_detected(self, kline_list_4h, kline_list_1h, macd_list_4h, macd_list_1h, bb_list_4h, bb_list_1h,
+                    rsi_list_4h, rsi_list_1h, kline_4h_factors, macd_4h_factors):
         if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
             return False
 
+        if self._is_detected(kline_list_4h, macd_list_4h, bb_list_4h, rsi_list_4h):
+            return True
+        elif self._is_detected(kline_list_1h, macd_list_1h, bb_list_1h, rsi_list_1h):
+            return True
+        else:
+            return False
+
+    def _is_detected(self, kline_list, macd_list, bb_list, rsi_list):
+        kline_factors = CandlestickFactor(kline_list, macd_list, bb_list)
+
         window_size = 15
-        low_prices_list = [i.low_price for i in kline_list_1h[:window_size]]
+        low_prices_list = [i.low_price for i in kline_list[:window_size]]
         p1_price = min(low_prices_list)
         p1_index = low_prices_list.index(p1_price)
         if p1_index == 0 or p1_index == 14:
             return False
 
         # p1前部分沿下轨/TODO:快速下落
-        if not (kline_1h_factors.is_along_lower_band(index=p1_index, n=window_size-p1_index)
+        if not (kline_factors.is_along_lower_band(index=p1_index, n=window_size-p1_index)
                 or (
-                        kline_list_1h[window_size-1].open_price > (bb_list_1h[window_size-1].bbupper + bb_list_1h[window_size-1].bbmid)/Decimal("2")
-                        and p1_price < (bb_list_1h[p1_index].bbmid + bb_list_1h[p1_index].bblower)/Decimal("2")
+                        kline_list[window_size-1].open_price > (bb_list[window_size-1].bbupper + bb_list[window_size-1].bbmid)/Decimal("2")
+                        and p1_price < (bb_list[p1_index].bbmid + bb_list[p1_index].bblower)/Decimal("2")
                 )
         ):
             return False
 
-        high_prices_list = [i.high_price for i in kline_list_1h[:p1_index]]
+        high_prices_list = [i.high_price for i in kline_list[:p1_index]]
         if not high_prices_list:
             return False
         p2_price = max(high_prices_list)
         p2_index = high_prices_list.index(p2_price)
         # p2中间高点超过布林带中轨
-        if not (bb_list_1h[p2_index].bbmid < p2_index < (bb_list_1h[p2_index].bbmid + bb_list_1h[p2_index].bbupper)/Decimal("2")):
+        if not (bb_list[p2_index].bbmid < p2_index < (bb_list[p2_index].bbmid + bb_list[p2_index].bbupper)/Decimal("2")):
             return False
 
-        low_prices_list = [i.low_price for i in kline_list_1h[:p2_index]]
+        low_prices_list = [i.low_price for i in kline_list[:p2_index]]
         if not low_prices_list:
             return False
-        p3_price = max(low_prices_list)
+        p3_price = min(low_prices_list)
         p3_index = low_prices_list.index(p3_price)
 
         if not (p3_price >= p1_price * Decimal("0.97")):
@@ -280,7 +293,9 @@ class ModelWTypeRebound(object):
         # 上面逻辑：价格结构满足 P1-P2-P3 的模式
 
         # 子因子W1：RSI 增强, RSI(P3) > RSI(P1)
-        if rsi_list_1h[p3_index].rsi > rsi_list_1h[p1_index].rsi:
+        p3_near_rsi = min(rsi_list[p3_index-1].rsi, rsi_list[p3_index].rsi, rsi_list[p3_index+1].rsi)
+        p1_near_rsi = min(rsi_list[p1_index-1].rsi, rsi_list[p1_index].rsi, rsi_list[p1_index+1].rsi)
+        if p3_near_rsi > p1_near_rsi:
             self.score += 5
 
         # 子因子W2：成交量增加, vol(P3) > 1.5 * avg_vol

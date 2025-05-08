@@ -1166,8 +1166,9 @@ class PlotGptHandle(BasePlotHandle):
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         model_w = ModelWTypeRebound(curr_price)
-        if model_w.is_detected(self.kline_list_1h, self.bb_list_1h, self.rsi_list_1h,
-                               kline_4h_factors, kline_1h_factors, macd_4h_factors):
+        if model_w.is_detected(self.kline_list_4h, self.kline_list_1h, self.macd_list_4h, self.macd_list_1h,
+                               self.bb_list_4h, self.bb_list_1h, self.rsi_list_4h, self.rsi_list_1h,
+                               kline_4h_factors, macd_4h_factors):
             model_recommend_price_data = model_w.get_recommend_price(self.bb_list_1h)
             return {"model_name": model_w.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
