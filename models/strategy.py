@@ -236,7 +236,10 @@ class ModelWTypeRebound(object):
             "recommend_bid_price": self.curr_price,
         }
 
-    def is_detected(self, kline_list_1h, bb_list_1h, rsi_list_1h, kline_1h_factors):
+    def is_detected(self, kline_list_1h, bb_list_1h, rsi_list_1h, kline_4h_factors, kline_1h_factors, macd_4h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+            return False
+
         window_size = 15
         low_prices_list = [i.low_price for i in kline_list_1h[:window_size]]
         p1_price = min(low_prices_list)
@@ -259,7 +262,7 @@ class ModelWTypeRebound(object):
         p2_price = max(high_prices_list)
         p2_index = high_prices_list.index(p2_price)
         # p2中间高点超过布林带中轨
-        if not (bb_list_1h[p2_index].bbmid < p2_index < (bb_list_1h[p2_index] + bb_list_1h[p2_index])/Decimal("2")):
+        if not (bb_list_1h[p2_index].bbmid < p2_index < (bb_list_1h[p2_index].bbmid + bb_list_1h[p2_index].bbupper)/Decimal("2")):
             return False
 
         low_prices_list = [i.low_price for i in kline_list_1h[:p2_index]]
