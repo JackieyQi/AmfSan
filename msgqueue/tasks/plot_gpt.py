@@ -1164,7 +1164,7 @@ class PlotGptHandle(BasePlotHandle):
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         model_boll_mid_rebound = ModelBollMidRebound(curr_price)
-        if model_boll_mid_rebound.is_detected(
+        if model_boll_mid_rebound.is_detected(self.kline_list_1h, self.bb_list_1h,
                 kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
             model_recommend_price_data = model_boll_mid_rebound.get_recommend_price(self.kline_list_1h[0].low_price)
             return {"model_name": model_boll_mid_rebound.name, "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}

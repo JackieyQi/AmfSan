@@ -124,8 +124,8 @@ class ModelBollMidRebound(object):
             "recommend_bid_price": decimal2decimal(recommend_bid_price)
         }
 
-    def is_detected(
-            self, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
+    def is_detected(self, kline_list_1h, bb_list_1h,
+                    kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
         if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
             return False
 
@@ -141,7 +141,7 @@ class ModelBollMidRebound(object):
             if is_4h_structure:
                 self.score += 15
 
-            is_1h_structure = kline_1h_factors.get_fake_breakdown_by_bb(index=0, is_low=False)
+            is_1h_structure = any([kline_1h_factors.get_fake_breakdown_by_bb(index=i, is_low=False) for i in range(2)])
             if is_1h_structure:
                 self.score += 10
 
@@ -157,6 +157,11 @@ class ModelBollMidRebound(object):
                     if rsi_1h_factors.get_breakout_from_low(index=i):
                         self.score += 5
                         break
+
+                # 子因子A3：1小时前k线为十字线，当前k线为阳线且收盘价突破中轨
+                if kline_1h_factors.get_crosshairs(index=1) and (
+                        kline_1h_factors.is_bullish_k(index=0) and kline_list_1h[0].close_price > bb_list_1h[0].bbmid):
+                    self.score += 5
 
         return self.score >= 22.5  # 大于总分的1/2
 

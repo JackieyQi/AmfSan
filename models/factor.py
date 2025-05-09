@@ -155,7 +155,7 @@ class CandlestickFactor:
             is_near = self.is_near_lower(index=index, tolerance=Decimal("0.13"))
         else:
             break_line = self.bb_list[index].bbmid
-            is_near = self.is_near_mid(index=index)
+            is_near = self.is_near_mid(index=index, tolerance=Decimal("0.07"))
 
         if (self.kline_list[index].low_price < break_line) \
                 and ((self.kline_list[index].close_price > break_line) or is_near):
