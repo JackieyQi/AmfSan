@@ -114,8 +114,6 @@ class PlotBackTestRecordsView(ProtectedView):
 
     async def get(self, request):
         user = request.ctx.user
-        if user.user_id != "2":
-            return {}
 
         page = int(request.args.get("page", 1))
         page_size = int(request.args.get("page_size", 10))
@@ -123,7 +121,7 @@ class PlotBackTestRecordsView(ProtectedView):
         status = request.args.get("status")
         if status is not None:
             status = int(status)
-        return await BackTestViewHandler().get_back_test_records(page, page_size, symbol, status)
+        return await BackTestViewHandler(user.user_id).get_back_test_records(page, page_size, symbol, status)
 
 
 class PlotBackTestRecordDetailView(ProtectedView):
@@ -131,12 +129,10 @@ class PlotBackTestRecordDetailView(ProtectedView):
 
     async def get(self, request):
         user = request.ctx.user
-        if user.user_id != "2":
-            return {}
 
         symbol = request.args.get("symbol")
         record_id = request.args.get("id")
         if not all([symbol, record_id]):
             raise StandardResponseExc(msg="Missing required fields")
 
-        return await BackTestViewHandler().get_detail_record(symbol, record_id)
+        return await BackTestViewHandler(user.user_id).get_detail_record(symbol, record_id)

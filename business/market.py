@@ -189,7 +189,7 @@ class MarketPriceHandler(object):
 
 
 class SymbolHandle(object):
-    def __init__(self, symbol="", user_id=2):
+    def __init__(self, symbol="", user_id="root"):
         self.user_id = user_id
         self.symbol = symbol
 
@@ -217,6 +217,13 @@ class SymbolHandle(object):
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 1)
 
     async def add_plot_to_db(self):
+        if self.user_id != "root":
+            plot_count = await SymbolPlotTable.select(SymbolPlotTable.id).where(
+                SymbolPlotTable.user_id == self.user_id,
+            ).aio_count()
+            if plot_count >= 3:
+                return None
+
         async with async_database.aio_atomic():
             try:
                 db_row = await SymbolPlotTable.select().where(
@@ -245,10 +252,19 @@ class SymbolHandle(object):
 
     async def del_plot_to_db(self):
         async with async_database.aio_atomic():
-            plot_row = await SymbolPlotTable.delete().where(
-                # SymbolPlotTable.user_id == self.user_id,
-                SymbolPlotTable.symbol == self.symbol,
-            ).aio_execute()
+            if self.user_id == "root":
+                plot_row = await SymbolPlotTable.delete().where(
+                    SymbolPlotTable.symbol == self.symbol,
+                ).aio_execute()
+            else:
+                plot_row = await SymbolPlotTable.delete().where(
+                    SymbolPlotTable.user_id == self.user_id,
+                    SymbolPlotTable.symbol == self.symbol,
+                ).aio_execute()
+
+            if await SymbolPlotTable.select(SymbolPlotTable.id).where(
+                    SymbolPlotTable.symbol == self.symbol).aio_exists():
+                return {"plot_row": plot_row, }
 
             kline_del_rows = await KlineTable.delete().where(KlineTable.symbol == self.symbol).aio_execute()
             macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == self.symbol).aio_execute()

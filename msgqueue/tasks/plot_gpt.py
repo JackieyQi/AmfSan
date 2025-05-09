@@ -22,7 +22,7 @@ from cache import AllCache
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
 from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
-from models.user import EmailMsgHistoryTable
+from models.user import EmailMsgHistoryTable, UserSymbolPlotTable, UserInfoTable
 from models.factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
 from models.strategy import (
     ModelBollTopRise,
@@ -533,7 +533,17 @@ class PlotGptHandle(BasePlotHandle):
 
         logger.info(
             f"PlotGptHandle.get_buy_score_info finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
-        await self.send_msg(self.email_title, email_content)
+        receiver_list = await self.get_receiver_list()
+        await self.send_msg(self.email_title, email_content, receiver_list=receiver_list)
+
+    async def get_receiver_list(self):
+        query = await UserSymbolPlotTable.select(UserSymbolPlotTable.user_id).where(
+            UserSymbolPlotTable.symbol == self.symbol).aio_execute()
+        user_ids = [i.user_id for i in query]
+
+        query = await UserInfoTable.select(UserInfoTable.email).where(UserInfoTable.uuid.in_(user_ids)).aio_execute()
+        user_emails = [i.email for i in query]
+        return user_emails
 
     async def short_term_strategy(self, limit_count):
         """

@@ -22,9 +22,9 @@ class UserInfoTable(Base):
 
 
 class UserSymbolPlotTable(Base):
-    user_id = CharField(null=False, db_column="user_id")
-    # TODO:去掉unique，增加联合唯一索引
-    symbol = CharField(db_column="symbol", unique=True)
+    id = AutoField()
+    user_id = CharField(null=False, db_column="user_id", max_length=32)
+    symbol = CharField(db_column="symbol", max_length=10)
     last_price = DecimalField(
         db_column="last_price",
         default=0,

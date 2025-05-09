@@ -5,6 +5,7 @@ import time
 from decimal import Decimal
 from exts import async_database
 from models.order import PlotBackTestTable
+from models.user import UserSymbolPlotTable
 from cache.order import MarketPriceLimitCache
 from utils.common import str2decimal, decimal2decimal, decimal2str, convert_seconds
 from utils.exception import StandardResponseExc
@@ -13,11 +14,20 @@ from .market import MarketPriceHandler
 
 
 class BackTestViewHandler(object):
+    def __init__(self, user_id):
+        self.user_id = user_id
+
     async def get_detail_record(self, symbol, record_id):
         try:
             record = await PlotBackTestTable.select().where(PlotBackTestTable.id == record_id).aio_get()
         except PlotBackTestTable.DoesNotExist:
             raise StandardResponseExc(msg="Record not exists.")
+
+        if self.user_id != "root":
+            if not await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
+                    UserSymbolPlotTable.user_id == self.user_id,
+                    UserSymbolPlotTable.symbol == record.symbol).aio_exists():
+                return {}
 
         result = {
                 "id": record.id,
@@ -57,6 +67,13 @@ class BackTestViewHandler(object):
         Returns:
             dict: 包含分页数据和总记录数的JSON响应
         """
+
+        filter_symbols = []
+        if self.user_id != "root":
+            query = await UserSymbolPlotTable.select(UserSymbolPlotTable.symbol).where(
+                UserSymbolPlotTable.user_id == self.user_id).aio_execute()
+            filter_symbols = [i.symbol for i in query]
+
         # 构建基础查询
         query = PlotBackTestTable.select(
             PlotBackTestTable.id, PlotBackTestTable.symbol, PlotBackTestTable.buy_price, PlotBackTestTable.buy_ts,
@@ -64,9 +81,12 @@ class BackTestViewHandler(object):
             PlotBackTestTable.profit_percent, PlotBackTestTable.status
         )
 
-        # 添加筛选条件
         if symbol:
+            if self.user_id != "root" and symbol not in filter_symbols:
+                return {}
             query = query.where(PlotBackTestTable.symbol == symbol)
+        elif filter_symbols:
+            query = query.where(PlotBackTestTable.symbol.in_(filter_symbols))
         if status is not None:  # 0是有效值，所以用is not None判断
             query = query.where(PlotBackTestTable.status == status)
 
