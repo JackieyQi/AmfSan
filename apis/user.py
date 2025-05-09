@@ -32,7 +32,16 @@ class UserRegisterVerification(HTTPMethodView):
         verification_codes[email] = code
         with RedisPoolContext() as r:
             r.set(f"user:register_code:{email}", code, ex=600)
-        # print(f"验证码 {code} 发送至 {email}")  # 这里可替换为邮件发送逻辑
+
+        from msgqueue.queue import push_msg
+        _ = await push_msg(
+            {
+                "bp": "send_email_task",
+                "title": "AMFSAN User Register",
+                "receiver": email,
+                "content": f"AMFSAN-USER-REGISTER-CODE:{code}",
+            }
+        )
         return {"message": "Verification code sent"}
 
 
@@ -49,10 +58,11 @@ class UserRegisterView(HTTPMethodView):
         code = code.strip()
         invite_code = invite_code.strip()
 
-        if verification_codes.get(email) != code:
+        redis_client = AllCache.get_client()
+        cache_register_code = redis_client.get(f"user:register_code:{email}")
+        if not cache_register_code or (cache_register_code != code):
             raise StandardResponseExc(msg="Invalid verification code")
 
-        redis_client = AllCache.get_client()
         cache_invite_code = redis_client.get(f"email:invite_code:{email}")
         if not cache_invite_code or (cache_invite_code != invite_code):
             raise StandardResponseExc(msg="Invalid invitation code")
@@ -72,7 +82,6 @@ class UserRegisterView(HTTPMethodView):
                 invite_code=invite_code,
             )
 
-        del verification_codes[email]  # 验证码使用后删除
         redis_client.delete(f"email:invite_code:{email}")
         redis_client.close()
 
