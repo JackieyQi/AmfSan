@@ -376,6 +376,9 @@ class CandlestickFactor:
     def is_ema12_continue_up(self, window_size=7):
         return all(self.macd_list[i].ema_12 < self.macd_list[i - 1].ema_12 for i in range(1, window_size))
 
+    def is_ema12_continue_lt_close(self, window_size=7):
+        return all(self.macd_list[i].ema_12 < self.kline_list[i].close_price for i in range(window_size))
+
     def is_ema26_continue_up(self, window_size=7):
         return all(self.macd_list[i].ema_26 < self.macd_list[i - 1].ema_26 for i in range(1, window_size))
 
@@ -440,12 +443,6 @@ class MacdFactor:
         """
         return all(i.macd < 0 for i in self.macd_list)
 
-    def get_downtrend(self):
-        """
-        更大周期趋势->增强短线交易的离场信号
-        """
-        return self.macd_list[0].macd < self.macd_list[1].macd < self.macd_list[2].macd
-
     def get_dif_downtrend(self):
         dif = self.macd_list[0].ema_12 - self.macd_list[0].ema_26
         prev_dif = self.macd_list[1].ema_12 - self.macd_list[1].ema_26
@@ -465,6 +462,9 @@ class MacdFactor:
         """
         trend_str, _ = analyze_list_trend([i.macd for i in self.macd_list[:7]][::-1])
         return {"trend": trend_str, }
+
+    def is_continue_up(self, window_size=3):
+        return all(self.macd_list[i].macd < self.macd_list[i - 1].macd for i in range(1, window_size))
 
     def is_continue_down(self, window_size=3):
         """ macd连续下跌 """

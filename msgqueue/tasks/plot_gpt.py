@@ -24,8 +24,12 @@ from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from models.factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
-from models.strategy import ModelBollMidRebound, ModelBollLowReboundBullishDown, ModelBollLowReboundBullishSideways, \
-    ModelLTypeRebound, ModelWTypeRebound, ModelVTypeRebound
+from models.strategy import (
+    ModelBollTopRise,
+    ModelBollMidRebound,
+    ModelBollLowReboundBullishDown,
+    ModelBollLowReboundBullishSideways,
+    ModelLTypeRebound, ModelWTypeRebound, ModelVTypeRebound)
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt, decimal2decimal, decimal2str
 from utils.hrequest import http_get_request
@@ -669,7 +673,7 @@ class PlotGptHandle(BasePlotHandle):
         score_info = {}
 
         macd_4h_factors = MacdFactor(self.macd_list_4h)
-        if macd_4h_factors.get_downtrend():
+        if macd_4h_factors.is_continue_down():
             score_info["macd_4h_downtrend"] = 10
 
         if (self.kdj_list_1h[0].j_val > 80) and (self.kdj_list_1h[0].j_val < self.kdj_list_1h[1].j_val):
@@ -1111,7 +1115,7 @@ class PlotGptHandle(BasePlotHandle):
         return score
 
     def _get_adjust_score_4h_macd_uptrend(self, score, macd_factors):
-        if macd_factors.get_downtrend():
+        if macd_factors.is_continue_down():
             score -= 3 # macd当前线三连降 -> -3 分
         return score
 
@@ -1141,6 +1145,13 @@ class PlotGptHandle(BasePlotHandle):
         kdj_1h_factors = KdjFactor(self.kdj_list_1h)
         rsi_4h_factors = RsiFactor(self.rsi_list_4h)
         rsi_1h_factors = RsiFactor(self.rsi_list_1h)
+
+        model_boll_top_rise = ModelBollTopRise(curr_price)
+        if model_boll_top_rise.is_detected(self.kline_list_4h, self.kline_list_1h, self.bb_list_1h,
+                                           kline_4h_factors, kline_1h_factors):
+            model_recommend_price_data = model_boll_top_rise.get_recommend_price()
+            return {"model_name": model_boll_top_rise.name,
+                    "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         model_boll_mid_rebound = ModelBollMidRebound(curr_price)
         if model_boll_mid_rebound.is_detected(

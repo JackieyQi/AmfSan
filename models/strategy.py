@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 import logging
+import numpy as np
 from decimal import Decimal
 from utils.common import decimal2decimal
 
@@ -37,10 +38,82 @@ class ModeExcludeFactor:
         return False
 
 
+class ModelBollTopRise(object):
+    """
+    布林贴顶加速上涨模型(贴顶上涨):
+        结构节奏：几乎无回调，连续阳线
+        入场逻辑：强势追涨（跟随）
+        风控点位：前一小时K线最低点或短EMA线
+        策略属性：趋势追踪
+        出现场景：强力突破、主升浪中段
+    """
+    def __init__(self, curr_price):
+        self.name = "mode_boll_top_rise"
+        self.name_str = "布林贴顶加速上涨模型"
+        self.curr_price = curr_price
+        self.score = 0
+
+    def get_recommend_price(self):
+        return {
+            "recommend_bid_price": self.curr_price,
+        }
+
+    def is_detected(self, kline_list_4h, kline_list_1h, bb_list_1h, kline_4h_factors, kline_1h_factors):
+        # 1小时: 阳线比例 >= 70%
+        window_size = 10
+        count_1h_bullish_k = [kline_1h_factors.is_bullish_k(index=i) for i in range(window_size)]
+        if sum(count_1h_bullish_k) < window_size * 0.7:
+            return False
+
+        # 1小时: 收盘价平均高于布林中轨 + 1σ(标准差)；
+        boll_period = 20
+        avg_close = np.mean([kline_list_1h[i].close_price for i in range(window_size)])
+        bb_std = np.std([kline_list_1h[i].close_price for i in range(boll_period)])
+        if avg_close < bb_list_1h[0].bbmid + bb_std:
+            return False
+
+        # 1小时: 至少连续 3 根K线收盘价 > EMA12
+        if not kline_1h_factors.is_ema12_continue_lt_close(window_size=3):
+            return False
+
+        # 4小时: 连续3根以上K线收于布林带上轨上方或贴近上轨
+        count_4h_close_gt_bbupper = [kline_4h_factors.is_near_upper(index=i) for i in range(3)]
+        if sum(count_4h_close_gt_bbupper) < 3:
+            return False
+
+        # 4小时: 连续3根DIF持续上穿DEA；
+        if not kline_4h_factors.is_continue_up(window_size=3):
+            return False
+
+        # 上面形成基础贴顶上涨趋势
+
+        # 子因子1：追涨入场：每小时收线回调不明显时入场
+        """
+        收盘价几乎未回调
+        EMA9 与 EMA12 均稳步上升
+        成交量略缩但不极端
+        K线几乎没有下影线，说明多头无阻力
+        """
+        # TODO: 分数是否需要大于5
+        if all([kline_list_1h[i].close_price > kline_list_1h[i-1].close_price for i in range(1, 3)]):
+            self.score += 5
+
+        return self.score >= 5
+
+
 class ModelBollMidRebound(object):
+    """
+    |         | （中轨反弹）   |
+    | 结构节奏 | 有回调→确认支撑→拉升 |
+    | 入场逻辑 | 回调中寻找低吸     |
+    | 风控点位 | 中轨/支撑线      |
+    | 策略属性 | 回踩交易        |
+    | 出现场景 | 震荡行情末端或突破初期 |
+
+    """
     def __init__(self, curr_price):
         self.name = "model_boll_mid_rebound"
-        self.name_str = "4小时强趋势上升，布林带中轨反弹结构"
+        self.name_str = "4小时强趋势上升，1小时布林带中轨反弹结构"
         self.curr_price = curr_price
         self.score = 0
 
