@@ -195,7 +195,7 @@ class SymbolHandle(object):
 
     async def get_all(self):
         if self.user_id == "root":
-            db_rows = await SymbolPlotTable.select().where().order_by(SymbolPlotTable.create_ts).aio_execute()
+            db_rows = await SymbolPlotTable.select().order_by(SymbolPlotTable.create_ts).aio_execute()
         else:
             db_rows = await SymbolPlotTable.select().where(
                 SymbolPlotTable.user_id == self.user_id
