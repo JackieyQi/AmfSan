@@ -189,14 +189,17 @@ class MarketPriceHandler(object):
 
 
 class SymbolHandle(object):
-    def __init__(self, symbol="", user_id="root"):
+    def __init__(self, symbol="", user_id=""):
         self.user_id = user_id
         self.symbol = symbol
 
     async def get_all(self):
-        db_rows = await SymbolPlotTable.select().where(
-            SymbolPlotTable.user_id == self.user_id
-        ).order_by(SymbolPlotTable.create_ts).aio_execute()
+        if self.user_id == "root":
+            db_rows = await SymbolPlotTable.select().where().order_by(SymbolPlotTable.create_ts).aio_execute()
+        else:
+            db_rows = await SymbolPlotTable.select().where(
+                SymbolPlotTable.user_id == self.user_id
+            ).order_by(SymbolPlotTable.create_ts).aio_execute()
 
         result = []
         for row in db_rows:
