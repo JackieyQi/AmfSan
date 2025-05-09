@@ -302,3 +302,49 @@ class ModelWTypeRebound(object):
         # 子因子W3：MACD 金叉 / 柱体翻红	DIF>DEA 且 MACD>0
 
         return self.score >= 5
+
+
+class ModelVTypeRebound(object):
+    """
+    1小时V型，从下轨到中轨，过中轨后的k线的收盘价没有下落中轨，平行布林带口袋向上贴上轨。
+
+    结构判断：
+        定义时间窗 window_size=18（蜡烛图长度）：
+    """
+    def __init__(self, curr_price):
+        self.name = "model_v_type_rebound"
+        self.name_str = "1小时k线形成V形状，1小时布林带开始沿上轨并稳定住"
+        self.curr_price = curr_price
+        self.score = 0
+
+    def get_recommend_price(self, bb_list_1h):
+        return {
+            "recommend_bid_price": self.curr_price,
+        }
+
+    def is_detected(self, kline_list_1h, bb_list_1h, kline_1h_factors, kdj_4h_factors):
+        window_size = 18
+        low_prices_list = [i.low_price for i in kline_list_1h[:window_size]]
+        min_low_price = min(low_prices_list)
+        min_low_price_index = low_prices_list.index(min_low_price)
+
+        if not kline_1h_factors.is_ema_golden_cross(index=0):
+            return False
+
+        count_kline_in_bbmid_range = [kline_list_1h[i].open_price < bb_list_1h[i].bbmid < kline_list_1h[i].close_price
+                                      for i in range(min_low_price_index)]
+        # 判断中间低点到右边界，是否连续上涨
+        if sum(count_kline_in_bbmid_range) > 1:
+            return False
+
+        count_ema_death_cross = [kline_1h_factors.is_ema_death_cross(index=i)
+                                 for i in range(min_low_price_index, window_size)]
+        # 判断中间低点到左边界，是否ema死叉向下
+        if sum(count_ema_death_cross) > 1:
+            return False
+
+        # 子因子V1：4小时KDJ金叉
+        if kdj_4h_factors.get_curr_golden_cross():
+            self.score += 5
+
+        return self.score >= 5

@@ -25,7 +25,7 @@ from models.order import PlotBackTestTable
 from models.user import EmailMsgHistoryTable
 from models.factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
 from models.strategy import ModelBollMidRebound, ModelBollLowReboundBullishDown, ModelBollLowReboundBullishSideways, \
-    ModelLTypeRebound, ModelWTypeRebound
+    ModelLTypeRebound, ModelWTypeRebound, ModelVTypeRebound
 from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRICE_URL, INNER_GET_SUBMIT_LIMIT_PRICE_URL
 from utils.common import ts2bjfmt, decimal2decimal, decimal2str
 from utils.hrequest import http_get_request
@@ -1175,4 +1175,11 @@ class PlotGptHandle(BasePlotHandle):
             model_recommend_price_data = model_w.get_recommend_price(self.bb_list_1h)
             return {"model_name": model_w.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
+
+        model_v = ModelVTypeRebound(curr_price)
+        if model_v.is_detected(self.kline_list_1h, self.bb_list_1h, kline_1h_factors, kdj_4h_factors):
+            model_recommend_price_data = model_v.get_recommend_price(self.bb_list_1h)
+            return {"model_name": model_v.name,
+                    "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
+
         return

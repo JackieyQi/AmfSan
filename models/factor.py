@@ -359,6 +359,14 @@ class CandlestickFactor:
         trend, trend_stats = analyze_list_trend(diff_prices)
         return trend_stats
 
+    def is_ema_golden_cross(self, index=0):
+        return (self.macd_list[index].ema_12 >= self.macd_list[index].ema_26) \
+               and (self.macd_list[index+1].ema_12 < self.macd_list[index+1].ema_26)
+
+    def is_ema_death_cross(self, index=0):
+        return (self.macd_list[index].ema_12 <= self.macd_list[index].ema_26) \
+               and (self.macd_list[index+1].ema_12 > self.macd_list[index+1].ema_26)
+
     def is_ema_bullish_stack(self, window_size=7):
         return all((self.macd_list[i].ema_12 - self.macd_list[i].ema_26) > 0 for i in range(window_size-1))
 
