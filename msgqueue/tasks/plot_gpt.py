@@ -1158,7 +1158,7 @@ class PlotGptHandle(BasePlotHandle):
 
         model_boll_top_rise = ModelBollTopRise(curr_price)
         if model_boll_top_rise.is_detected(self.kline_list_4h, self.kline_list_1h, self.bb_list_1h,
-                                           kline_4h_factors, kline_1h_factors):
+                                           kline_4h_factors, kline_1h_factors, macd_4h_factors):
             model_recommend_price_data = model_boll_top_rise.get_recommend_price()
             return {"model_name": model_boll_top_rise.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}

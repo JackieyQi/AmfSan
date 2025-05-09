@@ -58,7 +58,8 @@ class ModelBollTopRise(object):
             "recommend_bid_price": self.curr_price,
         }
 
-    def is_detected(self, kline_list_4h, kline_list_1h, bb_list_1h, kline_4h_factors, kline_1h_factors):
+    def is_detected(self, kline_list_4h, kline_list_1h, bb_list_1h,
+                    kline_4h_factors, kline_1h_factors, macd_4h_factors):
         # 1小时: 阳线比例 >= 70%
         window_size = 10
         count_1h_bullish_k = [kline_1h_factors.is_bullish_k(index=i) for i in range(window_size)]
@@ -82,7 +83,7 @@ class ModelBollTopRise(object):
             return False
 
         # 4小时: 连续3根DIF持续上穿DEA；
-        if not kline_4h_factors.is_continue_up(window_size=3):
+        if not macd_4h_factors.is_continue_up(window_size=3):
             return False
 
         # 上面形成基础贴顶上涨趋势
