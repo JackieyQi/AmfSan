@@ -62,13 +62,13 @@ class MarketPriceView(HTTPMethodView):
             set_limit_price_result = "fail"
             set_limit_price_code = None
 
-        new_plot_result = SymbolHandle(symbol).add_plot()
-        _ = SymbolHandle(symbol).add_macd_gate()
-        _ = SymbolHandle(symbol).add_kdj_gate()
+        # new_plot_result = SymbolHandle(symbol).add_plot()
+        # _ = SymbolHandle(symbol).add_macd_gate()
+        # _ = SymbolHandle(symbol).add_kdj_gate()
         return {
             "set_limit_price_result": set_limit_price_result,
             "set_limit_price_code": set_limit_price_code,
-            "new_plot_result": new_plot_result,
+            # "new_plot_result": new_plot_result,
         }
 
 
@@ -96,6 +96,7 @@ class SubmitMarketLimitPriceView(HTTPMethodView):
             return "Invalid params:symbol"
         low_price = request.form.get("low_price", 0)
         high_price = request.form.get("high_price", 0)
+        buy_price = request.form.get("buy_price", 0)
         if not low_price and not high_price:
             raise StandardResponseExc()
 
@@ -113,13 +114,38 @@ class SubmitMarketLimitPriceView(HTTPMethodView):
             set_limit_price_result = "fail"
             set_limit_price_code = None
 
-        new_plot_result = SymbolHandle(symbol).add_plot()
-        _ = SymbolHandle(symbol).add_macd_gate()
-        _ = SymbolHandle(symbol).add_kdj_gate()
+        from exts import async_database
+        from models.order import PlotBackTestTable
+
+        async with async_database.aio_atomic():
+            try:
+                last_ticket = PlotBackTestTable.select().where(
+                    PlotBackTestTable.symbol == symbol
+                ).order_by(PlotBackTestTable.bid_ts.desc()).aio_get()
+
+                last_ticket.buy_price = str2decimal(buy_price)
+                last_ticket.buy_ts = int(time.time())
+                last_ticket.ask_curr_price = 0
+                last_ticket.ask_price = 0
+                last_ticket.ask_ts = 0
+                last_ticket.ask_plot_type = 0
+                last_ticket.ask_plot_msg = ""
+                last_ticket.sell_price = 0
+                last_ticket.sell_ts = 0
+                last_ticket.hold_time = 0
+                last_ticket.profit_percent = 0
+                last_ticket.status = 1
+                await last_ticket.aio_save()
+            except PlotBackTestTable.DoesNotExist:
+                pass
+
+        # new_plot_result = SymbolHandle(symbol).add_plot()
+        # _ = SymbolHandle(symbol).add_macd_gate()
+        # _ = SymbolHandle(symbol).add_kdj_gate()
         return {
             "set_limit_price_result": set_limit_price_result,
             "set_limit_price_code": set_limit_price_code,
-            "new_plot_result": new_plot_result,
+            # "new_plot_result": new_plot_result,
         }
 
 
