@@ -119,7 +119,7 @@ class SubmitMarketLimitPriceView(HTTPMethodView):
 
         async with async_database.aio_atomic():
             try:
-                last_ticket = PlotBackTestTable.select().where(
+                last_ticket = await PlotBackTestTable.select().where(
                     PlotBackTestTable.symbol == symbol
                 ).order_by(PlotBackTestTable.bid_ts.desc()).aio_get()
 
