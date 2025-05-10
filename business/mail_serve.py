@@ -15,13 +15,19 @@ from settings.setting import cfgs
 
 logger = logging.getLogger(__name__)
 
+
 def send_email(recipient, subject, text, from_name="AMF"):
-    
-    msg = MIMEMultipart()
     if isinstance(recipient, list):
-        msg["To"] = ";".join(recipient)
+        # msg["To"] = ";".join(recipient)
+        for _recipient in recipient:
+            _send_email(recipient, subject, text, from_name)
     else:
-        msg["To"] = recipient
+        _send_email(recipient, subject, text, from_name)
+
+
+def _send_email(recipient, subject, text, from_name):
+    msg = MIMEMultipart()
+    msg["To"] = recipient
     msg["Subject"] = Header(subject, "utf-8")
     msg["Accept-Language"] = "zh-CN"
     msg["Accept-Charset"] = "ISO-8859-1,utf-8"
@@ -50,4 +56,3 @@ def send_email(recipient, subject, text, from_name="AMF"):
         return True
     except BaseException as e:
         logger.error(",".join((str(e), traceback.format_exc())))
-
