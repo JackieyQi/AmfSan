@@ -34,8 +34,7 @@ from settings.constants import PLOT_INTERVAL_CONFIG, INNER_GET_DELETE_LIMIT_PRIC
 from utils.common import ts2bjfmt, decimal2decimal, decimal2str
 from utils.hrequest import http_get_request
 from utils.indicators import check_near_low, get_atr_price, check_near_high
-from utils.templates import template_gpt_plot_trend_following_strategy_notice, \
-    template_gpt_plot_short_term_strategy_notice, template_gpt_plot_bull_run_strategy_notice, template_strategy_notice
+from utils.templates import template_strategy_notice
 from business.back_test import BackTestHandler
 from .base import BasePlotHandle
 
@@ -236,17 +235,6 @@ class PlotGptHandle(BasePlotHandle):
         # all_limit_prices.pop("btcusdt", None)
         # return all_limit_prices.get(self.symbol)
 
-    def trend_following_strategy_reformat_notice(self, direction, current_data):
-        return template_gpt_plot_trend_following_strategy_notice(self.symbol, direction, current_data.open_ts)
-
-    def short_term_strategy_reformat_notice(self, direction, current_kdj_1h, current_price, send_ts, close_monitor_url, set_limit_price_url):
-        return template_gpt_plot_short_term_strategy_notice(
-            self.symbol, direction, current_kdj_1h.open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
-
-    def bull_run_strategy_reformat_notice(self, direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url):
-        return template_gpt_plot_bull_run_strategy_notice(
-            self.symbol, direction, open_ts, current_price, send_ts, close_monitor_url, set_limit_price_url)
-
     def get_kline_list(self, interval, limit_count=18):
         query = (
             KlineTable.select().where(
@@ -437,7 +425,7 @@ class PlotGptHandle(BasePlotHandle):
             self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
                                        f"symbol={self.symbol}" \
                                        f"&low_price={recommend_sl_price}" \
-                                       f"&high_price={recommend_tp_price}"
+                                       f"&high_price={recommend_tp_price}&buy_price="
 
             redis_client = AllCache.get_client()
             redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
@@ -448,6 +436,8 @@ class PlotGptHandle(BasePlotHandle):
                         f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
                         f"当前价: {decimal2str(curr_price)}。<br><br>"
             func_str = "get_buy_score_info"
+
+            # TODO: 这里应该是实盘记录，回测记录需要单独出来，供策略回测优化。
 
             await BackTestHandler(self.symbol).add_bid_ticket(
                 curr_price,
@@ -686,7 +676,7 @@ class PlotGptHandle(BasePlotHandle):
         if macd_4h_factors.is_continue_down():
             score_info["macd_4h_downtrend"] = 10
 
-        if (self.kdj_list_1h[0].j_val > 80) and (self.kdj_list_1h[0].j_val < self.kdj_list_1h[1].j_val):
+        if (self.kdj_list_1h[1].j_val > 80) and (self.kdj_list_1h[1].j_val < self.kdj_list_1h[2].j_val):
             score_info["kdj_1h_j_80_downtrend"] = 10
 
         if (self.kdj_list_1d[0].k_val > 80) and (self.kdj_list_1d[0].d_val > 80) \
