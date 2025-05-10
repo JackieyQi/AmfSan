@@ -6,7 +6,7 @@ from .market import (MarketInnerPriceView, MarketMacdCrossGateView,
                      MarketMacdTrendGateView, MarketPriceGateView,
                      MarketPriceView, MarketKdjCrossGateView,
                      SubmitMarketLimitPriceView, MarketPlotManageView)
-from .plot import PlotMacdView, PlotKdjView, PlotEmaView, PlotBackTestRecordsView, PlotBackTestRecordDetailView
+from .plot import PlotMacdView, PlotKdjView, PlotEmaView, TradeSignalRecordsView, TradeSignalRecordDetailView
 from .test import ServerTimeView, TestView
 from .cache_sync import CacheSyncView
 from .user import UserLogoutView, UserRegisterView, UserRegisterVerification, UserLoginView
@@ -33,8 +33,8 @@ urls_bp = [
     (PlotMacdView.as_view(), "api/plot/macd/"),
     (PlotKdjView.as_view(), "api/plot/kdj/"),
     (PlotEmaView.as_view(), "api/plot/ema/"),
-    (PlotBackTestRecordsView.as_view(), "api/plot/backtest/record/list"),
-    (PlotBackTestRecordDetailView.as_view(), "api/plot/backtest/record/detail"),
+    (TradeSignalRecordsView.as_view(), "api/plot/backtest/record/list"),
+    (TradeSignalRecordDetailView.as_view(), "api/plot/backtest/record/detail"),
 
     (HuobiAccountInfoView.as_view(), "nmb"),
 

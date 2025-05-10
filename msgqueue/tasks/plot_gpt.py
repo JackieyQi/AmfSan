@@ -35,7 +35,7 @@ from utils.common import ts2bjfmt, decimal2decimal, decimal2str
 from utils.hrequest import http_get_request
 from utils.indicators import check_near_low, get_atr_price, check_near_high
 from utils.templates import template_strategy_notice
-from business.back_test import BackTestHandler
+from business.trade_signal_recorder import TradeSignalHandler
 from .base import BasePlotHandle
 
 logger = logging.getLogger(__name__)
@@ -439,7 +439,7 @@ class PlotGptHandle(BasePlotHandle):
 
             # TODO: 这里应该是实盘记录，回测记录需要单独出来，供策略回测优化。
 
-            await BackTestHandler(self.symbol).add_bid_ticket(
+            await TradeSignalHandler(self.symbol).add_bid_ticket(
                 curr_price,
                 recommend_bid_price,
                 self.check_time,
@@ -495,7 +495,7 @@ class PlotGptHandle(BasePlotHandle):
                         f"<br><br> 📉 建议卖出价：{decimal2str(recommend_ask_price)}，" \
                         f"当前价: {decimal2str(curr_price)}。" \
 
-            await BackTestHandler(self.symbol).update_ask_ticket(
+            await TradeSignalHandler(self.symbol).update_ask_ticket(
                 curr_price,
                 recommend_ask_price,
                 self.check_time,
@@ -581,7 +581,7 @@ class PlotGptHandle(BasePlotHandle):
                     3.2.6. (或)1小时KDJ的附近(当前时间段处于死叉向下的2个时间段内)的高位值(85根据fng指数值动态调整)死叉，表示出场信号加强。
                     3.2.7. (或)持仓时间超过8小时，增强出场信号。
 
-        ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁“假死叉”和“假金叉”。
+        ⚠️ 注意：快进快出策略适合高频短线交易者，如果在趋势不明朗的震荡行情中，信号可能会频繁"假死叉"和"假金叉"。
         """
 
     def is_bb_lower2mid_taking_profit(self):

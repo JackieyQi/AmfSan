@@ -6,7 +6,7 @@ from utils.authentication import HTTPMethodView, ProtectedView
 from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
 from settings.constants import PLOT_INTERVAL_LIST
 from business.market import SymbolHandle
-from business.back_test import BackTestViewHandler
+from business.trade_signal_recorder import TradeSignalViewHandler
 from utils.exception import StandardResponseExc
 
 
@@ -109,7 +109,7 @@ class PlotEmaView(HTTPMethodView):
         return "handle over!"
 
 
-class PlotBackTestRecordsView(ProtectedView):
+class TradeSignalRecordsView(ProtectedView):
     need_auth = {"get": True, }
 
     async def get(self, request):
@@ -121,10 +121,10 @@ class PlotBackTestRecordsView(ProtectedView):
         status = request.args.get("status")
         if status is not None:
             status = int(status)
-        return await BackTestViewHandler(user.user_id).get_back_test_records(page, page_size, symbol, status)
+        return await TradeSignalViewHandler(user.user_id).get_trade_records(page, page_size, symbol, status)
 
 
-class PlotBackTestRecordDetailView(ProtectedView):
+class TradeSignalRecordDetailView(ProtectedView):
     need_auth = {"get": True, }
 
     async def get(self, request):
@@ -135,4 +135,4 @@ class PlotBackTestRecordDetailView(ProtectedView):
         if not all([symbol, record_id]):
             raise StandardResponseExc(msg="Missing required fields")
 
-        return await BackTestViewHandler(user.user_id).get_detail_record(symbol, record_id)
+        return await TradeSignalViewHandler(user.user_id).get_detail_record(symbol, record_id)

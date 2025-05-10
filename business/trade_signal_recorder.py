@@ -13,7 +13,7 @@ from cache import AllCache
 from .market import MarketPriceHandler
 
 
-class BackTestViewHandler(object):
+class TradeSignalViewHandler(object):
     def __init__(self, user_id):
         self.user_id = user_id
 
@@ -48,15 +48,14 @@ class BackTestViewHandler(object):
                 "sell_ts": record.sell_ts,
                 "hold_time": self._format_hold_time(record.hold_time),
                 "profit_percent": f"{record.profit_percent}%",
-                # "profit_amount": profit_amount,
                 "status": record.status,
                 "status_text": self._get_status_text(record.status)
             }
         return result
 
-    async def get_back_test_records(self, page=1, page_size=10, symbol=None, status=None):
+    async def get_trade_records(self, page=1, page_size=10, symbol=None, status=None):
         """
-        分页查询回测记录
+        分页查询交易记录
 
         Args:
             page (int): 当前页码，默认为1
@@ -109,31 +108,15 @@ class BackTestViewHandler(object):
         # 转换结果为字典列表
         result_list = []
         for record in records:
-            # 计算利润金额（如果有买入和卖出价格）
-            # profit_amount = 0
-            # if record.buy_price > 0 and record.sell_price > 0:
-            #     profit_amount = float(record.sell_price) - float(record.buy_price)
-
             result_list.append({
                 "id": record.id,
                 "symbol": record.symbol,
-                # "bid_curr_price": decimal2str(record.bid_curr_price),
-                # "bid_price": decimal2str(record.bid_price),
-                # "bid_ts": record.bid_ts,
-                # "bid_plot_type": record.bid_plot_type,
-                # "bid_plot_msg": record.bid_plot_msg,
                 "buy_price": decimal2str(record.buy_price),
                 "buy_ts": record.buy_ts,
-                # "ask_curr_price": decimal2str(record.ask_curr_price),
-                # "ask_price": decimal2str(record.ask_price),
-                # "ask_ts": record.ask_ts,
-                # "ask_plot_type": record.ask_plot_type,
-                # "ask_plot_msg": record.ask_plot_msg,
                 "sell_price": decimal2str(record.sell_price),
                 "sell_ts": record.sell_ts,
                 "hold_time": self._format_hold_time(record.hold_time),
                 "profit_percent": f"{record.profit_percent}%",
-                # "profit_amount": profit_amount,
                 "status": record.status,
                 "status_text": self._get_status_text(record.status)
             })
@@ -174,7 +157,7 @@ class BackTestViewHandler(object):
         return format_hold_time
 
 
-class BackTestHandler(object):
+class TradeSignalHandler(object):
     def __init__(self, symbol=None):
         self.symbol = symbol
 
@@ -194,20 +177,11 @@ class BackTestHandler(object):
                 bid_plot_msg=bid_plot_msg,
             )
 
-            # MarketPriceLimitCache.hset(
-            #     self.symbol,
-            #     "{}:{}:{}".format(
-            #         bid_ts, curr_price * Decimal("0.95"), curr_price * Decimal("1.05")
-            #     ),
-            # )
-
     async def update_ask_ticket(self, curr_price, ask_price, ask_ts, ask_plot_type, ask_plot_msg):
         async with async_database.aio_atomic():
             try:
                 last_ticket = await PlotBackTestTable.select().where(
                     PlotBackTestTable.symbol == self.symbol,
-                    # PlotBackTestTable.buy_ts > 0,
-                    # PlotBackTestTable.ask_ts == 0,
                 ).order_by(PlotBackTestTable.bid_ts.desc()).aio_get()
 
                 last_ticket.ask_curr_price = curr_price
@@ -230,7 +204,6 @@ class BackTestHandler(object):
             db_data = await PlotBackTestTable.select().where(PlotBackTestTable.status.in_([0, 3])).aio_execute()
 
             for _d in db_data:
-                # TODO: 优化实时价格获取->需要单独起 循环任务，根据k线价格范围，但是又没有1分钟k线
                 curr_price = market_price_handler.get_current_price(_d.symbol).get("price")
 
                 if not curr_price:
@@ -242,14 +215,8 @@ class BackTestHandler(object):
                         _d.buy_price = _d.bid_price
                         _d.buy_ts = curr_ts
                         _d.status = 1
-                        await _d.aio_save()
+                        await _d.aio_save() 
 
-                        # MarketPriceLimitCache.hset(
-                        #     self.symbol,
-                        #     "{}:{}:{}".format(
-                        #         curr_ts, curr_price * Decimal("0.95"), curr_price * Decimal("1.05")
-                        #     ),
-                        # )
                         redis_client = AllCache.get_client()
                         cache_data = redis_client.get(f"sl_tp:{self.symbol}")
                         if not cache_data:
@@ -289,5 +256,3 @@ class BackTestHandler(object):
                         await _d.aio_save()
 
                         self.set_last_trade_time(curr_ts)
-
-

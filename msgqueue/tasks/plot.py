@@ -9,7 +9,7 @@ from decimal import Decimal
 from exts import async_database
 from cache import AllCache
 from business.market import MarketPriceHandler
-from business.back_test import BackTestHandler
+from business.trade_signal_recorder import TradeSignalHandler
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     CheckKdjCrossGateCache, CheckKdjCvGateCache
 from models.order import PlotBackTestTable
@@ -42,7 +42,7 @@ async def check_price(*args, **kwargs):
         await PlotPriceHandle(symbol, price).check_limit_price()
 
     all_curr_prices = market_price_handler.get_current_price_by_cache()
-    await BackTestHandler().update_real_ticket(all_curr_prices)
+    await TradeSignalHandler().update_real_ticket(all_curr_prices)
 
 
 async def check_balance(*args, **kwargs):
