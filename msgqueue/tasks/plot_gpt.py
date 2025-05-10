@@ -404,6 +404,7 @@ class PlotGptHandle(BasePlotHandle):
 
         if not await self.has_limit_price_check((0, 1, 3)):
             strategy_text = ""
+            score_info = {}
             recommend_bid_price = None
 
             if model_info := await self.get_buy_by_model_detect(curr_price):
