@@ -339,12 +339,15 @@ class ModelWTypeRebound(object):
         if p1_index == 0 or p1_index == 14:
             return False
 
-        # p1前部分沿下轨/TODO:快速下落
-        if not (kline_factors.is_along_lower_band(index=p1_index, n=window_size-p1_index)
-                or (
-                        kline_list[window_size-1].open_price > (bb_list[window_size-1].bbupper + bb_list[window_size-1].bbmid)/Decimal("2")
-                        and p1_price < (bb_list[p1_index].bbmid + bb_list[p1_index].bblower)/Decimal("2")
-                )
+        # 检查P1前的价格走势是否沿布林带下轨或快速下跌
+        if not (
+            # 检查是否沿布林带下轨运行
+            kline_factors.is_along_lower_band(index=p1_index, n=window_size-p1_index) or
+            # 检查是否快速下跌:开盘价高于上中轨均值且最低点低于中下轨均值
+            (
+                kline_list[window_size-1].open_price > (bb_list[window_size-1].bbupper + bb_list[window_size-1].bbmid)/Decimal("2") and
+                p1_price < (bb_list[p1_index].bbmid + bb_list[p1_index].bblower)/Decimal("2")
+            )
         ):
             return False
 
