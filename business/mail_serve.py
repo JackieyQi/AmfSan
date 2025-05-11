@@ -20,7 +20,7 @@ def send_email(recipient, subject, text, from_name="AMF"):
     if isinstance(recipient, list):
         # msg["To"] = ";".join(recipient)
         for _recipient in recipient:
-            _send_email(recipient, subject, text, from_name)
+            _send_email(_recipient, subject, text, from_name)
     else:
         _send_email(recipient, subject, text, from_name)
 
