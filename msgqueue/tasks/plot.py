@@ -235,7 +235,6 @@ class PlotAssetHandle(BasePlotHandle):
 
 class TopPriceHandle(BasePlotHandle):
     def __init__(self):
-        self.exchange_info_url = "https://api.binance.com/api/v3/exchangeInfo"
         self.price_url = "https://api.binance.com/api/v3/ticker/price"
         self.kline_url = "https://api.binance.com/api/v3/klines"
         super().__init__()
@@ -243,37 +242,24 @@ class TopPriceHandle(BasePlotHandle):
     async def update_all_symbols(self):
         all_symbols_list = []
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                    self.exchange_info_url, params={"permissions": "SPOT", "symbolStatus": "TRADING"}
-            ) as response:
+            async with session.get(self.price_url) as response:
                 data = await response.json()
-                for item in data["symbols"]:
+                for item in data:
                     symbol = item["symbol"]
-                    if item["quoteAsset"] != "USDT":
-                        continue
-                    elif item["status"] != "TRADING":
-                        continue
-                    all_symbols_list.append(symbol.lower())
+                    if symbol.endswith("USDT"):
+                        all_symbols_list.append(symbol.lower())
                         
-        old_symbols_list = {i.symbol:i.is_valid for i in await BnSymbolTable.select().aio_execute()}
+        old_symbols_list = [i.symbol for i in await BnSymbolTable.select().aio_execute()]
 
         count = 0
         async with async_database.aio_atomic(): 
             for symbol in all_symbols_list:
                 if symbol in old_symbols_list:
-                    if old_symbols_list[symbol]:
-                        continue
-                    else:
-                        await BnSymbolTable.update(is_valid=True).where(BnSymbolTable.symbol == symbol).aio_execute()
-                        count += 1
-                    del old_symbols_list[symbol]
+                    continue
                 else:
                     await BnSymbolTable.aio_create(symbol=symbol, is_valid=True)
                     count += 1
                 
-            for symbol in old_symbols_list:
-                await BnSymbolTable.update(is_valid=False).where(BnSymbolTable.symbol == symbol).aio_execute()
-
         logger.info("update_all_symbols, count: %s", count)
         return all_symbols_list
                     
@@ -310,10 +296,10 @@ class TopPriceHandle(BasePlotHandle):
             async with session.get(
                     self.kline_url,
                     params={
-                        "symbol": symbol.upper(), "interval": "1h", "limit": 36}
-            ) as response:
+                        "symbol": symbol.upper(), "interval": "1h", "limit": 20}
+                    ) as response:
                 data = await response.json()
-                if len(data) < 36:
+                if len(data) < 20:
                     return
                 
                 high_price_list = [i[2] for i in data]
