@@ -34,6 +34,7 @@ route_map = {
     #
     "check_balance_job": plot.check_balance,
     "check_price_job": plot.check_price,
+    "check_break_history_top_price_job": plot.check_break_history_top_price,
     "check_macd_cross_job": plot.check_macd_cross,
     "check_macd_cross_by_symbol": plot.check_macd_cross_by_symbol,
     "check_macd_trend_job": plot.check_macd_trend,
@@ -43,6 +44,7 @@ route_map = {
     "check_gpt_plot_job": plot.check_gpt_plot,
     "check_gpt_plot_job_by_symbol": plot.check_gpt_plot_job_by_symbol,
     #
+    "update_all_symbols_job": plot.update_all_symbols,
 }
 
 

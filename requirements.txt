@@ -10,10 +10,12 @@ annotated-types==0.7.0
 anyio==4.8.0
 async-timeout==4.0.3
 attrs==25.1.0
+backtrader==1.9.78.123
 bcrypt==4.3.0
 certifi==2023.7.22
 cffi==1.17.1
 charset-normalizer==3.3.0
+click==8.2.0
 cryptography==44.0.2
 dataclasses-json==0.6.7
 distro==1.9.0

@@ -9,6 +9,16 @@ from peewee import (BooleanField, CharField, DecimalField, IntegerField,
 from . import Base
 
 
+class BnSymbolTable(Base):
+    id = AutoField()
+    symbol = CharField(db_column="symbol", max_length=10)
+    is_valid = BooleanField(db_column="is_valid", default=True)
+    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+
+    class Meta:
+        table_name = "bn_symbol_table"
+
+
 class KlineTable(Base):
     id = AutoField()
     symbol = CharField(db_column="symbol", index=True, max_length=10)
@@ -88,6 +98,9 @@ class MacdTable(Base):
     dea = DecimalField(db_column="dea", default=0, max_digits=20, decimal_places=8)
     macd = DecimalField(db_column="macd", default=0, max_digits=20, decimal_places=8)
 
+    # TODO:高位小数有进行比例转换，autoscale
+    # scale_exp = IntegerField(db_column="scale_exp", default=1)
+
     create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
 
     class Meta:
@@ -141,6 +154,11 @@ class RsiTable(Base):
     avg_loss = DecimalField(
         db_column="agv_loss", default=0, max_digits=20, decimal_places=8
     )
+
+    # TODO:高位小数有进行比例转换，autoscale
+    # scale_exp = IntegerField(db_column="scale_exp", default=1)
+
+    # TODO:column error.
     period = IntegerField(db_column="status", default=6, help_text="rsi周期")
 
     create_ts = IntegerField(db_column="create_ts", default=int(time.time()))

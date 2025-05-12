@@ -1,33 +1,36 @@
 #! /usr/bin/env python
 # coding:utf8
 
+import asyncio
 import hashlib
 import logging
+import random
 import time
 from decimal import Decimal
 
-from exts import async_database
-from cache import AllCache
+import aiohttp
+
 from business.market import MarketPriceHandler
 from business.trade_signal_recorder import TradeSignalHandler
-from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
-    CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.order import PlotBackTestTable
-from models.market import KlineTable, MacdTable, KdjTable, EmaTable
+from cache import AllCache
+from cache.plot import (CheckKdjCrossGateCache,
+                       CheckMacdCrossGateCache, CheckMacdTrendGateCache)
+from exts import async_database
+from models.market import BnSymbolTable, EmaTable, KdjTable, KlineTable, MacdTable
 from models.user import EmailMsgHistoryTable, UserSymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
-from settings.constants import (INNER_GET_DELETE_LIMIT_PRICE_URL,
-                                INNER_GET_DELETE_MACD_CROSS_URL,
-                                INNER_GET_DELETE_MACD_TREND_URL,
-                                INNER_GET_DELETE_KDJ_CROSS_URL,
-                                INNER_GET_PRICE_URL,
-                                INNER_GET_UPDATE_PRICE_URL,
-                                PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG,
-                                )
-from utils.common import decimal2str, str2decimal, ts2bjfmt, check_lock_latest
-from utils.templates import (template_asset_notice, template_macd_cross_notice,
-                             template_macd_trend_notice, template_kdj_cross_notice, template_ema_cross_notice)
 from msgqueue.queue import push_plot_mq
+from settings.constants import (INNER_GET_DELETE_KDJ_CROSS_URL,
+                              INNER_GET_DELETE_LIMIT_PRICE_URL,
+                              INNER_GET_DELETE_MACD_CROSS_URL,
+                              INNER_GET_DELETE_MACD_TREND_URL,
+                              INNER_GET_PRICE_URL,
+                              INNER_GET_UPDATE_PRICE_URL, PLOT_INTERVAL_CONFIG,
+                              PLOT_INTERVAL_LIST)
+from utils.common import check_lock_latest, decimal2str, str2decimal, ts2bjfmt
+from utils.templates import (template_asset_notice, template_ema_cross_notice,
+                           template_kdj_cross_notice, template_macd_cross_notice,
+                           template_macd_trend_notice)
 
 from .base import BasePlotHandle, get_plot_symbols_info
 from .plot_gpt import PlotGptHandle
@@ -40,13 +43,17 @@ async def check_price(*args, **kwargs):
 
     for symbol, price in market_price_handler.get_all_limit_price().items():
         await PlotPriceHandle(symbol, price).check_limit_price()
-        
-    all_symbols_list = [i.symbol for i in await UserSymbolPlotTable.select().aio_execute()]
-    for symbol in all_symbols_list:
-        await PlotPriceHandle(symbol, None).check_break_history_top_price()
 
     all_curr_prices = market_price_handler.get_current_price_by_cache()
     await TradeSignalHandler().update_real_ticket(all_curr_prices)
+    
+    
+async def check_break_history_top_price(*args, **kwargs):
+    await TopPriceHandle().check_break_history_top_price()
+
+
+async def update_all_symbols(*args, **kwargs):
+    await TopPriceHandle().update_all_symbols()
 
 
 async def check_balance(*args, **kwargs):
@@ -226,13 +233,130 @@ class PlotAssetHandle(BasePlotHandle):
         await self.send_msg(email_title, email_content)
 
 
+class TopPriceHandle(BasePlotHandle):
+    def __init__(self):
+        self.price_url = "https://api.binance.com/api/v3/ticker/price"
+        self.kline_url = "https://api.binance.com/api/v3/klines"
+        super().__init__()
+        
+    async def update_all_symbols(self):
+        all_symbols_list = []
+        async with aiohttp.ClientSession() as session:
+            async with session.get(self.price_url) as response:
+                data = await response.json()
+                for item in data:
+                    symbol = item["symbol"]
+                    if symbol.endswith("USDT"):
+                        all_symbols_list.append(symbol.lower())
+                        
+        old_symbols_list = {i.symbol:i.is_valid for i in await BnSymbolTable.select().aio_execute()}
+
+        count = 0
+        async with async_database.aio_atomic(): 
+            for symbol in all_symbols_list:
+                if symbol in old_symbols_list:
+                    if old_symbols_list[symbol]:
+                        continue
+                    else:
+                        await BnSymbolTable.update(is_valid=True).where(BnSymbolTable.symbol == symbol).aio_execute()
+                        count += 1
+                    del old_symbols_list[symbol]
+                else:
+                    await BnSymbolTable.aio_create(symbol=symbol, is_valid=True)
+                    count += 1
+                
+            for symbol in old_symbols_list:
+                await BnSymbolTable.update(is_valid=False).where(BnSymbolTable.symbol == symbol).aio_execute()
+
+        logger.info("update_all_symbols, count: %s", count)
+        return all_symbols_list
+                    
+    async def check_break_history_top_price(self):
+        bn_symbols_list = [i.symbol for i in 
+                           await BnSymbolTable.select(BnSymbolTable.symbol).where(
+                               BnSymbolTable.is_valid == True).aio_execute()]
+        if not bn_symbols_list:
+            bn_symbols_list = await self.update_all_symbols()
+        
+        user_symbols_list = [i.symbol for i in
+                             await UserSymbolPlotTable.select(UserSymbolPlotTable.symbol).aio_execute()]
+        for symbol in user_symbols_list:
+            if symbol in bn_symbols_list:
+                bn_symbols_list.remove(symbol)
+                continue
+            await self._check_break_history_top_price_from_db(symbol)
+        
+        for symbol in bn_symbols_list:
+            await self._check_break_history_top_price_from_api(symbol)
+            
+    async def _check_break_history_top_price_from_api(self, symbol):
+        await asyncio.sleep(random.uniform(1.1, 17.2))
+        
+        # 添加请求间隔控制
+        if hasattr(self, '_last_request_time'):
+            time_diff = time.time() - self._last_request_time
+            if time_diff < 0.1:  # 最小间隔100ms
+                await asyncio.sleep(0.1 - time_diff)
+        
+        self._last_request_time = time.time()
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                    self.kline_url,
+                    params={
+                        "symbol": symbol.upper(), "interval": "1h", "limit": 20}
+                    ) as response:
+                data = await response.json()
+                if len(data) < 20:
+                    return
+                
+                high_price_list = [i[2] for i in data]
+                curr_high_price = high_price_list[0]
+                history_high_price = max(high_price_list[1:])
+                if curr_high_price <= history_high_price:
+                    return
+                curr_ts = data[0][0]
+                
+        email_title = f"{symbol} Top Price Notice"
+        
+        self.result[symbol] = f"""
+        <br><br><b> {symbol}: </b><br>🔥 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀 new high price:{curr_high_price},
+        """ 
+
+        email_msg_md5_str = f"check_break_history_top_price:{symbol}:{curr_ts}"
+        await self.send_msg(email_title, email_msg_md5_str)
+        del self.result[symbol]
+        
+    async def _check_break_history_top_price_from_db(self, symbol):
+        query = KlineTable.select().where(
+            KlineTable.symbol == symbol, KlineTable.interval_val == "1h"
+        ).order_by(KlineTable.id.desc()).limit(20)
+        query_list = [i for i in await query.aio_execute()]
+        if len(query_list) < 20:
+            return
+        
+        high_price_list = [i.high_price for i in query_list]
+        
+        curr_high_price = high_price_list[0]
+        history_high_price = max(high_price_list[1:])
+        if curr_high_price <= history_high_price:
+            return
+
+        email_title = f"{symbol} Top Price Notice"
+        
+        self.result[symbol] = f"""
+        <br><br><b> {symbol}: </b><br>🔥 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀 new high price:{curr_high_price},
+        """ 
+
+        email_msg_md5_str = f"check_break_history_top_price:{symbol}:{query_list[0].open_ts}"
+        await self.send_msg(email_title, email_msg_md5_str)
+        del self.result[symbol]
+
+
 class PlotPriceHandle(BasePlotHandle):
     def __init__(self, symbol, price):
         super().__init__()
-        if price:
-            set_time, limit_low_price, limit_high_price = price
-        else:
-            set_time, limit_low_price, limit_high_price = None, None, None
+        set_time, limit_low_price, limit_high_price = price
 
         self.symbol = symbol
         self.limit_low_price = limit_low_price
@@ -307,30 +431,6 @@ class PlotPriceHandle(BasePlotHandle):
         #     Decimal(decimal2str(self.limit_low_price * Decimal(self.high_incr))),
         #     Decimal(decimal2str(self.limit_high_price * Decimal(self.high_incr))),
         # )
-        
-    async def check_break_history_top_price(self):
-        query = KlineTable.select().where(
-            KlineTable.symbol == self.symbol, KlineTable.interval_val == "1h"
-        ).order_by(KlineTable.id.desc()).limit(20)
-        query_list = [i for i in await query.aio_execute()]
-        if len(query_list) < 20:
-            return
-        
-        high_price_list = [i.high_price for i in query_list]
-        
-        curr_high_price = high_price_list[0]
-        history_high_price = max(high_price_list[1:])
-        if curr_high_price <= history_high_price:
-            return
-
-        email_title = f"{self.symbol} Top Price Notice"
-        
-        self.result[self.symbol] = f"""
-        <br><br><b> {self.symbol}: </b><br>🔥 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀 new high price:{curr_high_price},
-        """ 
-
-        email_msg_md5_str = f"check_break_history_top_price:{self.symbol}:{query_list[0].open_ts}"
-        await self.send_msg(email_title, email_msg_md5_str)
         
     async def check_limit_price(self):
         email_title = f"{self.symbol} Price Notice"

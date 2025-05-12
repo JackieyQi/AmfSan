@@ -37,17 +37,18 @@ def command_create_tables():
             [
                 order.SymbolPriceChangeHistoryTable,
                 order.OrderTradeHistoryTable,
-                # order.SymbolPlotTable,
                 order.PlotBackTestTable,
                 wallet.BalanceHistoryTable,
                 wallet.TotalBalanceHistoryTable,
                 user.EmailMsgHistoryTable,
                 user.UserInfoTable,
+                user.UserSymbolPlotTable,
                 market.KlineTable,
                 market.MacdTable,
                 market.KdjTable,
                 market.RsiTable,
                 market.BollTable,
+                market.BnSymbolTable,
             ]
         )
 

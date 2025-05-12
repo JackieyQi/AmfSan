@@ -90,6 +90,7 @@ class JobScheduler(object):
 
         # Technical analysis jobs
         schedule.every(30).seconds.do(lambda: self.push_to_plot("check_price_job"))
+        schedule.every(17).minutes.do(lambda: self.push_to_plot("check_break_history_top_price_job"))
         # schedule.every(2).minutes.do(lambda: self.push_to_amf("check_macd_cross_job", amf_queue))
         # schedule.every(13).minutes.do(lambda: self.push_to_plot("check_macd_trend_job"))
         # schedule.every(3).minutes.do(lambda: self.push_to_amf("check_kdj_cross_job", amf_queue))
@@ -97,6 +98,7 @@ class JobScheduler(object):
         schedule.every(7).minutes.do(lambda: self.push_to_amf("check_gpt_plot_job", amf_queue))
 
         # user action
+        schedule.every().day.at("01:00").do(lambda: self.push_to_amf("update_all_symbols_job", amf_queue))
         # schedule.every().day.at("05:00").do(save_trade_history_job)
         # schedule.every().day.at("15:27").do(check_balance_job)
         # schedule.every().day.at("03:17").do(save_account_balance_job)
