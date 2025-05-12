@@ -3,14 +3,29 @@
 
 import json
 from decimal import Decimal as D
+import asyncio
+import click
+from datetime import datetime, timedelta
 
 from exts import MysqlClient
 from models import order, user, wallet, market
+from business.backtest.backtest_engine import BacktestEngine
+from business.backtest.backtest_strategy import BacktestStrategy
+from business.backtest.data_loader import DataLoader
 
 database = MysqlClient.get_database()
 
 
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
 def command_create_tables():
+    """
+    创建表
+    """
     print("***************start command_create_tables**************")
     with database:
         database.create_tables(
@@ -91,42 +106,16 @@ def command_insert_mytrades(key, secret, symbol):
     print("***************end command_insert_mytrades****************")
 
 
-def command_add_new_symbol(symbol):
-    from models.order import OrderTradeHistoryTable, SymbolPlotTable
-    from cache import AllCache
-
-    print("***************start command_add_new_symbol**************")
-    symbol = symbol.lower()
-
-    query = SymbolPlotTable.select().where(
-        SymbolPlotTable.user_id == 2, SymbolPlotTable.symbol == symbol
-    )
-    if query:
-        print("Already set.")
-    else:
-        SymbolPlotTable(
-            user_id=2,
-            symbol=symbol,
-        ).save()
-
-        redis_client = AllCache.get_client()
-        redis_key = "symbol:cfg"
-        redis_client.delete(redis_key)
-        redis_client.close()
-
-    print("***************end command_add_new_symbol****************")
-
-
 def command_del_symbol(symbol):
-    from models.order import SymbolPlotTable
+    from models.user import UserSymbolPlotTable
     from models.market import KlineTable, MacdTable, KdjTable, RsiTable
     from cache import AllCache
 
     print("***************start command_add_new_symbol**************")
     symbol = symbol.lower()
 
-    symbol_plot_del_rows = SymbolPlotTable.delete().where(
-        SymbolPlotTable.user_id == 2, SymbolPlotTable.symbol == symbol
+    symbol_plot_del_rows = UserSymbolPlotTable.delete().where(
+        UserSymbolPlotTable.user_id == "root", UserSymbolPlotTable.symbol == symbol
     ).execute()
 
     kline_del_rows = KlineTable.delete().where(KlineTable.symbol==symbol).execute()
@@ -183,5 +172,86 @@ def command_init_macd():
     print("***************end command_init_macd****************")
 
 
+@cli.command()
+@click.option('--symbol', required=True, help='交易对，例如：btcusdt')
+@click.option('--start_time', default=None, help='开始时间，格式：YYYY-MM-DD_HH:mm，例如：2024-05-10_05:00')
+def command_backtest_strategy(symbol: str, start_time: str):
+    """
+    回测策略
+    
+    Args:
+        symbol: 交易对
+        start_time: 开始时间
+    """
+    async def run_backtest():
+        # 创建回测引擎
+        engine = BacktestEngine()
+        
+        # 设置回测时间范围
+        end_time_dt = datetime.now()
+        try:
+            if start_time:
+                start_time_dt = datetime.strptime(start_time, '%Y-%m-%d_%H:%M')
+            else:
+                # 如果没有指定开始时间，默认回测最近30天
+                start_time_dt = end_time_dt - timedelta(days=30)
+                
+            if start_time_dt >= end_time_dt:
+                click.echo("错误：开始时间必须早于结束时间")
+                return
+                
+        except ValueError as e:
+            click.echo(f"错误：时间格式不正确，请使用 YYYY-MM-DD_HH:mm 格式，例如：2024-05-10_05:00")
+            return
+        
+        data_loader = DataLoader()
+        interval = "1h"
+        kline_data = await data_loader.get_historical_data(symbol, interval, start_time_dt)
+        
+        if kline_data.empty:
+            click.echo(f"没有找到 {symbol} 在 {interval} 周期下的历史数据")
+            return
+            
+        # 添加数据到引擎
+        engine.add_data(kline_data)
+        
+        # 添加策略
+        engine.add_strategy(BacktestStrategy, symbol=symbol)
+            
+        # 设置初始资金和佣金
+        engine.set_cash(10000)
+        engine.set_commission(0.001)
+        
+        # 运行回测
+        engine.run()
+        
+        # 获取结果
+        results = engine.get_results()
+        
+        # 打印回测结果
+        click.echo("\n=== 回测结果 ===")
+        click.echo(f"交易对: {symbol}")
+        # click.echo(f"时间周期: {interval}")
+        click.echo(f"回测时间: {start_time_dt.strftime('%Y-%m-%d %H:%M')} 到 {end_time_dt.strftime('%Y-%m-%d %H:%M')}")
+        # click.echo(f"初始资金: {initial_cash:.2f}")
+        # click.echo(f"最终资金: {results['portfolio_value']:.2f}")
+        click.echo(f"总收益率: {results['returns']*100:.2f}%")
+        click.echo(f"最大回撤: {results['drawdown']['max_drawdown_percent']:.2f}%")
+        click.echo(f"交易次数: {len(results['trades'])}")
+        
+        # 计算胜率
+        if results['trades']:
+            winning_trades = sum(1 for trade in results['trades'] if trade['pnl'] > 0)
+            win_rate = winning_trades / len(results['trades']) * 100
+            click.echo(f"胜率: {win_rate:.2f}%")
+        
+        # 绘制图表
+        engine.plot()
+
+    # 运行回测
+    asyncio.run(run_backtest())
+
+
 if __name__ == "__main__":
     print("RUN: script.")
+    cli()

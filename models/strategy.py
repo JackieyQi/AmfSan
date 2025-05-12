@@ -30,9 +30,21 @@ class ModeExcludeFactor:
     @staticmethod
     def has_bearish(kline_4h_factors, macd_4h_factors):
         is_4h_ema12_continue_down = kline_4h_factors.is_ema12_continue_down(window_size=3)
-        is_4h_macd_death_cross = any([macd_4h_factors.is_death_cross(index=i) for i in range(2)])
-
+        
+        if macd_4h_factors.is_death_cross(index=0):
+            is_4h_macd_death_cross = True
+            death_cross_index = 1
+        elif macd_4h_factors.is_death_cross(index=1):
+            is_4h_macd_death_cross = True
+            death_cross_index = 2
+        else:
+            is_4h_macd_death_cross = False
+            death_cross_index = None
+            
         if (is_4h_ema12_continue_down or is_4h_macd_death_cross) and kline_4h_factors.is_bearish_engulfing_k():
+            return True
+        
+        if is_4h_macd_death_cross and macd_4h_factors.is_bullish_stack(index=death_cross_index):
             return True
 
         return False

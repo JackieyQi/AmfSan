@@ -431,17 +431,17 @@ class MacdFactor:
         """
         return self.macd_list[index].macd < 0 and self.macd_list[index+1].macd >= 0
 
-    def get_bullish_stack(self):
+    def is_bullish_stack(self, index=0, window_size=15):
         """
         多头排列
         """
-        return all(i.macd >= 0 for i in self.macd_list)
+        return all(i.macd >= 0 for i in self.macd_list[index:index+window_size])
 
-    def get_bearish_stack(self):
+    def is_bearish_stack(self, index=0, window_size=15):
         """
         空头排列
         """
-        return all(i.macd < 0 for i in self.macd_list)
+        return all(i.macd < 0 for i in self.macd_list[index:index+window_size])
 
     def get_dif_downtrend(self):
         dif = self.macd_list[0].ema_12 - self.macd_list[0].ema_26

@@ -147,10 +147,12 @@ class StrategyHandle:
         """
         主动止盈:
             * 若 KDJ J 值 > 90 且 MACD DIF 下降，视为强势过热信号，部分止盈。
-            * 1小时的RSI > 80 + 当前价格接近或突破布林带上轨 + 成交量放大 -> 止盈离场。
+            * 1小时: 当前价格接近或突破布林带上轨 + RSI > 80 + 成交量放大 + 价格未破新高 -> 止盈离场。
 
-            * 价格逼近 1小时布林带上轨：
-                    1. 如果 RSI < 75 且 MACD 柱状图收缩（即动能减弱）→ 执行止盈
+            * 1小时: 当前价格接近或突破布林带上轨 + RSI < 75 + MACD 柱状图收缩（即动能减弱）+ 附近价格未破新高
+                * 4小时: 当前价格未沿着上轨运行 
+                → 执行止盈
+            
                     TODO: 2. 如果 RSI > 75 且 KDJ 仍金叉、MACD 扩张 → 等待下一根 K 线确认
                     TODO: 3. 如果连续3根K线都在上轨附近但价格未放量上涨 → 止盈
 
@@ -163,15 +165,18 @@ class StrategyHandle:
             direction += "强势过热信号，部分止盈。"
             return {"direction": direction}
 
-        kline_1h_factors = CandlestickFactor(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
-        if self.rsi_list_1h[0].rsi > Decimal("80") and kline_1h_factors.is_near_upper() \
-                and kline_1h_factors.get_vol_factor(5).get("has_enhance_spike_volume", False):
-            direction += "止盈离场：1小时的RSI > 80 + 当前价格接近或突破布林带上轨 + 成交量放大"
+        if (self.kline_1h_factors.is_near_upper() 
+                and self.rsi_list_1h[0].rsi > Decimal("80") 
+                and self.kline_1h_factors.get_vol_factor(5).get("has_enhance_spike_volume", False) 
+                and self.kline_list_1h[0].high_price < self.kline_1h_factors.get_donchian_channel(window_size=25)["max_price"]):
+            direction += "止盈离场：1小时的RSI > 80 + 当前价格接近或突破布林带上轨 + 成交量放大 + 价格未破新高"
             return {"direction": direction}
-
-        near_info = check_near_high(self.kline_list_1h[:21][::-1], self.bb_list_1h[0].bbmid, self.bb_list_1h[0].bbupper, logger)
-        if near_info["is_near"]:
-            if (self.rsi_list_1h[0].rsi < Decimal("75")) and (self.macd_list_1h[0].macd < self.macd_list_1h[1].macd):
+        
+        if (self.kline_1h_factors.is_near_upper(index=0, tolerance=Decimal("0.2")) 
+                and self.rsi_list_1h[0].rsi < Decimal("75") 
+                and self.macd_list_1h[0].macd < self.macd_list_1h[1].macd
+                and not any([self.kline_list_1h[i].high_price < self.kline_1h_factors.get_donchian_channel(window_size=25)["max_price"] for i in range(2)])):
+            if not self.kline_4h_factors.is_along_upper_band():
                 direction += "价格逼近 1小时布林带上轨，RSI < 75 且 MACD 柱状图收缩（即动能减弱），优先止盈。"
                 return {"direction": direction, "recommend_ask_price": curr_price}
 
@@ -179,7 +184,7 @@ class StrategyHandle:
             direction += "价格 1小时布林带下轨抵达中轨，(macd<0)/(kdj.j>80)/(RSI<75)，优先止盈。"
             return {"direction": direction}
 
-        if kline_1h_factors.has_double_top():
+        if self.kline_1h_factors.has_double_top():
             direction += "当前处于1小时双顶形态，止盈离场。"
             return {"direction": direction}
 
@@ -383,7 +388,6 @@ class PlotGptHandle(BasePlotHandle):
             ).order_by(BollTable.id.desc()).limit(limit_count)
         )
         return query
-
 
     @property
     def kline_list_4h(self):
