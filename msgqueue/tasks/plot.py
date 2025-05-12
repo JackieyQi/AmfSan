@@ -310,10 +310,10 @@ class TopPriceHandle(BasePlotHandle):
             async with session.get(
                     self.kline_url,
                     params={
-                        "symbol": symbol.upper(), "interval": "1h", "limit": 20}
+                        "symbol": symbol.upper(), "interval": "1h", "limit": 36}
             ) as response:
                 data = await response.json()
-                if len(data) < 20:
+                if len(data) < 36:
                     return
                 
                 high_price_list = [i[2] for i in data]
