@@ -618,7 +618,7 @@ class PlotGptHandle(BasePlotHandle):
                         <br><a>now_ts:{ts2bjfmt(self.check_time)}</a>
                         """
 
-                return await self.send_msg(self.email_title, "".join(self.result.values()))
+                return await self.send_msg(self.email_title, "".join(self.result.values()), f"check_macd_list:{self.symbol}:{open_ts}")
 
         # await self.short_term_strategy(limit_count)
         # await self.bull_run_strategy()
@@ -745,24 +745,15 @@ class PlotGptHandle(BasePlotHandle):
             return
 
         email_msg_md5_str = f"plotGpt:{func_str}:{self.symbol}:{open_ts}"
-        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
-
-        try:
-            return await EmailMsgHistoryTable.aio_get(EmailMsgHistoryTable.msg_md5 == email_msg_md5)
-        except EmailMsgHistoryTable.DoesNotExist:
-            pass
 
         self.result[self.symbol] = template_strategy_notice(
             direction, open_ts, decimal2str(curr_price),
             self.check_time, self.close_monitor_url, self.set_limit_price_url)
 
-        email_content = "".join(self.result.values())
-        await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
-
         logger.info(
             f"PlotGptHandle.get_buy_score_info finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
         receiver_list = await self.get_receiver_list()
-        await self.send_msg(self.email_title, email_content, receiver_list=receiver_list)
+        await self.send_msg(self.email_title, "".join(self.result.values()), email_msg_md5_str, receiver_list=receiver_list)
 
     async def get_receiver_list(self):
         query = await UserSymbolPlotTable.select(UserSymbolPlotTable.user_id).where(

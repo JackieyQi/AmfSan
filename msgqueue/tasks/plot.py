@@ -334,45 +334,20 @@ class PlotPriceHandle(BasePlotHandle):
             """ 
 
             email_msg_md5_str = f"check_break_history_top_price:{symbol}:{query_list[0].open_ts}"
-            email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
-            try:
-                # 当前限价检查存在时，不再推送消息
-                return await EmailMsgHistoryTable.aio_get(
-                    EmailMsgHistoryTable.msg_md5 == email_msg_md5
-                )
-            except EmailMsgHistoryTable.DoesNotExist:
-                pass
-
-            email_content = "".join(result.values())
-            await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
-            await PlotPriceHandle(symbol, None).send_msg(email_title, email_content)
+            await PlotPriceHandle(symbol, None).send_msg(email_title, "".join(result.values()), email_msg_md5_str)
             
     async def check_limit_price(self):
         email_title = f"{self.symbol} Price Notice"
 
         current_price = self.__get_current_price()
         if not current_price:
-            return await self.send_msg(email_title, "".join(self.result.values()))
+            return await self.send_msg(email_title, "".join(self.result.values()), "")
 
         self.__check_limit_low_price(current_price)
         self.__check_limit_high_price(current_price)
         
-        if not self.result:
-            return
-
         email_msg_md5_str = f"check_limit_price:{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
-        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
-        try:
-            # 当前限价检查存在时，不再推送消息
-            return await EmailMsgHistoryTable.aio_get(
-                EmailMsgHistoryTable.msg_md5 == email_msg_md5
-            )
-        except EmailMsgHistoryTable.DoesNotExist:
-            pass
-
-        email_content = "".join(self.result.values())
-        await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
-        await self.send_msg(email_title, email_content)
+        await self.send_msg(email_title, "".join(self.result.values()), email_msg_md5_str)
 
 
 class PlotMacdHandle(BasePlotHandle):

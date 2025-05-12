@@ -2,7 +2,8 @@
 # -*- coding: UTF-8 -*-
 
 import json
-from models.user import UserSymbolPlotTable
+import hashlib
+from models.user import UserSymbolPlotTable, EmailMsgHistoryTable
 from models.market import MacdTable, KdjTable
 
 
@@ -19,9 +20,21 @@ class BasePlotHandle(object):
                     "wayley@live.com",
                 ], email_title, email_content)
 
-    async def send_msg(self, email_title, email_content, receiver_list=None):
+    async def send_msg(self, email_title, email_content, email_msg_md5_str, receiver_list=None):
         if not self.result:
             return
+        
+        email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
+        try:
+            # 当前限价检查存在时，不再推送消息
+            return await EmailMsgHistoryTable.aio_get(
+                EmailMsgHistoryTable.msg_md5 == email_msg_md5
+            )
+        except EmailMsgHistoryTable.DoesNotExist:
+            pass
+
+        email_content = "".join(self.result.values())
+        await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
 
         from msgqueue.queue import push_msg
 
