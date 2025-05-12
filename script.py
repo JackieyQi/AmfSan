@@ -22,6 +22,11 @@ def cli():
 
 
 @cli.command()
+def command_test():
+    print("test")
+
+
+@cli.command()
 def command_create_tables():
     """
     创建表
