@@ -227,7 +227,10 @@ class PlotAssetHandle(BasePlotHandle):
 class PlotPriceHandle(BasePlotHandle):
     def __init__(self, symbol, price):
         super().__init__()
-        set_time, limit_low_price, limit_high_price = price
+        if price:
+            set_time, limit_low_price, limit_high_price = price
+        else:
+            set_time, limit_low_price, limit_high_price = None, None, None
 
         self.symbol = symbol
         self.limit_low_price = limit_low_price
@@ -342,7 +345,7 @@ class PlotPriceHandle(BasePlotHandle):
 
             email_content = "".join(result.values())
             await EmailMsgHistoryTable.aio_create(msg_md5=email_msg_md5, msg_content=email_content)
-            await PlotPriceHandle(symbol, query_list[0].close_price).send_msg(email_title, email_content)
+            await PlotPriceHandle(symbol, None).send_msg(email_title, email_content)
             
     async def check_limit_price(self):
         email_title = f"{self.symbol} Price Notice"
