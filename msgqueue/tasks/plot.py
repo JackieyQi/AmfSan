@@ -235,6 +235,7 @@ class PlotAssetHandle(BasePlotHandle):
 
 class TopPriceHandle(BasePlotHandle):
     def __init__(self):
+        self.exchange_info_url = "https://api.binance.com/api/v3/exchangeInfo"
         self.price_url = "https://api.binance.com/api/v3/ticker/price"
         self.kline_url = "https://api.binance.com/api/v3/klines"
         super().__init__()
@@ -242,12 +243,17 @@ class TopPriceHandle(BasePlotHandle):
     async def update_all_symbols(self):
         all_symbols_list = []
         async with aiohttp.ClientSession() as session:
-            async with session.get(self.price_url) as response:
+            async with session.get(
+                    self.exchange_info_url, params={"permissions": "SPOT", "symbolStatus": "TRADING"}
+            ) as response:
                 data = await response.json()
-                for item in data:
+                for item in data["symbols"]:
                     symbol = item["symbol"]
-                    if symbol.endswith("USDT"):
-                        all_symbols_list.append(symbol.lower())
+                    if item["quoteAsset"] != "USDT":
+                        continue
+                    elif item["status"] != "TRADING":
+                        continue
+                    all_symbols_list.append(symbol.lower())
                         
         old_symbols_list = {i.symbol:i.is_valid for i in await BnSymbolTable.select().aio_execute()}
 
@@ -305,7 +311,7 @@ class TopPriceHandle(BasePlotHandle):
                     self.kline_url,
                     params={
                         "symbol": symbol.upper(), "interval": "1h", "limit": 20}
-                    ) as response:
+            ) as response:
                 data = await response.json()
                 if len(data) < 20:
                     return
