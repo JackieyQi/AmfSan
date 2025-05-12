@@ -41,7 +41,9 @@ async def check_price(*args, **kwargs):
     for symbol, price in market_price_handler.get_all_limit_price().items():
         await PlotPriceHandle(symbol, price).check_limit_price()
         
-    await PlotPriceHandle.check_break_history_top_price()
+    all_symbols_list = [i.symbol for i in await UserSymbolPlotTable.select().aio_execute()]
+    for symbol in all_symbols_list:
+        await PlotPriceHandle(symbol, None).check_break_history_top_price()
 
     all_curr_prices = market_price_handler.get_current_price_by_cache()
     await TradeSignalHandler().update_real_ticket(all_curr_prices)
@@ -306,48 +308,42 @@ class PlotPriceHandle(BasePlotHandle):
         #     Decimal(decimal2str(self.limit_high_price * Decimal(self.high_incr))),
         # )
         
-    @staticmethod
-    async def check_break_history_top_price():
-        symbols_list = [i.symbol for i in await UserSymbolPlotTable.select().aio_execute()]
+    async def check_break_history_top_price(self):
+        query = KlineTable.select().where(
+            KlineTable.symbol == self.symbol, KlineTable.interval_val == "1h"
+        ).order_by(KlineTable.id.desc()).limit(20)
+        query_list = [i for i in await query.aio_execute()]
+        if len(query_list) < 20:
+            return
+        
+        high_price_list = [i.high_price for i in query_list]
+        
+        curr_high_price = high_price_list[0]
+        history_high_price = max(high_price_list[1:])
+        if curr_high_price <= history_high_price:
+            return
 
-        curr_open_ts = None
-        for symbol in list(set(symbols_list)):
-            query = KlineTable.select().where(
-                KlineTable.symbol == symbol, KlineTable.interval_val == "1h"
-            ).order_by(KlineTable.id.desc()).limit(20)
-            query_list = [i for i in await query.aio_execute()]
-            if len(query_list) < 20:
-                continue
-            
-            high_price_list = [i.high_price for i in query_list]
-            
-            curr_high_price = high_price_list[0]
-            history_high_price = max(high_price_list[1:])
-            if curr_high_price <= history_high_price:
-                continue
+        email_title = f"{self.symbol} Top Price Notice"
+        
+        self.result[self.symbol] = f"""
+        <br><br><b> {self.symbol}: </b><br>🔥 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀 new high price:{curr_high_price},
+        """ 
 
-            email_title = f"{symbol} Top Price Notice"
-            
-            result = {}
-            result[symbol] = f"""
-            <br><br><b> {symbol}: </b><br>🔥 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀 new high price:{curr_high_price},
-            """ 
-
-            email_msg_md5_str = f"check_break_history_top_price:{symbol}:{query_list[0].open_ts}"
-            await PlotPriceHandle(symbol, None).send_msg(email_title, "".join(result.values()), email_msg_md5_str)
-            
+        email_msg_md5_str = f"check_break_history_top_price:{self.symbol}:{query_list[0].open_ts}"
+        await self.send_msg(email_title, email_msg_md5_str)
+        
     async def check_limit_price(self):
         email_title = f"{self.symbol} Price Notice"
 
         current_price = self.__get_current_price()
         if not current_price:
-            return await self.send_msg(email_title, "".join(self.result.values()), "")
+            return await self.send_msg(email_title, "")
 
         self.__check_limit_low_price(current_price)
         self.__check_limit_high_price(current_price)
         
         email_msg_md5_str = f"check_limit_price:{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
-        await self.send_msg(email_title, "".join(self.result.values()), email_msg_md5_str)
+        await self.send_msg(email_title, email_msg_md5_str)
 
 
 class PlotMacdHandle(BasePlotHandle):

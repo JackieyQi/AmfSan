@@ -20,7 +20,7 @@ class BasePlotHandle(object):
                     "wayley@live.com",
                 ], email_title, email_content)
 
-    async def send_msg(self, email_title, email_content, email_msg_md5_str, receiver_list=None):
+    async def send_msg(self, email_title, email_msg_md5_str, receiver_list=None):
         if not self.result:
             return
         
