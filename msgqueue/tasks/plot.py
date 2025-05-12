@@ -300,6 +300,25 @@ class PlotPriceHandle(BasePlotHandle):
         #     Decimal(decimal2str(self.limit_low_price * Decimal(self.high_incr))),
         #     Decimal(decimal2str(self.limit_high_price * Decimal(self.high_incr))),
         # )
+        
+    async def check_break_history_top_price(self):
+        query = KlineTable.select().where(
+            KlineTable.symbol == self.symbol, KlineTable.interval_val == "1h"
+        ).order_by(KlineTable.id.desc()).limit(20)
+        query_list = [i for i in await query.aio_execute()]
+        high_price_list = [i.high_price for i in query_list]
+        if len(high_price_list) < 20:
+            return None
+        
+        curr_high_price = high_price_list[0]
+        history_high_price = max(high_price_list[1:])
+        if curr_high_price <= history_high_price:
+            return None
+        
+        self.result[self.symbol] = f"""
+        <br><br><b> {self.symbol}: </b><br>🔥 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀 new high price:{curr_high_price},
+        """ 
+        return query_list[0].open_ts
 
     async def check_limit_price(self):
         email_title = f"{self.symbol} Price Notice"
@@ -310,11 +329,14 @@ class PlotPriceHandle(BasePlotHandle):
 
         self.__check_limit_low_price(current_price)
         self.__check_limit_high_price(current_price)
+        email_msg_md5_str = f"check_limit_price:{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
+        
+        if curr_1h_open_ts := await self.check_break_history_top_price():
+            email_msg_md5_str = f"check_break_history_top_price:{self.symbol}:{curr_1h_open_ts}"
 
         if not self.result:
             return
 
-        email_msg_md5_str = f"check_limit_price:{self.symbol}:{self.limit_low_price}:{self.limit_high_price}"
         email_msg_md5 = hashlib.md5(email_msg_md5_str.encode("utf8")).hexdigest()
         try:
             # 当前限价检查存在时，不再推送消息
