@@ -601,15 +601,15 @@ class RsiFactor:
         """
         1 小时 RSI-6 低于 40（短期超卖）且反弹 → +5 分。
         """
-        return (self.rsi_list[index].rsi > self.rsi_list[index+1].rsi) \
-               and (self.rsi_list[index+1].rsi < threshold) and (self.rsi_list[index+1].rsi < self.rsi_list[index+2].rsi)
+        return (self.rsi_list[index].rsi > self.rsi_list[index+1].rsi) and \
+            (self.rsi_list[index+1].rsi < threshold) and (self.rsi_list[index+1].rsi < self.rsi_list[index+2].rsi)
 
     def get_breakout_from_low(self, index=0):
         """
         1小时RSI-6从低位突破50 -> +5 分。
         """
-        return self.get_breakout(index=index, threshold=Decimal("50")) \
-                and min([i.rsi for i in self.rsi_list[index:5+index]]) < Decimal(40)
+        return self.get_breakout(index=index, threshold=Decimal("50")) and \
+            min([i.rsi for i in self.rsi_list[index:5+index]]) < Decimal(40)
 
     def get_healthy_bound(self):
         """
