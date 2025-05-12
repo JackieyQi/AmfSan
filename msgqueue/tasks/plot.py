@@ -311,11 +311,11 @@ class TopPriceHandle(BasePlotHandle):
                     return
                 
                 high_price_list = [i[2] for i in data]
-                curr_high_price = high_price_list[0]
-                history_high_price = max(high_price_list[1:])
+                curr_high_price = high_price_list[-1]
+                history_high_price = max(high_price_list[:-1])
                 if curr_high_price <= history_high_price:
                     return
-                curr_ts = data[0][0]
+                curr_ts = data[-1][0]
                 
         email_title = f"{symbol} Top Price Notice"
         
