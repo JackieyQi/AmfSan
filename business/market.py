@@ -202,7 +202,12 @@ class SymbolHandle(object):
             ).order_by(SymbolPlotTable.create_ts).aio_execute()
 
         result = []
+        symbol_list = []
         for row in db_rows:
+            if row.symbol in symbol_list:
+                continue
+            symbol_list.append(row.symbol)
+            
             result.append({
                 "symbol": row.symbol,
                 "is_valid": row.is_valid,
