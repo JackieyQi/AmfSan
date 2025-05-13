@@ -82,6 +82,7 @@ class JobScheduler(object):
         # schedule.every(17).seconds.do(lambda: self.push_to_amf("sync_cache_job"))
 
         # Save indicators jobs
+        schedule.every(1).minute.do(lambda: self.push_to_amf("update_price_job", amf_queue))
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kline_job", amf_kline_queue))
         # schedule.every(1).minutes.do(lambda: self.push_to_amf("save_macd_job", amf_queue))
         # schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kdj_job", amf_queue))

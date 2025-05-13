@@ -23,7 +23,7 @@ from cache import AllCache
 
 
 class MarketPriceHandler(object):
-    def get_current_price(self, symbol: str = "btcusdt"):
+    def update_current_price(self, symbol: str = "btcusdt"):
         resp_json = BinanceExchangeRequestHandle().get_current_price(symbol)
         if resp_json:
             price_info = resp_json[0]
@@ -35,6 +35,14 @@ class MarketPriceHandler(object):
                 "price": price_str,
                 "ts": price_info["T"],
                 "dt": to_ctime(ts),
+            }
+        return {}
+        
+    def get_current_price(self, symbol: str = "btcusdt"):
+        cache_price = MarketPriceCache.hget(symbol.lower())
+        if cache_price:
+            return {
+                "price": cache_price,
             }
         return {}
 
