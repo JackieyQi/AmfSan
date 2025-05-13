@@ -263,7 +263,7 @@ class TopPriceHandle(BasePlotHandle):
     async def check_break_history_top_price(self):
         bn_symbols_list = [i.symbol for i in 
                            await BnSymbolTable.select(BnSymbolTable.symbol).where(
-                               BnSymbolTable.is_valid == True).aio_execute()]
+                               BnSymbolTable.is_valid).aio_execute()]
         if not bn_symbols_list:
             bn_symbols_list = await self.update_all_symbols()
         
@@ -290,13 +290,14 @@ class TopPriceHandle(BasePlotHandle):
         self._last_request_time = time.time()
         
         async with aiohttp.ClientSession() as session:
+            limit = 36
             async with session.get(
                     self.kline_url,
                     params={
-                        "symbol": symbol.upper(), "interval": "1h", "limit": 20}
-                    ) as response:
+                        "symbol": symbol.upper(), "interval": "1h", "limit": limit}
+            ) as response:
                 data = await response.json()
-                if len(data) < 20:
+                if len(data) < limit:
                     return
                 
                 high_price_list = [i[2] for i in data]
