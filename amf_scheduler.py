@@ -81,7 +81,7 @@ class JobScheduler(object):
         # Data sync jobs
         # schedule.every(17).seconds.do(lambda: self.push_to_amf("sync_cache_job"))
 
-        # Save data jobs
+        # Save indicators jobs
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kline_job", amf_kline_queue))
         # schedule.every(1).minutes.do(lambda: self.push_to_amf("save_macd_job", amf_queue))
         # schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kdj_job", amf_queue))
@@ -95,7 +95,7 @@ class JobScheduler(object):
         # schedule.every(13).minutes.do(lambda: self.push_to_plot("check_macd_trend_job"))
         # schedule.every(3).minutes.do(lambda: self.push_to_amf("check_kdj_cross_job", amf_queue))
         # schedule.every(51).minutes.do(lambda: self.push_to_plot("check_ema_cross_job"))
-        schedule.every(7).minutes.do(lambda: self.push_to_amf("check_gpt_plot_job", amf_queue))
+        schedule.every(3).minutes.do(lambda: self.push_to_amf("check_gpt_plot_job", amf_queue))
 
         # user action
         schedule.every().day.at("01:00").do(lambda: self.push_to_amf("update_all_symbols_job", amf_queue))

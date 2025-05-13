@@ -240,7 +240,7 @@ class StrategyHandle:
         if (self.kdj_list_1h[1].j_val > 80) and (self.kdj_list_1h[1].j_val < self.kdj_list_1h[2].j_val):
             score_info["kdj_1h_j_80_downtrend"] = 10
 
-        if (self.kdj_list_1d[0].k_val > 80) and (self.kdj_list_1d[0].d_val > 80) \
+        if self.kdj_list_1d and (self.kdj_list_1d[0].k_val > 80) and (self.kdj_list_1d[0].d_val > 80) \
                 and (self.kdj_list_1d[0].j_val < self.kdj_list_1d[1].j_val):
             score_info["kdj_1d_over_bought"] = 15
 
@@ -607,18 +607,17 @@ class PlotGptHandle(BasePlotHandle):
         open_ts = self.kline_list_1h[0].open_ts
         curr_price = self.kline_list_1h[0].close_price
 
-        for interval, macd_list in (("1d", self.macd_list_1d), ("4h", self.macd_list_4h)):
-            interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
-            if macd_list[0].opening_ts < (self.check_time - interval_sec * limit_count):
-                self.result[
-                    self.symbol
-                ] = f"""
-                        <br><a>Error: no lastest macd data, {self.symbol}:{interval}</a>
-                        <br><a>opening_ts:{ts2bjfmt(macd_list[0].opening_ts)}</a>
-                        <br><a>now_ts:{ts2bjfmt(self.check_time)}</a>
-                        """
+        interval_sec = PLOT_INTERVAL_CONFIG["4h"]["interval_sec"]
+        if self.macd_list_4h[0].opening_ts < (self.check_time - interval_sec * limit_count):
+            self.result[
+                self.symbol
+            ] = f"""
+                    <br><a>Error: no lastest macd data, {self.symbol}:4h</a>
+                    <br><a>opening_ts:{ts2bjfmt(self.macd_list_4h[0].opening_ts)}</a>
+                    <br><a>now_ts:{ts2bjfmt(self.check_time)}</a>
+                    """
 
-                return await self.send_msg(self.email_title, f"check_macd_list:{self.symbol}:{open_ts}")
+            return await self.send_msg(self.email_title, f"check_macd_list:{self.symbol}:{open_ts}")
 
         # await self.short_term_strategy(limit_count)
         # await self.bull_run_strategy()
@@ -950,7 +949,7 @@ class PlotGptHandle(BasePlotHandle):
             score_info["1h_macd_uptrend"] = self._get_adjust_score_1h_macd_trend(
                 5) # 1 小时 MACD 上升 → +5 分
 
-        if self.macd_list_1d[0].macd > 0:
+        if self.macd_list_1d and self.macd_list_1d[0].macd > 0:
             score_info["1d_macd>0"] = 2 # 日线 MACD > 0 → +2 分
 
         macd_4h_factors = MacdFactor(self.macd_list_4h)

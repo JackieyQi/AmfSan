@@ -368,6 +368,8 @@ class CandlestickFactor:
                and (self.macd_list[index+1].ema_12 > self.macd_list[index+1].ema_26)
 
     def is_ema_bullish_stack(self, window_size=7):
+        if not self.macd_list:
+            return False
         return all((self.macd_list[i].ema_12 - self.macd_list[i].ema_26) > 0 for i in range(window_size-1))
 
     def is_ema12_continue_down(self, window_size=7):
