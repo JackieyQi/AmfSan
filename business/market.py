@@ -38,13 +38,19 @@ class MarketPriceHandler(object):
             }
         return {}
         
-    def get_current_price(self, symbol: str = "btcusdt"):
-        cache_price = MarketPriceCache.hget(symbol.lower())
-        if cache_price:
-            return {
-                "price": cache_price,
-            }
-        return {}
+    def get_current_price(self, symbol: str = ""):
+        if not symbol:
+            cache_data = MarketPriceCache.hgetall()
+            for k, v in cache_data.items():
+                cache_data[k] = str2decimal(v)
+            return cache_data
+        else:
+            cache_price = MarketPriceCache.hget(symbol.lower())
+            if cache_price:
+                return {
+                    symbol.lower(): str2decimal(cache_price),
+                }
+            return {}
 
     def get_current_price_from_HUOBI(self, symbol: str = "btcusdt"):
         resp_json = http_get_request(HUOBI_TRADE_URL, {"symbol": symbol})
@@ -60,13 +66,6 @@ class MarketPriceHandler(object):
                 "dt": to_ctime(ts),
             }
         return {}
-
-    def get_current_price_by_cache(self, symbol=""):
-        if not symbol:
-            result = MarketPriceCache.hgetall()
-        else:
-            result = MarketPriceCache.hget(symbol.lower())
-        return result
 
     def set_value_times4limit_price_notice(self, count: int = 1):
         val = LimitPriceNoticeValueCache.get()
@@ -101,7 +100,7 @@ class MarketPriceHandler(object):
         high_price: Decimal = None,
         new_set_time: int = 0,
     ):
-        current_price = self.get_current_price(symbol).get("price")
+        current_price = self.get_current_price(symbol).get(symbol)
         if not current_price:
             raise StandardResponseExc()
 
@@ -153,7 +152,7 @@ class MarketPriceHandler(object):
         # ).save()
 
     def get_limit_price(self, symbol: str = "btcusdt"):
-        current_price = self.get_current_price(symbol).get("price")
+        current_price = self.get_current_price(symbol).get(symbol)
         limit_price = MarketPriceLimitCache.hget(symbol)
         if not limit_price:
             set_time, limit_low_price, limit_high_price = 0, "", ""

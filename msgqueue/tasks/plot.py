@@ -44,7 +44,7 @@ async def check_price(*args, **kwargs):
     for symbol, price in market_price_handler.get_all_limit_price().items():
         await PlotPriceHandle(symbol, price).check_limit_price()
 
-    all_curr_prices = market_price_handler.get_current_price_by_cache()
+    all_curr_prices = market_price_handler.get_current_price()
     await TradeSignalHandler().update_real_ticket(all_curr_prices)
     
     
@@ -367,7 +367,7 @@ class PlotPriceHandle(BasePlotHandle):
         self.high_incr = "1.05"
 
     def __get_current_price(self):
-        cache_result = self.market_price_handler.get_current_price_by_cache(self.symbol)
+        cache_result = self.market_price_handler.get_current_price(self.symbol).get(self.symbol)
         if not cache_result:
             self.result[
                 self.symbol

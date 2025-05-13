@@ -204,7 +204,7 @@ class TradeSignalHandler(object):
             db_data = await PlotBackTestTable.select().where(PlotBackTestTable.status.in_([0, 3])).aio_execute()
 
             for _d in db_data:
-                curr_price = market_price_handler.get_current_price(_d.symbol).get("price")
+                curr_price = all_curr_prices.get(_d.symbol)
 
                 if not curr_price:
                     continue

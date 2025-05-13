@@ -29,7 +29,7 @@ class MarketPriceView(HTTPMethodView):
             for k, v in all_symbol_limit_price_dict.items():
                 set_time, limit_low_price, limit_high_price = v
 
-                current_price = price_handler.get_current_price(k).get("price")
+                current_price = price_handler.get_current_price(k).get(k)
                 last_my_trade_price = price_handler.get_last_trade_price(k)
                 result[k] = {
                     "symbol": k,
