@@ -22,12 +22,12 @@ def cli():
 
 
 @cli.command()
-def command_test():
+def cmd_test():
     print("test")
 
 
 @cli.command()
-def command_create_tables():
+def cmd_create_tables():
     """
     创建表
     """
@@ -144,44 +144,28 @@ def command_del_symbol(symbol):
     print("***************end command_add_new_symbol****************")
 
 
-def command_save_macd(symbol, interval):
-    from msgqueue.tasks.dw import MacdDataSaveHandle
+@cli.command()
+@click.option('--symbol', required=True, help='交易对，例如：belusdt')
+def cmd_cancel_symbol_check_price(symbol: str):
+    """
+    取消交易对价格检查
 
-    print("***************start command_save_macd**************")
-    if not symbol or not interval:
-        return
+    Args:
+        symbol: 交易对
+    """
 
-    _handler = MacdDataSaveHandle(symbol, interval)
-    k_data = _handler.get_k_lines_by_openapi()
-    if not k_data:
-        return f"LOG: no k_data, {symbol}, {interval}"
+    print("*************** start **************")
+    result = market.BnSymbolTable.update(is_valid=False).where(
+        market.BnSymbolTable.symbol == symbol.lower().strip()).execute()
 
-    for _data in k_data:
-        _handler.parsed_k_lines_data(_data)
-
-    print("***************end command_save_macd****************")
-
-
-def command_init_macd():
-    from business.market import MacdInitData
-    from models.init_data import MACD_INIT_DATA_ETHUSDT as macd_init_data
-
-    print("***************start command_init_macd**************")
-
-    _handler = MacdInitData(macd_init_data)
-    print(f"""
-    init_1h: {_handler.init_1h()}
-    init_4h: {_handler.init_4h()}
-    init_1d: {_handler.init_1d()}
-    """)
-
-    print("***************end command_init_macd****************")
+    print(f"result: {result}")
+    print("*************** end ****************")
 
 
 @cli.command()
 @click.option('--symbol', required=True, help='交易对，例如：btcusdt')
 @click.option('--start_time', default=None, help='开始时间，格式：YYYY-MM-DD_HH:mm，例如：2024-05-10_05:00')
-def command_backtest_strategy(symbol: str, start_time: str):
+def cmd_backtest_strategy(symbol: str, start_time: str):
     """
     回测策略
     
