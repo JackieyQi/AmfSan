@@ -36,7 +36,6 @@ class ConfigManager:
             try:
                 with open(config_file) as f:
                     self._config.update(json.loads(f.read()))
-                    break
             except Exception as e:
                 print(f"Error loading {config_file}: {e}")
 
