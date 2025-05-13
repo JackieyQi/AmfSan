@@ -282,7 +282,7 @@ class TopPriceHandle(BasePlotHandle):
             await self._check_break_history_top_price_from_api(symbol)
             
     async def _check_break_history_top_price_from_api(self, symbol):
-        await asyncio.sleep(random.uniform(1.1, 17.2))
+        await asyncio.sleep(random.uniform(0.1, 0.8))
         
         # 添加请求间隔控制
         if hasattr(self, '_last_request_time'):
@@ -312,7 +312,7 @@ class TopPriceHandle(BasePlotHandle):
         email_title = f"{symbol} Top Price Notice"
         
         self.result[symbol] = f"""
-        <br><br><b> {symbol}: </b><br>🔥 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀 new high price:{curr_high_price},
+        <br><br><b> {symbol}: </b><br> 🚀 new high price:{curr_high_price},
         """ 
 
         email_msg_md5_str = f"check_break_history_top_price:{symbol}:{curr_ts}"
