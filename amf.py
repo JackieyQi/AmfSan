@@ -3,6 +3,7 @@
 
 from sanic import Sanic, response
 import ujson as json
+import logging.config
 from sanic.response import json as json_view
 from sanic.handlers import ErrorHandler
 from sanic_ext import Extend
@@ -16,10 +17,13 @@ Extend(app, config={
 })
 
 from settings.setting import cfgs
+from settings.log import LOG_SANIC_CONF
 from cache import AllCache
 from cache.plot import APIRequestCountCache
 
 app.config.update(cfgs)
+logging.config.dictConfig(LOG_SANIC_CONF)
+
 redis_client = AllCache.get_client()
 
 # from exts import database
