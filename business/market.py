@@ -100,6 +100,7 @@ class MarketPriceHandler(object):
         high_price: Decimal = None,
         new_set_time: int = 0,
     ):
+        self.update_current_price(symbol)
         current_price = self.get_current_price(symbol).get(symbol)
         if not current_price:
             raise StandardResponseExc()
