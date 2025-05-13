@@ -28,25 +28,38 @@ logger = logging.getLogger(__name__)
 
 class ModeExcludeFactor:
     @staticmethod
-    def has_bearish(kline_4h_factors, macd_4h_factors):
+    def has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
         is_4h_ema12_continue_down = kline_4h_factors.is_ema12_continue_down(window_size=3)
         
         if macd_4h_factors.is_death_cross(index=0):
             is_4h_macd_death_cross = True
-            death_cross_index = 1
+            death_cross_4h_index = 1
         elif macd_4h_factors.is_death_cross(index=1):
             is_4h_macd_death_cross = True
-            death_cross_index = 2
+            death_cross_4h_index = 2
         else:
             is_4h_macd_death_cross = False
-            death_cross_index = None
+            death_cross_4h_index = None
             
         if (is_4h_ema12_continue_down or is_4h_macd_death_cross) and kline_4h_factors.is_bearish_engulfing_k():
             return True
         
-        if is_4h_macd_death_cross and macd_4h_factors.is_bullish_stack(index=death_cross_index):
+        if is_4h_macd_death_cross and macd_4h_factors.is_bullish_stack(index=death_cross_4h_index):
             return True
-
+        
+        if macd_1h_factors.is_death_cross(index=0):
+            is_1h_macd_death_cross = True
+            death_cross_1h_index = 1
+        elif macd_1h_factors.is_death_cross(index=1):
+            is_1h_macd_death_cross = True
+            death_cross_1h_index = 2
+        else:
+            is_1h_macd_death_cross = False
+            death_cross_1h_index = None
+        
+        if is_1h_macd_death_cross and macd_1h_factors.is_bullish_stack(index=death_cross_1h_index):
+            return True
+        
         return False
 
 
@@ -137,15 +150,15 @@ class ModelBollMidRebound(object):
         }
 
     def is_detected(self, kline_list_1h, bb_list_1h,
-                    kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+                    kline_4h_factors, kline_1h_factors, macd_4h_factors, macd_1h_factors, kdj_1h_factors, rsi_1h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
             return False
 
         # 前置条件：4小时多头排列+4小时的EMA12和EMA26连续上升趋势+4小时MACD没有连续递减
         if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
                 and kline_4h_factors.is_ema12_continue_up(window_size=5) \
                 and kline_4h_factors.is_ema26_continue_up(window_size=5) \
-                and not macd_4h_factors.is_continue_down():
+                and not macd_4h_factors.is_continue_down(index=1):
             self.score += 10
 
             # 条件A：当前最低价跌破中轨，收盘价回到中轨上方
@@ -194,8 +207,8 @@ class ModelBollLowReboundBullishSideways(object):
             "recommend_bid_price": recommend_bid_price
         }
 
-    def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+    def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, macd_1h_factors, kdj_1h_factors, rsi_1h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
             return False
 
         # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根没有连续下降
@@ -243,8 +256,8 @@ class ModelBollLowReboundBullishDown(object):
             "recommend_bid_price": recommend_bid_price
         }
 
-    def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors, rsi_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+    def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, macd_1h_factors, kdj_1h_factors, rsi_1h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
             return False
 
         # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根连续下降+4小时附近没有收盘价跌破下轨
@@ -287,8 +300,8 @@ class ModelLTypeRebound(object):
             "recommend_bid_price": bb_list_1h.bblower,
         }
 
-    def is_detected(self, kline_1d_factors, kline_4h_factors, kline_1h_factors, macd_4h_factors, kdj_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+    def is_detected(self, kline_1d_factors, kline_4h_factors, kline_1h_factors, macd_4h_factors, macd_1h_factors, kdj_1h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
             return False
 
         # 前置条件：更大周期的日线的EMA多头排列+4小时布林带形成L形状
@@ -330,8 +343,8 @@ class ModelWTypeRebound(object):
         }
 
     def is_detected(self, kline_list_4h, kline_list_1h, macd_list_4h, macd_list_1h, bb_list_4h, bb_list_1h,
-                    rsi_list_4h, rsi_list_1h, kline_4h_factors, macd_4h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors):
+                    rsi_list_4h, rsi_list_1h, kline_4h_factors, macd_4h_factors, macd_1h_factors):
+        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
             return False
 
         if self._is_detected(kline_list_4h, macd_list_4h, bb_list_4h, rsi_list_4h):

@@ -466,9 +466,9 @@ class MacdFactor:
     def is_continue_up(self, window_size=3):
         return all(self.macd_list[i].macd < self.macd_list[i - 1].macd for i in range(1, window_size))
 
-    def is_continue_down(self, window_size=3):
+    def is_continue_down(self, index=0, window_size=3):
         """ macd连续下跌 """
-        return all(self.macd_list[i].macd > self.macd_list[i - 1].macd for i in range(1, window_size))
+        return all(self.macd_list[i].macd > self.macd_list[i - 1].macd for i in range(index+1, index+window_size))
 
 
 class KdjFactor:

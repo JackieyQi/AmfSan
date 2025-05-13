@@ -86,26 +86,26 @@ class StrategyHandle:
 
         model_boll_mid_rebound = ModelBollMidRebound(curr_price)
         if model_boll_mid_rebound.is_detected(self.kline_list_1h, self.bb_list_1h,
-                self.kline_4h_factors, self.kline_1h_factors, self.macd_4h_factors, self.kdj_1h_factors, self.rsi_1h_factors):
+                self.kline_4h_factors, self.kline_1h_factors, self.macd_4h_factors, self.macd_1h_factors, self.kdj_1h_factors, self.rsi_1h_factors):
             model_recommend_price_data = model_boll_mid_rebound.get_recommend_price(self.kline_list_1h[0].low_price)
             return {"model_name": model_boll_mid_rebound.name, "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         model_b = ModelBollLowReboundBullishSideways(curr_price)
         if model_b.is_detected(
-                self.kline_4h_factors, self.kline_1h_factors, self.macd_4h_factors, self.kdj_1h_factors, self.rsi_1h_factors):
+                self.kline_4h_factors, self.kline_1h_factors, self.macd_4h_factors, self.macd_1h_factors, self.kdj_1h_factors, self.rsi_1h_factors):
             model_recommend_price_data = model_b.get_recommend_price(self.kline_list_1h, self.bb_list_1h)
             return {"model_name": model_b.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         model_c = ModelBollLowReboundBullishDown(curr_price)
         if model_c.is_detected(
-                self.kline_4h_factors, self.kline_1h_factors, self.macd_4h_factors, self.kdj_1h_factors, self.rsi_1h_factors):
+                self.kline_4h_factors, self.kline_1h_factors, self.macd_4h_factors, self.macd_1h_factors, self.kdj_1h_factors, self.rsi_1h_factors):
             model_recommend_price_data = model_c.get_recommend_price(self.kline_1h_factors)
             return {"model_name": model_c.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
         model_d = ModelLTypeRebound(curr_price)
-        if model_d.is_detected(self.kline_1d_factors, self.kline_4h_factors, self.kline_1h_factors, self.macd_4h_factors, self.kdj_1h_factors):
+        if model_d.is_detected(self.kline_1d_factors, self.kline_4h_factors, self.kline_1h_factors, self.macd_4h_factors, self.macd_1h_factors, self.kdj_1h_factors):
             model_recommend_price_data = model_d.get_recommend_price(self.bb_list_1h)
             return {"model_name": model_d.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
@@ -113,7 +113,7 @@ class StrategyHandle:
         model_w = ModelWTypeRebound(curr_price)
         if model_w.is_detected(self.kline_list_4h, self.kline_list_1h, self.macd_list_4h, self.macd_list_1h,
                                self.bb_list_4h, self.bb_list_1h, self.rsi_list_4h, self.rsi_list_1h,
-                               self.kline_4h_factors, self.macd_4h_factors):
+                               self.kline_4h_factors, self.macd_4h_factors, self.macd_1h_factors):
             model_recommend_price_data = model_w.get_recommend_price(self.bb_list_1h)
             return {"model_name": model_w.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
