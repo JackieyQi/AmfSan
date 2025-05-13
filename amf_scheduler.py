@@ -80,31 +80,25 @@ class JobScheduler(object):
     def setup_schedules(self):
         # Data sync jobs
         # schedule.every(17).seconds.do(lambda: self.push_to_amf("sync_cache_job"))
+        
+        # Update jobs
+        schedule.every(1).minute.do(lambda: self.push_to_amf("update_price_job", amf_queue))
+        schedule.every().day.at("00:17").do(lambda: self.push_to_amf("update_fng_job", amf_queue))
+        schedule.every().day.at("01:00").do(lambda: self.push_to_amf("update_all_symbols_job", amf_queue))
 
         # Save indicators jobs
-        schedule.every(1).minute.do(lambda: self.push_to_amf("update_price_job", amf_queue))
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kline_job", amf_kline_queue))
-        # schedule.every(1).minutes.do(lambda: self.push_to_amf("save_macd_job", amf_queue))
-        # schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kdj_job", amf_queue))
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_indicators_job", amf_queue))
-        # schedule.every(47).minutes.do(lambda: self.push_to_amf("save_ema_job"))
 
         # Technical analysis jobs
         schedule.every(30).seconds.do(lambda: self.push_to_plot("check_price_job"))
         schedule.every(17).minutes.do(lambda: self.push_to_plot("check_break_history_top_price_job"))
-        # schedule.every(2).minutes.do(lambda: self.push_to_amf("check_macd_cross_job", amf_queue))
-        # schedule.every(13).minutes.do(lambda: self.push_to_plot("check_macd_trend_job"))
-        # schedule.every(3).minutes.do(lambda: self.push_to_amf("check_kdj_cross_job", amf_queue))
-        # schedule.every(51).minutes.do(lambda: self.push_to_plot("check_ema_cross_job"))
         schedule.every(3).minutes.do(lambda: self.push_to_amf("check_gpt_plot_job", amf_queue))
 
         # user action
-        schedule.every().day.at("01:00").do(lambda: self.push_to_amf("update_all_symbols_job", amf_queue))
         # schedule.every().day.at("05:00").do(save_trade_history_job)
         # schedule.every().day.at("15:27").do(check_balance_job)
         # schedule.every().day.at("03:17").do(save_account_balance_job)
         # schedule.every().day.at("15:17").do(save_account_balance_job)
         # server UTC time
         # Daily tasks
-        schedule.every().day.at("00:17").do(lambda: self.push_to_amf("save_fng_job", amf_queue))
-

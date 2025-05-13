@@ -118,7 +118,7 @@ async def save_account_balance_job(*args, **kwargs):
     ).save()
 
 
-async def save_fng_job(*args, **kwargs):
+async def update_fng_job(*args, **kwargs):
     """
     恐惧与贪婪指数
     :param args:
@@ -134,7 +134,13 @@ async def save_fng_job(*args, **kwargs):
     fear_and_greed_data = resp_data["data"]
     current_fng_index = fear_and_greed_data[0]["value"]
     FearAndGreedIndexCache.set(int(current_fng_index), 27*3600)
-    logger.info(f"save_fng_job, time:{int(time.time())}, index:{current_fng_index}")
+    logger.info(f"update_fng_job, time:{int(time.time())}, index:{current_fng_index}")
+
+
+async def update_price(*args, **kwargs):
+    market_price_handler = MarketPriceHandler()
+    for symbol, price in market_price_handler.get_all_limit_price().items():
+        market_price_handler.update_current_price(symbol)
 
 
 @locking("save_kline_job")
@@ -149,66 +155,6 @@ async def save_kline_job(*args, **kwargs):
                 continue
             await KlineDataSaveHandle(symbol, _interval).save_data()
     redis_client.close()
-
-
-async def save_macd_job(*args, **kwargs):
-    redis_client = AllCache.get_client()
-
-    symbols_info = await get_plot_symbols_info(redis_client)
-    for symbol, _info in symbols_info.items():
-        for _interval in PLOT_INTERVAL_LIST:
-            if f"macd:{_interval}" not in _info:
-                continue
-
-            if redis_client.get(f"s_macd:{symbol}:{_interval}"):
-                continue
-            redis_client.set(f"s_macd:{symbol}:{_interval}", 1, 1024)
-
-            await push_symbol_mq({
-                "bp": "save_macd_job_by_symbol",
-                "symbol": symbol,
-                "interval": _interval
-            })
-    redis_client.close()
-
-
-async def save_macd_job_by_symbol(msg):
-    symbol = msg.get("symbol")
-    _interval = msg.get("interval")
-    await MacdDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
-
-    with RedisPoolContext() as r:
-        r.delete(f"s_macd:{symbol}:{_interval}")
-
-
-async def save_kdj_job(*args, **kwargs):
-    redis_client = AllCache.get_client()
-
-    symbols_info = await get_plot_symbols_info(redis_client)
-    for symbol, _info in symbols_info.items():
-        for _interval in PLOT_INTERVAL_LIST:
-            if f"kdj:{_interval}" not in _info:
-                continue
-
-            if redis_client.get(f"s_kdj:{symbol}:{_interval}"):
-                continue
-            redis_client.set(f"s_kdj:{symbol}:{_interval}", 1, 1024)
-
-            await push_symbol_mq({
-                "bp": "save_kdj_job_by_symbol",
-                "symbol": symbol,
-                "interval": _interval
-            })
-    redis_client.close()
-
-
-async def save_kdj_job_by_symbol(msg):
-    symbol = msg.get("symbol")
-    _interval = msg.get("interval")
-    await KdjDataSaveHandle(symbol, _interval).save_data(symbol, _interval)
-
-    with RedisPoolContext() as r:
-        r.delete(f"s_kdj:{symbol}:{_interval}")
 
 
 async def save_indicators_job(*args, **kwargs):
@@ -240,14 +186,6 @@ async def save_indicators_job_by_symbol(msg):
 
     with RedisPoolContext() as r:
         r.delete(f"s_indicators:{symbol}:{_interval}")
-
-
-@locking("save_ema_job")
-async def save_ema_job(*args, **kwargs):
-    symbol_list = ["wifusdt", ]
-    for symbol in symbol_list:
-        for _interval in PLOT_INTERVAL_LIST:
-            await EmaDataSaveHandle(symbol, _interval).save_data()
 
 
 class KlineDataSaveHandle(object):

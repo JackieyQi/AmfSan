@@ -47,12 +47,6 @@ async def check_price(*args, **kwargs):
     all_curr_prices = market_price_handler.get_current_price()
     await TradeSignalHandler().update_real_ticket(all_curr_prices)
     
-    
-async def update_price(*args, **kwargs):
-    market_price_handler = MarketPriceHandler()
-    for symbol, price in market_price_handler.get_all_limit_price().items():
-        market_price_handler.update_current_price(symbol)
-    
 
 async def check_break_history_top_price(*args, **kwargs):
     await TopPriceHandle().check_break_history_top_price()
