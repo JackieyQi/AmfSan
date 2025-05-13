@@ -208,7 +208,6 @@ class TradeSignalHandler(object):
 
                 if not curr_price:
                     continue
-                curr_price = str2decimal(curr_price)
 
                 if _d.status == 0:
                     if curr_price <= _d.bid_price:

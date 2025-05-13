@@ -104,7 +104,6 @@ class MarketPriceHandler(object):
         if not current_price:
             raise StandardResponseExc()
 
-        current_price = str2decimal(current_price)
         if low_price and current_price < low_price:
             raise StandardResponseExc(
                 msg="Current price:{} lower low_price".format(current_price)

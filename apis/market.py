@@ -33,7 +33,7 @@ class MarketPriceView(HTTPMethodView):
                 last_my_trade_price = price_handler.get_last_trade_price(k)
                 result[k] = {
                     "symbol": k,
-                    "current_price": current_price,
+                    "current_price": decimal2str(current_price),
                     "limit_low_price": decimal2str(limit_low_price),
                     "limit_high_price": decimal2str(limit_high_price),
                     "last_my_trade_price": decimal2str(last_my_trade_price),
@@ -45,8 +45,10 @@ class MarketPriceView(HTTPMethodView):
     async def post(self, request):
         low_price = request.form.get("low_price", 0)
         high_price = request.form.get("high_price", 0)
-        symbol = request.form.get("symbol", "btcusdt").strip().lower()
+        symbol = request.form.get("symbol", "").strip().lower()
         if not low_price and not high_price:
+            raise StandardResponseExc()
+        if not symbol:
             raise StandardResponseExc()
 
         hset_limit_price_result = MarketPriceHandler().set_limit_price(
