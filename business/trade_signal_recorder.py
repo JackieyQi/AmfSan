@@ -178,11 +178,14 @@ class TradeSignalHandler(object):
             )
 
     async def update_ask_ticket(self, curr_price, ask_price, ask_ts, ask_plot_type, ask_plot_msg):
+        # TODO: redis加锁
         async with async_database.aio_atomic():
             try:
                 last_ticket = await PlotBackTestTable.select().where(
                     PlotBackTestTable.symbol == self.symbol,
                 ).order_by(PlotBackTestTable.bid_ts.desc()).aio_get()
+                if last_ticket.status != 1:
+                    return
 
                 last_ticket.ask_curr_price = curr_price
                 last_ticket.ask_price = ask_price
@@ -200,6 +203,7 @@ class TradeSignalHandler(object):
         curr_ts = int(time.time())
         market_price_handler = MarketPriceHandler()
 
+        # TODO: redis加锁
         async with async_database.aio_atomic():
             db_data = await PlotBackTestTable.select().where(PlotBackTestTable.status.in_([0, 3])).aio_execute()
 
@@ -235,8 +239,6 @@ class TradeSignalHandler(object):
                         await _d.aio_save()
 
                 elif _d.status == 3:
-                    if not _d.buy_price:
-                        continue
 
                     if curr_price >= _d.ask_price:
                         _d.sell_price = _d.ask_price

@@ -63,7 +63,7 @@ class UserRegisterView(HTTPMethodView):
         if not cache_register_code or (cache_register_code != code):
             raise StandardResponseExc(msg="Invalid verification code")
 
-        cache_invite_code = redis_client.get(f"email:invite_code:{email}")
+        cache_invite_code = redis_client.get(f"user:invite_code:{email}")
         if not cache_invite_code or (cache_invite_code != invite_code):
             raise StandardResponseExc(msg="Invalid invitation code")
 

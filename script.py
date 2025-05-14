@@ -7,6 +7,7 @@ import asyncio
 import click
 from datetime import datetime, timedelta
 
+from cache import RedisPoolContext
 from exts import MysqlClient
 from models import order, user, wallet, market
 from business.backtest.backtest_engine import BacktestEngine
@@ -142,6 +143,26 @@ def command_del_symbol(symbol):
           f"\nrsi_del_rows:{rsi_del_rows}")
 
     print("***************end command_add_new_symbol****************")
+
+
+@cli.command()
+@click.option('--email', required=True)
+@click.option('--code', required=True, help='邀请码(6位字符串)')
+def cmd_set_invite_code(email: str, code: str):
+    """
+    设置邀请码
+    
+    Args:
+        email: 邮箱
+        code: 邀请码(6位字符串)
+    """
+    print("***************start command_set_invite_code**************")
+
+    with RedisPoolContext() as r:
+        r.set(f"user:invite_code:{email}", code, ex=600)
+
+    print(f"设置邀请码成功，有效期10分钟")
+    print("*************** end ****************")
 
 
 @cli.command()
