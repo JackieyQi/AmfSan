@@ -14,26 +14,26 @@ from business.market import MarketPriceHandler
 from business.trade_signal_recorder import TradeSignalHandler
 from cache import AllCache
 from cache.plot import (CheckKdjCrossGateCache,
-                       CheckMacdCrossGateCache, CheckMacdTrendGateCache)
+                        CheckMacdCrossGateCache, CheckMacdTrendGateCache)
 from exts import async_database
 from models.market import BnSymbolTable, EmaTable, KdjTable, KlineTable, MacdTable
 from models.user import EmailMsgHistoryTable, UserSymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from msgqueue.queue import push_plot_mq
 from settings.constants import (INNER_GET_DELETE_KDJ_CROSS_URL,
-                              INNER_GET_DELETE_LIMIT_PRICE_URL,
-                              INNER_GET_DELETE_MACD_CROSS_URL,
-                              INNER_GET_DELETE_MACD_TREND_URL,
-                              INNER_GET_PRICE_URL,
-                              INNER_GET_UPDATE_PRICE_URL, PLOT_INTERVAL_CONFIG,
-                              PLOT_INTERVAL_LIST)
+                                INNER_GET_DELETE_LIMIT_PRICE_URL,
+                                INNER_GET_DELETE_MACD_CROSS_URL,
+                                INNER_GET_DELETE_MACD_TREND_URL,
+                                INNER_GET_PRICE_URL,
+                                INNER_GET_UPDATE_PRICE_URL, PLOT_INTERVAL_CONFIG,
+                                PLOT_INTERVAL_LIST)
 from utils.common import check_lock_latest, decimal2str, str2decimal, ts2bjfmt
 from utils.templates import (template_asset_notice, template_ema_cross_notice,
-                           template_kdj_cross_notice, template_macd_cross_notice,
-                           template_macd_trend_notice)
+                             template_kdj_cross_notice, template_macd_cross_notice,
+                             template_macd_trend_notice)
 
 from .base import BasePlotHandle, get_plot_symbols_info
-from .plot_gpt import PlotGptHandle
+from msgqueue.tasks.strategy import StrategyCheckHandle
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +139,8 @@ async def check_ema_cross(*args, **kwargs):
             await PlotEmaHandle(symbol, _interval).check_cross()
 
 
-async def check_gpt_plot(*args, **kwargs):
-    logger.debug("check_gpt_plot")
+async def check_strategy(*args, **kwargs):
+    logger.debug("check_strategy")
 
     redis_client = AllCache.get_client()
 
@@ -149,18 +149,18 @@ async def check_gpt_plot(*args, **kwargs):
         if symbol.lower() == "btcusdt":
             continue
         await push_plot_mq({
-            "bp": "check_gpt_plot_job_by_symbol",
+            "bp": "check_strategy_by_symbol",
             "symbol": symbol,
         })
     redis_client.close()
 
 
-async def check_gpt_plot_job_by_symbol(val):
+async def check_strategy_by_symbol(val):
     symbol = val.get("symbol")
     if not symbol:
-        logger.error(f"check_gpt_plot_job_by_symbol, {val}")
+        logger.error(f"check_strategy_by_symbol, {val}")
         return
-    await PlotGptHandle(symbol).check()
+    await StrategyCheckHandle(symbol).check()
 
 
 async def check_kdj_cv(*args, **kwargs):

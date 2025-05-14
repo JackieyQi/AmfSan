@@ -60,8 +60,10 @@ class ModeBase:
             return True
         
         # 4小时: MACD<0 且柱下降; KDJ 死叉且加速下行
-        is_4h_macd_bearish = self.macd_4h_factors.macd_list[0].macd < 0 and self.macd_4h_factors.is_continue_down(index=1)
-        is_4h_kdj_bearish = (self.kdj_4h_factors.kdj_list[0].k_val < self.kdj_4h_factors.kdj_list[0].d_val) and (self.kdj_4h_factors.is_j_continue_down(index=1))
+        is_4h_macd_bearish = self.macd_4h_factors.macd_list[0].macd < 0 and self.macd_4h_factors.is_continue_down(
+            index=1)
+        is_4h_kdj_bearish = (self.kdj_4h_factors.kdj_list[0].k_val < self.kdj_4h_factors.kdj_list[0].d_val) and (
+            self.kdj_4h_factors.is_j_continue_down(index=1))
         if is_4h_macd_bearish and is_4h_kdj_bearish:
             return True
         

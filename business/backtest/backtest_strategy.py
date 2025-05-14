@@ -8,7 +8,7 @@ from decimal import Decimal
 
 class BacktestStrategy(bt.Strategy):
     """
-    基于PlotGptHandle的回测策略
+    基于StrategyCheckHandle的回测策略
     使用多个技术指标组合来生成交易信号
     """
     
@@ -92,7 +92,7 @@ class BacktestStrategy(bt.Strategy):
         使用多个技术指标组合来生成买入信号
         """
 
-        from msgqueue.tasks.plot_gpt import StrategyHandle
+        from business.strategy import StrategyHandle
         from models.market import KlineTable, BollTable, MacdTable, KdjTable, RsiTable
 
         curr_1h_open_ts = int(self.data.datetime.datetime().timestamp())
@@ -128,7 +128,7 @@ class BacktestStrategy(bt.Strategy):
         检查是否满足卖出条件
         使用多个技术指标组合来生成卖出信号
         """
-        from msgqueue.tasks.plot_gpt import StrategyHandle
+        from business.strategy import StrategyHandle
         from models.market import KlineTable, BollTable, MacdTable, KdjTable, RsiTable
 
         curr_1h_open_ts = int(self.data.datetime.datetime().timestamp())
