@@ -3,10 +3,12 @@
 
 import logging
 import numpy as np
+from typing import Optional
 from decimal import Decimal
+from dataclasses import dataclass
 from utils.common import decimal2decimal
 
-from .factor import CandlestickFactor
+from .factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
 
 """
 结构场景 + 条件链判断
@@ -26,44 +28,60 @@ TODO: 可以考虑“评分走势”的平滑机制
 logger = logging.getLogger(__name__)
 
 
-class ModeExcludeFactor:
-    @staticmethod
-    def has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
-        is_4h_ema12_continue_down = kline_4h_factors.is_ema12_continue_down(window_size=3)
+@dataclass
+class ModeBase:
+    kline_1d_factors: Optional[CandlestickFactor] = None
+    kline_4h_factors: Optional[CandlestickFactor] = None
+    kline_1h_factors: Optional[CandlestickFactor] = None
+    macd_4h_factors: Optional[MacdFactor] = None
+    macd_1h_factors: Optional[MacdFactor] = None
+    kdj_4h_factors: Optional[KdjFactor] = None
+    kdj_1h_factors: Optional[KdjFactor] = None
+    rsi_4h_factors: Optional[RsiFactor] = None
+    rsi_1h_factors: Optional[RsiFactor] = None
+    
+    def has_bearish(self):
+        is_4h_ema12_continue_down = self.kline_4h_factors.is_ema12_continue_down(window_size=3)
         
-        if macd_4h_factors.is_death_cross(index=0):
+        if self.macd_4h_factors.is_death_cross(index=0):
             is_4h_macd_death_cross = True
             death_cross_4h_index = 1
-        elif macd_4h_factors.is_death_cross(index=1):
+        elif self.macd_4h_factors.is_death_cross(index=1):
             is_4h_macd_death_cross = True
             death_cross_4h_index = 2
         else:
             is_4h_macd_death_cross = False
             death_cross_4h_index = None
             
-        if (is_4h_ema12_continue_down or is_4h_macd_death_cross) and kline_4h_factors.is_bearish_engulfing_k():
+        if (is_4h_ema12_continue_down or is_4h_macd_death_cross) and self.kline_4h_factors.is_bearish_engulfing_k():
             return True
         
-        if is_4h_macd_death_cross and macd_4h_factors.is_bullish_stack(index=death_cross_4h_index):
+        if is_4h_macd_death_cross and self.macd_4h_factors.is_bullish_stack(index=death_cross_4h_index):
             return True
         
-        if macd_1h_factors.is_death_cross(index=0):
+        # 4小时: MACD<0 且柱下降; KDJ 死叉且加速下行
+        is_4h_macd_bearish = self.macd_4h_factors.macd_list[0].macd < 0 and self.macd_4h_factors.is_continue_down(index=1)
+        is_4h_kdj_bearish = (self.kdj_4h_factors.kdj_list[0].k_val < self.kdj_4h_factors.kdj_list[0].d_val) and (self.kdj_4h_factors.is_j_continue_down(index=1))
+        if is_4h_macd_bearish and is_4h_kdj_bearish:
+            return True
+        
+        if self.macd_1h_factors.is_death_cross(index=0):
             is_1h_macd_death_cross = True
             death_cross_1h_index = 1
-        elif macd_1h_factors.is_death_cross(index=1):
+        elif self.macd_1h_factors.is_death_cross(index=1):
             is_1h_macd_death_cross = True
             death_cross_1h_index = 2
         else:
             is_1h_macd_death_cross = False
             death_cross_1h_index = None
         
-        if is_1h_macd_death_cross and macd_1h_factors.is_bullish_stack(index=death_cross_1h_index):
+        if is_1h_macd_death_cross and self.macd_1h_factors.is_bullish_stack(index=death_cross_1h_index):
             return True
         
         return False
 
 
-class ModelBollTopRise(object):
+class ModelBollTopRise(ModeBase):
     """
     布林贴顶加速上涨模型(贴顶上涨):
         结构节奏：几乎无回调，连续阳线
@@ -72,10 +90,12 @@ class ModelBollTopRise(object):
         策略属性：趋势追踪
         出现场景：强力突破、主升浪中段
     """
-    def __init__(self, curr_price):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
         self.name = "mode_boll_top_rise"
         self.name_str = "布林贴顶加速上涨模型"
-        self.curr_price = curr_price
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price
         self.score = 0
 
     def get_recommend_price(self):
@@ -83,11 +103,13 @@ class ModelBollTopRise(object):
             "recommend_bid_price": self.curr_price,
         }
 
-    def is_detected(self, kline_list_4h, kline_list_1h, bb_list_1h,
-                    kline_4h_factors, kline_1h_factors, macd_4h_factors):
+    def is_detected(self):
+        kline_list_1h = self.kline_1h_factors.kline_list
+        bb_list_1h = self.kline_1h_factors.bb_list
+        
         # 1小时: 阳线比例 >= 70%
         window_size = 10
-        count_1h_bullish_k = [kline_1h_factors.is_bullish_k(index=i) for i in range(window_size)]
+        count_1h_bullish_k = [self.kline_1h_factors.is_bullish_k(index=i) for i in range(window_size)]
         if sum(count_1h_bullish_k) < window_size * 0.7:
             return False
 
@@ -99,16 +121,16 @@ class ModelBollTopRise(object):
             return False
 
         # 1小时: 至少连续 3 根K线收盘价 > EMA12
-        if not kline_1h_factors.is_ema12_continue_lt_close(window_size=3):
+        if not self.kline_1h_factors.is_ema12_continue_lt_close(window_size=3):
             return False
 
         # 4小时: 连续3根以上K线收于布林带上轨上方或贴近上轨
-        count_4h_close_gt_bbupper = [kline_4h_factors.is_near_upper(index=i) for i in range(3)]
+        count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(index=i) for i in range(3)]
         if sum(count_4h_close_gt_bbupper) < 3:
             return False
 
         # 4小时: 连续3根DIF持续上穿DEA；
-        if not macd_4h_factors.is_continue_up(window_size=3):
+        if not self.macd_4h_factors.is_continue_up(window_size=3):
             return False
 
         # 上面形成基础贴顶上涨趋势
@@ -127,7 +149,7 @@ class ModelBollTopRise(object):
         return self.score >= 5
 
 
-class ModelBollMidRebound(object):
+class ModelBollMidRebound(ModeBase):
     """
     |         | （中轨反弹）   |
     | 结构节奏 | 有回调→确认支撑→拉升 |
@@ -137,69 +159,75 @@ class ModelBollMidRebound(object):
     | 出现场景 | 震荡行情末端或突破初期 |
 
     """
-    def __init__(self, curr_price):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
         self.name = "model_boll_mid_rebound"
         self.name_str = "4小时强趋势上升，1小时布林带中轨反弹结构"
-        self.curr_price = curr_price
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price
         self.score = 0
 
-    def get_recommend_price(self, curr_low_price):
+    def get_recommend_price(self):
+        curr_low_price = self.kline_1h_factors.kline_list[0].low_price
         recommend_bid_price = (self.curr_price + curr_low_price) / Decimal("2")
         return {
             "recommend_bid_price": decimal2decimal(recommend_bid_price)
         }
 
-    def is_detected(self, kline_list_1h, bb_list_1h,
-                    kline_4h_factors, kline_1h_factors, macd_4h_factors, macd_1h_factors, kdj_1h_factors, rsi_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
+    def is_detected(self):
+        if self.has_bearish():
             return False
 
         # 前置条件：4小时多头排列+4小时的EMA12和EMA26连续上升趋势+4小时MACD没有连续递减
-        if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
-                and kline_4h_factors.is_ema12_continue_up(window_size=5) \
-                and kline_4h_factors.is_ema26_continue_up(window_size=5) \
-                and not macd_4h_factors.is_continue_down(index=1):
+        if self.kline_4h_factors.is_ema_bullish_stack(window_size=5) \
+                and self.kline_4h_factors.is_ema12_continue_up(window_size=5) \
+                and self.kline_4h_factors.is_ema26_continue_up(window_size=5) \
+                and not self.macd_4h_factors.is_continue_down(index=1):
             self.score += 10
 
             # 条件A：当前最低价跌破中轨，收盘价回到中轨上方
-            is_4h_structure = kline_4h_factors.get_fake_breakdown_by_bb(index=0, is_low=False)
+            is_4h_structure = self.kline_4h_factors.get_fake_breakdown_by_bb(index=0, is_low=False)
             if is_4h_structure:
                 self.score += 15
 
-            is_1h_structure = any([kline_1h_factors.get_fake_breakdown_by_bb(index=i, is_low=False) for i in range(2)])
+            is_1h_structure = any([self.kline_1h_factors.get_fake_breakdown_by_bb(index=i, is_low=False) for i in range(2)])
             if is_1h_structure:
                 self.score += 10
 
             if is_4h_structure or is_1h_structure:
 
                 # 子因子A1：1小时的KDJ的J底部背离
-                is_new_low_price = kline_1h_factors.is_new_low_price(3)
-                if kdj_1h_factors.is_j_bullish_divergence(is_new_low_price):
+                is_new_low_price = self.kline_1h_factors.is_new_low_price(3)
+                if self.kdj_1h_factors.is_j_bullish_divergence(is_new_low_price):
                     self.score += 5
 
                 # 子因子A2：1小时的RSI从低位反弹
                 for i in range(3):
-                    if rsi_1h_factors.get_breakout_from_low(index=i):
+                    if self.rsi_1h_factors.get_breakout_from_low(index=i):
                         self.score += 5
                         break
 
                 # 子因子A3：1小时前k线为十字线，当前k线为阳线且收盘价突破中轨
-                if kline_1h_factors.get_crosshairs(index=1) and (
-                        kline_1h_factors.is_bullish_k(index=0) and kline_list_1h[0].close_price > bb_list_1h[0].bbmid):
+                if self.kline_1h_factors.get_crosshairs(index=1) and (
+                        self.kline_1h_factors.is_bullish_k(index=0)
+                        and self.kline_1h_factors.kline_list[0].close_price > self.kline_1h_factors.bb_list[0].bbmid):
                     self.score += 5
 
         return self.score >= 22.5  # 大于总分的1/2
 
 
-class ModelBollLowReboundBullishSideways(object):
-    def __init__(self, curr_price):
+class ModelBollLowReboundBullishSideways(ModeBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
         self.name = "model_boll_low_rebound_bullish_sideways"
         self.name_str = "4小时多头排列+震荡，1小时布林带下轨反弹结构"
-        self.curr_price = curr_price
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price
         self.score = 0
 
-    def get_recommend_price(self, kline_list_1h, bb_list_1h):
-        if kline_list_1h[0].high_price > (bb_list_1h[0].bblower + bb_list_1h[0].bbmid)/Decimal("2"):
+    def get_recommend_price(self):
+        if self.kline_1h_factors.kline_list[0].high_price > (
+                self.kline_1h_factors.bb_list[0].bblower + self.kline_1h_factors.bb_list[0].bbmid)/Decimal("2"):
             recommend_bid_price = None
         else:
             recommend_bid_price = self.curr_price
@@ -207,32 +235,32 @@ class ModelBollLowReboundBullishSideways(object):
             "recommend_bid_price": recommend_bid_price
         }
 
-    def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, macd_1h_factors, kdj_1h_factors, rsi_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
+    def is_detected(self):
+        if self.has_bearish():
             return False
 
         # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根没有连续下降
-        if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
-                and not kline_4h_factors.is_ema12_continue_down(window_size=5):
+        if self.kline_4h_factors.is_ema_bullish_stack(window_size=5) \
+                and not self.kline_4h_factors.is_ema12_continue_down(window_size=5):
             self.score += 10
 
             # 条件B：前k线的最低价跌破下轨，收盘价回到下轨上方
-            is_1h_structure = kline_1h_factors.get_fake_breakdown_by_bb(index=1, is_low=True)
+            is_1h_structure = self.kline_1h_factors.get_fake_breakdown_by_bb(index=1, is_low=True)
             if is_1h_structure:
                 self.score += 10
 
                 # 子因子B1：反弹K线结构:前k线长下影阳线
-                if kline_1h_factors.is_bullish_k() \
-                        and kline_1h_factors.is_long_lower_shadow_k(index=1, scale=Decimal("2")):
+                if self.kline_1h_factors.is_bullish_k() \
+                        and self.kline_1h_factors.is_long_lower_shadow_k(index=1, scale=Decimal("2")):
                     self.score += 5
 
                 # 子因子B2：1小时的KDJ的J底部背离
-                is_new_low_price = kline_1h_factors.is_new_low_price(3, index=1)
-                if kdj_1h_factors.is_j_bullish_divergence(is_new_low_price, index=1, j_threshold=Decimal("10")):
+                is_new_low_price = self.kline_1h_factors.is_new_low_price(3, index=1)
+                if self.kdj_1h_factors.is_j_bullish_divergence(is_new_low_price, index=1, j_threshold=Decimal("10")):
                     self.score += 5
 
                 # 子因子B3： 1小时 RSI-6 低于20(短期超卖)且反弹
-                if rsi_1h_factors.get_rebound(index=1, threshold=Decimal("20")):
+                if self.rsi_1h_factors.get_rebound(index=1, threshold=Decimal("20")):
                     self.score += 5
 
                 # 子因子B4：成交量放大: volume > vol_ma * 1.5
@@ -240,15 +268,17 @@ class ModelBollLowReboundBullishSideways(object):
         return self.score >= 25  # 任一子因子满足
 
 
-class ModelBollLowReboundBullishDown(object):
-    def __init__(self, curr_price):
+class ModelBollLowReboundBullishDown(ModeBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
         self.name = "model_boll_low_rebound_bullish_Down"
         self.name_str = "4小时多头排列+下跌，1小时布林带下轨反弹结构"
-        self.curr_price = curr_price
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price
         self.score = 0
 
-    def get_recommend_price(self, kline_1h_factors):
-        if kline_1h_factors.is_along_lower_band(n=7):
+    def get_recommend_price(self):
+        if self.kline_1h_factors.is_along_lower_band(n=7):
             recommend_bid_price = None
         else:
             recommend_bid_price = self.curr_price
@@ -256,74 +286,76 @@ class ModelBollLowReboundBullishDown(object):
             "recommend_bid_price": recommend_bid_price
         }
 
-    def is_detected(self, kline_4h_factors, kline_1h_factors, macd_4h_factors, macd_1h_factors, kdj_1h_factors, rsi_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
+    def is_detected(self):
+        if self.has_bearish():
             return False
 
         # 前置条件：更大周期的4小时的EMA多头排列+4小时的EMA12最近5根连续下降+4小时附近没有收盘价跌破下轨
-        if kline_4h_factors.is_ema_bullish_stack(window_size=5) \
-                and kline_4h_factors.is_ema12_continue_down(window_size=5) \
-                and not kline_4h_factors.is_breakdown_by_bb(window_size=5):
+        if self.kline_4h_factors.is_ema_bullish_stack(window_size=5) \
+                and self.kline_4h_factors.is_ema12_continue_down(window_size=5) \
+                and not self.kline_4h_factors.is_breakdown_by_bb(window_size=5):
             self.score += 10
 
             # 条件C：前4根线至少3根线击破下轨且收盘价反弹+当前最低价跌破下轨，收盘价回到下轨上方
             window_size = 4
-            fake_list = [kline_1h_factors.get_fake_breakdown_by_bb(index=i, is_low=True) for i in range(4)]
+            fake_list = [self.kline_1h_factors.get_fake_breakdown_by_bb(index=i, is_low=True) for i in range(4)]
             is_1h_structure = sum(fake_list) > (window_size/2)
             if is_1h_structure:
                 self.score += 10
 
                 # 子因子C1：反弹K线结构:长下影阳线
-                if kline_1h_factors.is_bullish_k() and kline_1h_factors.is_long_lower_shadow_k(scale=Decimal("2")):
+                if self.kline_1h_factors.is_bullish_k() and self.kline_1h_factors.is_long_lower_shadow_k(scale=Decimal("2")):
                     self.score += 5
 
                 # 子因子C2：反弹K线结构:看涨吞没
-                if kline_1h_factors.is_bullish_engulfing_k():
+                if self.kline_1h_factors.is_bullish_engulfing_k():
                     self.score += 5
 
                 # 子因子C3： 1小时 RSI-6 低于35(短期超卖)且反弹
-                if rsi_1h_factors.get_rebound(threshold=Decimal("35")):
+                if self.rsi_1h_factors.get_rebound(threshold=Decimal("35")):
                     self.score += 5
 
         return self.score >= 25  # 任一子因子满足
 
 
-class ModelLTypeRebound(object):
-    def __init__(self, curr_price):
+class ModelLTypeRebound(ModeBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
         self.name = "model_l_type_rebound"
         self.name_str = "日线EMA多头+4小时布林带形成L形状，1小时布林带下轨反弹结构"
-        self.curr_price = curr_price
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price
         self.score = 0
 
-    def get_recommend_price(self, bb_list_1h):
+    def get_recommend_price(self):
         return {
-            "recommend_bid_price": bb_list_1h.bblower,
+            "recommend_bid_price": self.kline_1h_factors.bb_list[0].bblower,
         }
 
-    def is_detected(self, kline_1d_factors, kline_4h_factors, kline_1h_factors, macd_4h_factors, macd_1h_factors, kdj_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
+    def is_detected(self):
+        if self.has_bearish():
             return False
 
         # 前置条件：更大周期的日线的EMA多头排列+4小时布林带形成L形状
-        if kline_1d_factors.is_ema_bullish_stack(window_size=5) \
-                and kline_4h_factors.has_l_shape():
+        if self.kline_1d_factors.is_ema_bullish_stack(window_size=5) \
+                and self.kline_4h_factors.has_l_shape():
             self.score += 10
 
             # 条件D：当前k线的最低价跌破下轨，收盘价回到下轨上方
-            is_1h_structure = kline_1h_factors.get_fake_breakdown_by_bb(index=0, is_low=True)
+            is_1h_structure = self.kline_1h_factors.get_fake_breakdown_by_bb(index=0, is_low=True)
             if is_1h_structure:
                 self.score += 10
 
                 # 子因子D1：1小时的KDJ的J底部背离
-                is_new_low_price = kline_1h_factors.is_new_low_price(3, index=1)
-                if kdj_1h_factors.is_j_bullish_divergence(is_new_low_price, index=1, j_threshold=Decimal("10")):
+                is_new_low_price = self.kline_1h_factors.is_new_low_price(3, index=1)
+                if self.kdj_1h_factors.is_j_bullish_divergence(is_new_low_price, index=1, j_threshold=Decimal("10")):
                     self.score += 5
 
         # TODO:
         return self.score >= 20  # 任一子因子满足
 
 
-class ModelWTypeRebound(object):
+class ModelWTypeRebound(ModeBase):
     """
     结构判断：
         定义时间窗 window_size=15（蜡烛图长度）：
@@ -331,25 +363,28 @@ class ModelWTypeRebound(object):
             P2：在 P1 后蜡烛内找到中间高点；
             P3：P2 后内再出现次低点，价格接近 P1，且不明显创新低
     """
-    def __init__(self, curr_price):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
         self.name = "model_w_type_rebound"
         self.name_str = "1小时布林带形成W形状，1小时布林带下轨反弹结构"
-        self.curr_price = curr_price
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price
         self.score = 0
 
-    def get_recommend_price(self, bb_list_1h):
+    def get_recommend_price(self):
         return {
             "recommend_bid_price": self.curr_price,
         }
 
-    def is_detected(self, kline_list_4h, kline_list_1h, macd_list_4h, macd_list_1h, bb_list_4h, bb_list_1h,
-                    rsi_list_4h, rsi_list_1h, kline_4h_factors, macd_4h_factors, macd_1h_factors):
-        if ModeExcludeFactor.has_bearish(kline_4h_factors, macd_4h_factors, macd_1h_factors):
+    def is_detected(self):
+        if self.has_bearish():
             return False
 
-        if self._is_detected(kline_list_4h, macd_list_4h, bb_list_4h, rsi_list_4h):
+        if self._is_detected(self.kline_4h_factors.kline_list, self.macd_4h_factors.macd_list, 
+                             self.kline_4h_factors.bb_list, self.rsi_4h_factors.rsi_list):
             return True
-        elif self._is_detected(kline_list_1h, macd_list_1h, bb_list_1h, rsi_list_1h):
+        elif self._is_detected(self.kline_1h_factors.kline_list, self.macd_1h_factors.macd_list, 
+                               self.kline_1h_factors.bb_list, self.rsi_1h_factors.rsi_list):
             return True
         else:
             return False
@@ -411,47 +446,50 @@ class ModelWTypeRebound(object):
         return self.score >= 5
 
 
-class ModelVTypeRebound(object):
+class ModelVTypeRebound(ModeBase):
     """
     1小时V型，从下轨到中轨，过中轨后的k线的收盘价没有下落中轨，平行布林带口袋向上贴上轨。
 
     结构判断：
         定义时间窗 window_size=18（蜡烛图长度）：
     """
-    def __init__(self, curr_price):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
         self.name = "model_v_type_rebound"
         self.name_str = "1小时k线形成V形状，1小时布林带开始沿上轨并稳定住"
-        self.curr_price = curr_price
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price
         self.score = 0
 
-    def get_recommend_price(self, bb_list_1h):
+    def get_recommend_price(self):
         return {
             "recommend_bid_price": self.curr_price,
         }
 
-    def is_detected(self, kline_list_1h, bb_list_1h, kline_1h_factors, kdj_4h_factors):
+    def is_detected(self):
         window_size = 18
-        low_prices_list = [i.low_price for i in kline_list_1h[:window_size]]
+        low_prices_list = [i.low_price for i in self.kline_1h_factors.kline_list[:window_size]]
         min_low_price = min(low_prices_list)
         min_low_price_index = low_prices_list.index(min_low_price)
 
-        if not kline_1h_factors.is_ema_golden_cross(index=0):
+        if not self.kline_1h_factors.is_ema_golden_cross(index=0):
             return False
 
-        count_kline_in_bbmid_range = [kline_list_1h[i].open_price < bb_list_1h[i].bbmid < kline_list_1h[i].close_price
-                                      for i in range(min_low_price_index)]
+        count_kline_in_bbmid_range = [
+            self.kline_1h_factors.kline_list[i].open_price < self.kline_1h_factors.bb_list[i].bbmid <
+            self.kline_1h_factors.kline_list[i].close_price for i in range(min_low_price_index)]
         # 判断中间低点到右边界，是否连续上涨
         if sum(count_kline_in_bbmid_range) > 1:
             return False
 
-        count_ema_death_cross = [kline_1h_factors.is_ema_death_cross(index=i)
+        count_ema_death_cross = [self.kline_1h_factors.is_ema_death_cross(index=i)
                                  for i in range(min_low_price_index, window_size)]
         # 判断中间低点到左边界，是否ema死叉向下
         if sum(count_ema_death_cross) > 1:
             return False
 
         # 子因子V1：4小时KDJ金叉
-        if kdj_4h_factors.get_curr_golden_cross():
+        if self.kdj_4h_factors.get_curr_golden_cross():
             self.score += 5
 
         return self.score >= 5

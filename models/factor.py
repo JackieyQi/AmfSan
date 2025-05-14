@@ -571,6 +571,9 @@ class KdjFactor:
             if is_new_low_price and self.kdj_list[index+1].j_val <= j < j_threshold:
                 return True
         return False
+    
+    def is_j_continue_down(self, index=0, window_size=3):
+        return all(self.kdj_list[i].j_val > self.kdj_list[i - 1].j_val for i in range(index+1, index+window_size))
 
 
 class RsiFactor:

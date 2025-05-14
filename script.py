@@ -146,19 +146,39 @@ def command_del_symbol(symbol):
 
 @cli.command()
 @click.option('--symbol', required=True, help='交易对，例如：belusdt')
-def cmd_cancel_symbol_check_price(symbol: str):
+@click.option('--valid', required=True, help='是否有效，0: 无效，1: 有效')
+def cmd_cancel_symbol_check_price(symbol: str, valid: bool):
     """
     取消交易对价格检查
-
+    
     Args:
         symbol: 交易对
+        valid: 是否有效(0/1)
     """
 
     print("*************** start **************")
-    result = market.BnSymbolTable.update(is_valid=False).where(
-        market.BnSymbolTable.symbol == symbol.lower().strip()).execute()
+    
+    try:
+        symbol = symbol.lower().strip()
+        valid = False if int(valid) == 0 else True
+    except Exception as e:
+        print(f"错误：{e}")
+        return
+    
+    update_str = ""
+    old_symbol = market.BnSymbolTable.select().where(
+        market.BnSymbolTable.symbol == symbol).first()
+    if old_symbol:
+        old_symbol.is_valid = valid
+        old_symbol.save()
+        update_str = "更新"
+    else:
+        market.BnSymbolTable(symbol=symbol, is_valid=valid).save()
+        update_str = "新增"
 
-    print(f"result: {result}")
+    valid_count = market.BnSymbolTable.select().where(
+        market.BnSymbolTable.is_valid).count()
+    print(f"{update_str} {symbol} 成功，当前有效交易对数量: {valid_count}")
     print("*************** end ****************")
 
 
