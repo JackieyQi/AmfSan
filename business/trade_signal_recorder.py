@@ -235,6 +235,9 @@ class TradeSignalHandler(object):
                         await _d.aio_save()
 
                 elif _d.status == 3:
+                    if not _d.buy_price:
+                        continue
+
                     if curr_price >= _d.ask_price:
                         _d.sell_price = _d.ask_price
                         _d.sell_ts = curr_ts
