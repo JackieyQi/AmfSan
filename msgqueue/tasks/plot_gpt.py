@@ -78,6 +78,7 @@ class StrategyHandle:
 
     def get_buy_by_model_detect(self, curr_price):
         kwargs = {
+            "kline_1d_factors": self.kline_1d_factors,
             "kline_4h_factors": self.kline_4h_factors,
             "kline_1h_factors": self.kline_1h_factors,
             "macd_4h_factors": self.macd_4h_factors,
