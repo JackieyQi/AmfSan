@@ -17,7 +17,7 @@ from models.order import OrderTradeHistoryTable
 from models.user import UserSymbolPlotTable as SymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
-from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG
+from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG, STRATEGY_INTERVAL_LIST
 from utils.common import decimal2str, str2decimal, locking, \
     set_lock_latest, leading_zeros, decimal2decimal, float2decimal, autoscale
 from utils.hrequest import http_get_request
@@ -149,10 +149,7 @@ async def save_kline_job(*args, **kwargs):
 
     symbols_info = await get_plot_symbols_info(redis_client)
     for symbol in symbols_info.keys():
-        for _interval in PLOT_INTERVAL_LIST:
-            # TODO,
-            if _interval not in ["1h", "4h", "1d"]:
-                continue
+        for _interval in STRATEGY_INTERVAL_LIST:
             await KlineDataSaveHandle(symbol, _interval).save_data()
     redis_client.close()
 
@@ -162,10 +159,7 @@ async def save_indicators_job(*args, **kwargs):
 
     symbols_info = await get_plot_symbols_info(redis_client)
     for symbol, _info in symbols_info.items():
-        for _interval in PLOT_INTERVAL_LIST:
-            # TODO,
-            if _interval not in ["1h", "4h", "1d"]:
-                continue
+        for _interval in STRATEGY_INTERVAL_LIST:
 
             if redis_client.get(f"s_indicators:{symbol}:{_interval}"):
                 continue
