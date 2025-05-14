@@ -5,6 +5,7 @@ import json
 import hashlib
 from models.user import UserSymbolPlotTable, EmailMsgHistoryTable
 from models.market import MacdTable, KdjTable
+from settings.setting import cfgs
 
 
 class BasePlotHandle(object):
@@ -38,7 +39,7 @@ class BasePlotHandle(object):
 
         from msgqueue.queue import push_msg
 
-        default_receiver_list = ["wayley@live.com", ]
+        default_receiver_list = [cfgs["administrator_email"], ]
         await push_msg(
             {
                 "bp": "send_email_task",
