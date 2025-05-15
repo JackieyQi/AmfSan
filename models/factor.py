@@ -367,10 +367,10 @@ class CandlestickFactor:
         return (self.macd_list[index].ema_12 <= self.macd_list[index].ema_26) \
                and (self.macd_list[index+1].ema_12 > self.macd_list[index+1].ema_26)
 
-    def is_ema_bullish_stack(self, window_size=7):
+    def is_ema_bullish_stack(self, index=0, window_size=7):
         if not self.macd_list:
             return False
-        return all((self.macd_list[i].ema_12 - self.macd_list[i].ema_26) > 0 for i in range(window_size-1))
+        return all((self.macd_list[i].ema_12 - self.macd_list[i].ema_26) > 0 for i in range(index, index+window_size))
 
     def is_ema12_continue_down(self, window_size=7):
         return all(self.macd_list[i].ema_12 > self.macd_list[i - 1].ema_12 for i in range(1, window_size))

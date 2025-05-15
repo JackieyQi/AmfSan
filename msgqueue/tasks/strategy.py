@@ -418,9 +418,9 @@ class StrategyCheckHandle(BasePlotHandle):
                 recommend_bid_price = model_info["recommend_bid_price"]
                 strategy_text += model_info["model_name"]
 
-            elif score_info := await self.get_buy_by_multi_factor_score(curr_price):
-                for k, v in score_info.items():
-                    strategy_text += f"{k}:{v}分;"
+            # elif score_info := await self.get_buy_by_multi_factor_score(curr_price):
+            #     for k, v in score_info.items():
+            #         strategy_text += f"{k}:{v}分;"
 
             else:
                 return

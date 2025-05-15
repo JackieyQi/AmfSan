@@ -104,12 +104,12 @@ class ModeBase:
 
 class ModelBollTopRise(ModeBase):
     """
-    布林贴顶加速上涨模型(贴顶上涨):
-        结构节奏：几乎无回调，连续阳线
-        入场逻辑：强势追涨（跟随）
-        风控点位：前一小时K线最低点或短EMA线
-        策略属性：趋势追踪
-        出现场景：强力突破、主升浪中段
+    4小时波段交易: 布林贴顶加速上涨模型(贴顶上涨):
+            结构节奏：几乎无回调，连续阳线
+            入场逻辑：强势追涨（跟随）
+            风控点位：前一小时K线最低点或短EMA线
+            策略属性：趋势追踪
+            出现场景：强力突破、主升浪中段
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -128,46 +128,38 @@ class ModelBollTopRise(ModeBase):
         kline_list_1h = self.kline_1h_factors.kline_list
         bb_list_1h = self.kline_1h_factors.bb_list
         
-        # 1小时: 阳线比例 >= 70%
-        window_size = 10
-        count_1h_bullish_k = [self.kline_1h_factors.is_bullish_k(index=i) for i in range(window_size)]
-        if sum(count_1h_bullish_k) < window_size * 0.7:
-            return False
+        # 大时间周期: ema多头排列
+        if self.kline_1d_factors.is_ema_bullish_stack(window_size=1):
+        
+            # 当前时间周期: {window_size} 根k线的阳线比例 >= 70%
+            window_size = 4
+            count_1h_bullish_k = [self.kline_4h_factors.is_bullish_k(index=i) for i in range(window_size)]
+            is_bullish_k = sum(count_1h_bullish_k) >= window_size * 0.7
 
-        # 1小时: 收盘价平均高于布林中轨 + 1σ(标准差)；
-        boll_period = 20
-        avg_close = np.mean([kline_list_1h[i].close_price for i in range(window_size)])
-        bb_std = np.std([kline_list_1h[i].close_price for i in range(boll_period)])
-        if avg_close < bb_list_1h[0].bbmid + bb_std:
-            return False
+            # 当前时间周期: 至少连续 {window_size} 根K线收盘价 > EMA12
+            window_size = 3
+            is_bullish_ema12 = self.kline_4h_factors.is_ema12_continue_lt_close(window_size=window_size)
 
-        # 1小时: 至少连续 3 根K线收盘价 > EMA12
-        if not self.kline_1h_factors.is_ema12_continue_lt_close(window_size=3):
-            return False
+            # 当前时间周期: 连续 {window_size} 根以上K线收于布林带上轨上方或贴近上轨
+            window_size = 3
+            tolerance = Decimal("0.3")
+            count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(index=i, tolerance=tolerance) for i in range(window_size)]
+            is_bullish_boll = sum(count_4h_close_gt_bbupper) >= window_size
+            
+            if is_bullish_k and is_bullish_ema12 and is_bullish_boll:
+                # 小周期: 具体入场点
+                
+                # 小周期: 连续3根阳线
+                count_1h_bullish_k = [self.kline_1h_factors.is_bullish_k(index=i) for i in range(3)]
+                is_bullish_k = sum(count_1h_bullish_k) >= 3
 
-        # 4小时: 连续3根以上K线收于布林带上轨上方或贴近上轨
-        count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(index=i) for i in range(3)]
-        if sum(count_4h_close_gt_bbupper) < 3:
-            return False
-
-        # 4小时: 连续3根DIF持续上穿DEA；
-        if not self.macd_4h_factors.is_continue_up(window_size=3):
-            return False
-
-        # 上面形成基础贴顶上涨趋势
-
-        # 子因子1：追涨入场：每小时收线回调不明显时入场
-        """
-        收盘价几乎未回调
-        EMA9 与 EMA12 均稳步上升
-        成交量略缩但不极端
-        K线几乎没有下影线，说明多头无阻力
-        """
-        # TODO: 分数是否需要大于5
-        if all([kline_list_1h[i].close_price > kline_list_1h[i-1].close_price for i in range(1, 3)]):
-            self.score += 5
-
-        return self.score >= 5
+                # 小周期: 至少连续3根K线收于布林带上轨上方或贴近上轨
+                is_bullish_boll = self.kline_1h_factors.is_along_upper_band(window_size=3)
+                
+                if is_bullish_k or is_bullish_boll:
+                    return True
+                
+        return False
 
 
 class ModelBollMidRebound(ModeBase):
