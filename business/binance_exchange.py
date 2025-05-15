@@ -32,18 +32,18 @@ class BinanceExchangeRequestHandle(object):
     
     async def get_current_price_async(self, symbol=None, symbol_list=None):
         if symbol:
-            params = {"symbol": symbol.upper()}
+            query_string = f"symbol={symbol.upper()}"
         elif symbol_list:
             symbols_json = json.dumps(
                 [symbol.upper() for symbol in symbol_list],
                 separators=(',', ':'))
-            params = {"symbols": urllib.parse.quote(symbols_json)}
+            query_string = f"symbols={urllib.parse.quote(symbols_json)}"
         else:
             return
             
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                self.base_url + "/api/v3/ticker/price", params=params
+                self.base_url + "/api/v3/ticker/price", params=query_string
             ) as response:
                 return await response.json()
             
