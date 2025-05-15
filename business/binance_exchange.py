@@ -4,6 +4,7 @@
 import hashlib
 import hmac
 import time
+import aiohttp
 from urllib.parse import urlencode
 
 from utils.hrequest import http_get_request, http_post_request
@@ -27,7 +28,19 @@ class BinanceExchangeRequestHandle(object):
             payload["limit"] = limit
         resp = http_get_request(self.base_url + "/api/v3/aggTrades", payload)
         return resp
-
+    
+    async def get_current_price_async(self, symbol=None, symbol_list=None):
+        if symbol:
+            params = {"symbol": symbol.upper()}
+        elif symbol_list:
+            params = {"symbol": ",".join([symbol.upper() for symbol in symbol_list])}
+        else:
+            return
+            
+        async with aiohttp.ClientSession() as session:
+            async with session.get(self.base_url + "/api/v3/ticker/price", params=params) as response:
+                return await response.json()
+            
     def get_k_lines(self, symbol, interval, start_ts, limit):
         payload = {
             "symbol": symbol.upper(),

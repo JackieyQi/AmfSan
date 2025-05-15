@@ -33,12 +33,16 @@ class ModeBase:
     kline_1d_factors: Optional[CandlestickFactor] = None
     kline_4h_factors: Optional[CandlestickFactor] = None
     kline_1h_factors: Optional[CandlestickFactor] = None
+    kline_15m_factors: Optional[CandlestickFactor] = None
     macd_4h_factors: Optional[MacdFactor] = None
     macd_1h_factors: Optional[MacdFactor] = None
+    macd_15m_factors: Optional[MacdFactor] = None
     kdj_4h_factors: Optional[KdjFactor] = None
     kdj_1h_factors: Optional[KdjFactor] = None
+    kdj_15m_factors: Optional[KdjFactor] = None
     rsi_4h_factors: Optional[RsiFactor] = None
     rsi_1h_factors: Optional[RsiFactor] = None
+    rsi_15m_factors: Optional[RsiFactor] = None
     
     def has_bearish(self):
         is_4h_ema12_continue_down = self.kline_4h_factors.is_ema12_continue_down(window_size=3)
@@ -67,6 +71,7 @@ class ModeBase:
         if is_4h_macd_bearish and is_4h_kdj_bearish:
             return True
         
+        # 1小时:
         if self.macd_1h_factors.is_death_cross(index=0):
             is_1h_macd_death_cross = True
             death_cross_1h_index = 1
@@ -78,6 +83,20 @@ class ModeBase:
             death_cross_1h_index = None
         
         if is_1h_macd_death_cross and self.macd_1h_factors.is_bullish_stack(index=death_cross_1h_index):
+            return True
+        
+        # 15分钟：
+        if self.macd_15m_factors.is_death_cross(index=0):
+            is_15m_macd_death_cross = True
+            death_cross_15m_index = 1
+        elif self.macd_15m_factors.is_death_cross(index=1):
+            is_15m_macd_death_cross = True
+            death_cross_15m_index = 2
+        else:
+            is_15m_macd_death_cross = False
+            death_cross_15m_index = None
+        
+        if is_15m_macd_death_cross and self.macd_15m_factors.is_bullish_stack(index=death_cross_15m_index, window_size=3):
             return True
         
         return False

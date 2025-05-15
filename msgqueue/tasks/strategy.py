@@ -407,11 +407,11 @@ class StrategyCheckHandle(BasePlotHandle):
             recommend_bid_price = None
 
             strategy_handler = StrategyHandle(
-                self.kline_list_4h, self.kline_list_1h,
-                self.bb_list_4h, self.bb_list_1h,
-                self.macd_list_1d, self.macd_list_4h, self.macd_list_1h,
-                self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h,
-                self.rsi_list_4h, self.rsi_list_1h
+                self.kline_list_4h, self.kline_list_1h, self.kline_list_15m,
+                self.bb_list_4h, self.bb_list_1h, self.bb_list_15m,
+                self.macd_list_1d, self.macd_list_4h, self.macd_list_1h, self.macd_list_15m,
+                self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h, self.kdj_list_15m,
+                self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m
             )
 
             if model_info := strategy_handler.get_buy_by_model_detect(curr_price):
@@ -461,11 +461,11 @@ class StrategyCheckHandle(BasePlotHandle):
             recommend_ask_price = None
 
             strategy_handler = StrategyHandle(
-                self.kline_list_4h, self.kline_list_1h,
-                self.bb_list_4h, self.bb_list_1h,
-                self.macd_list_1d, self.macd_list_4h, self.macd_list_1h,
-                self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h,
-                self.rsi_list_4h, self.rsi_list_1h
+                self.kline_list_4h, self.kline_list_1h, self.kline_list_15m,
+                self.bb_list_4h, self.bb_list_1h, self.bb_list_15m,
+                self.macd_list_1d, self.macd_list_4h, self.macd_list_1h, self.macd_list_15m,
+                self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h, self.kdj_list_15m,
+                self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m
             )
 
             # 海象运算符, py3.8新特性

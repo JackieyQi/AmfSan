@@ -283,6 +283,42 @@ def cmd_backtest_strategy(symbol: str, start_time: str):
     asyncio.run(run_backtest())
 
 
+@cli.command()
+@click.option('--symbol', help='单个交易对，例如：btcusdt')
+@click.option('--symbols', help='多个交易对，用逗号分隔，例如：btcusdt,ethusdt')
+def cmd_test_price(symbol: str, symbols: str):
+    """
+    测试获取币安交易对价格
+    
+    Args:
+        symbol: 单个交易对
+        symbols: 多个交易对，用逗号分隔
+    """
+    async def run_test():
+        from business.binance_exchange import BinanceExchangeRequestHandle
+        
+        exchange = BinanceExchangeRequestHandle()
+        
+        if symbol:
+            result = await exchange.get_current_price_async(symbol=symbol)
+            click.echo(f"\n=== 单个交易对价格 ===")
+            click.echo(f"交易对: {symbol}")
+            click.echo(f"价格: {result}")
+        elif symbols:
+            symbol_list = [s.strip() for s in symbols.split(',')]
+            result = await exchange.get_current_price_async(symbol_list=symbol_list)
+            click.echo(f"\n=== 多个交易对价格 ===")
+            for price_info in result:
+                click.echo(f"交易对: {price_info['symbol']}")
+                click.echo(f"价格: {price_info['price']}")
+        else:
+            click.echo("错误：请提供 --symbol 或 --symbols 参数")
+            return
+
+    # 运行测试
+    asyncio.run(run_test())
+
+
 if __name__ == "__main__":
     print("RUN: script.")
     cli()

@@ -3,13 +3,13 @@
 
 """
 🧠
-| 特点 | 策略一：多因子打分 | 策略二：结构优先+条件打分 |
-|------|--------------------|----------------------------|
-| 灵活性 | 高，可动态加权 | 中等，依赖特定结构 |
-| 可解释性 | 中等（需说明每个因子） | 强（结构清晰） |
-| 胜率控制 | 可精细调参 | 靠结构识别精度 |
-| 回测难度 | 适中 | 稍高（结构识别复杂） |
-| 易错点 | 冗余因子、过拟合 | 结构识别不稳、主观性强 |
+| 特点         | 策略一：多因子打分         | 策略二：结构优先+条件打分      |
+|-------------|-------------------------|----------------------------|
+| 灵活性       | 高，可动态加权            | 中等，依赖特定结构            |
+| 可解释性     | 中等（需说明每个因子）      | 强（结构清晰）               |
+| 胜率控制     | 可精细调参                | 靠结构识别精度               |
+| 回测难度     | 适中                     | 稍高（结构识别复杂）          |
+| 易错点       | 冗余因子、过拟合           | 结构识别不稳、主观性强        |
 
 """
 
@@ -21,26 +21,31 @@ from models.strategy import ModelBollTopRise, ModelBollMidRebound, ModelBollLowR
 
 
 class StrategyHandle:
-    def __init__(self, kline_list_4h, kline_list_1h,
-                 bb_list_4h, bb_list_1h,
-                 macd_list_1d, macd_list_4h, macd_list_1h,
-                 kdj_list_1d, kdj_list_4h, kdj_list_1h,
-                 rsi_list_4h, rsi_list_1h):
+    def __init__(self, kline_list_4h, kline_list_1h, kline_list_15m,
+                 bb_list_4h, bb_list_1h, bb_list_15m,
+                 macd_list_1d, macd_list_4h, macd_list_1h, macd_list_15m,
+                 kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
+                 rsi_list_4h, rsi_list_1h, rsi_list_15m):
         self.kline_list_4h = kline_list_4h
         self.kline_list_1h = kline_list_1h
+        self.kline_list_15m = kline_list_15m
         self.bb_list_4h = bb_list_4h
         self.bb_list_1h = bb_list_1h
+        self.bb_list_15m = bb_list_15m
 
         self.macd_list_1d = macd_list_1d
         self.macd_list_4h = macd_list_4h
         self.macd_list_1h = macd_list_1h
+        self.macd_list_15m = macd_list_15m
 
         self.kdj_list_1d = kdj_list_1d
         self.kdj_list_4h = kdj_list_4h
         self.kdj_list_1h = kdj_list_1h
+        self.kdj_list_15m = kdj_list_15m
 
         self.rsi_list_4h = rsi_list_4h
         self.rsi_list_1h = rsi_list_1h
+        self.rsi_list_15m = rsi_list_15m
 
         self.initialize_factors()
 
@@ -48,24 +53,32 @@ class StrategyHandle:
         self.kline_1d_factors = CandlestickFactor(None, self.macd_list_1d, None)
         self.kline_4h_factors = CandlestickFactor(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
         self.kline_1h_factors = CandlestickFactor(self.kline_list_1h, self.macd_list_1h, self.bb_list_1h)
+        self.kline_15m_factors = CandlestickFactor(self.kline_list_15m, self.macd_list_15m, self.bb_list_15m)
         self.macd_4h_factors = MacdFactor(self.macd_list_4h)
         self.macd_1h_factors = MacdFactor(self.macd_list_1h)
+        self.macd_15m_factors = MacdFactor(self.macd_list_15m)
         self.kdj_4h_factors = KdjFactor(self.kdj_list_4h)
         self.kdj_1h_factors = KdjFactor(self.kdj_list_1h)
+        self.kdj_15m_factors = KdjFactor(self.kdj_list_15m)
         self.rsi_4h_factors = RsiFactor(self.rsi_list_4h)
         self.rsi_1h_factors = RsiFactor(self.rsi_list_1h)
-
+        self.rsi_15m_factors = RsiFactor(self.rsi_list_15m)
+        
     def get_buy_by_model_detect(self, curr_price):
         kwargs = {
             "kline_1d_factors": self.kline_1d_factors,
             "kline_4h_factors": self.kline_4h_factors,
             "kline_1h_factors": self.kline_1h_factors,
+            "kline_15m_factors": self.kline_15m_factors,
             "macd_4h_factors": self.macd_4h_factors,
             "macd_1h_factors": self.macd_1h_factors,
+            "macd_15m_factors": self.macd_15m_factors,
             "kdj_4h_factors": self.kdj_4h_factors,
             "kdj_1h_factors": self.kdj_1h_factors,
+            "kdj_15m_factors": self.kdj_15m_factors,
             "rsi_4h_factors": self.rsi_4h_factors,
             "rsi_1h_factors": self.rsi_1h_factors,
+            "rsi_15m_factors": self.rsi_15m_factors,
         }
         model_boll_top_rise = ModelBollTopRise(**kwargs)
         if model_boll_top_rise.is_detected():
