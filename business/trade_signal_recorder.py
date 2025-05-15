@@ -216,6 +216,8 @@ class TradeSignalHandler(object):
                 last_ticket.ask_plot_msg = ask_plot_msg
                 last_ticket.sell_price = ask_price
                 last_ticket.sell_ts = ask_ts
+                last_ticket.hold_time = ask_ts - last_ticket.buy_ts
+                last_ticket.profit_percent = decimal2decimal(((ask_price - last_ticket.buy_price) / last_ticket.buy_price)*Decimal("100"), 1)
                 last_ticket.status = 4
                 await last_ticket.aio_save()
                 self.set_last_trade_time(ask_ts)
