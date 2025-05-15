@@ -168,6 +168,16 @@ class TradeSignalHandler(object):
 
     async def add_bid_ticket(self, curr_price, bid_price, bid_ts, bid_plot_type, bid_plot_msg):
         async with async_database.aio_atomic():
+            # await PlotBackTestTable.aio_create(
+            #     symbol=self.symbol,
+            #     bid_curr_price=curr_price,
+            #     bid_price=bid_price,
+            #     bid_ts=bid_ts,
+            #     bid_plot_type=bid_plot_type,
+            #     bid_plot_msg=bid_plot_msg,
+            # )
+            
+            # TODO: 强制买入，当前价格为买入价格 -> 检查策略效果
             await PlotBackTestTable.aio_create(
                 symbol=self.symbol,
                 bid_curr_price=curr_price,
@@ -175,6 +185,9 @@ class TradeSignalHandler(object):
                 bid_ts=bid_ts,
                 bid_plot_type=bid_plot_type,
                 bid_plot_msg=bid_plot_msg,
+                buy_price=curr_price,
+                buy_ts=bid_ts,
+                status=1,
             )
 
     async def update_ask_ticket(self, curr_price, ask_price, ask_ts, ask_plot_type, ask_plot_msg):
@@ -187,13 +200,25 @@ class TradeSignalHandler(object):
                 if last_ticket.status != 1:
                     return
 
+                # last_ticket.ask_curr_price = curr_price
+                # last_ticket.ask_price = ask_price
+                # last_ticket.ask_ts = ask_ts
+                # last_ticket.ask_plot_type = ask_plot_type
+                # last_ticket.ask_plot_msg = ask_plot_msg
+                # last_ticket.status = 3
+                # await last_ticket.aio_save()
+                
+                # TODO: 强制卖出，当前价格为卖出价格 -> 检查策略效果
                 last_ticket.ask_curr_price = curr_price
                 last_ticket.ask_price = ask_price
                 last_ticket.ask_ts = ask_ts
                 last_ticket.ask_plot_type = ask_plot_type
                 last_ticket.ask_plot_msg = ask_plot_msg
-                last_ticket.status = 3
+                last_ticket.sell_price = ask_price
+                last_ticket.sell_ts = ask_ts
+                last_ticket.status = 4
                 await last_ticket.aio_save()
+                self.set_last_trade_time(ask_ts)
 
                 MarketPriceLimitCache.hdel(self.symbol)
             except PlotBackTestTable.DoesNotExist:

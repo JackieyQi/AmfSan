@@ -190,9 +190,12 @@ def cmd_cancel_symbol_check_price(symbol: str, valid: bool):
     old_symbol = market.BnSymbolTable.select().where(
         market.BnSymbolTable.symbol == symbol).first()
     if old_symbol:
-        old_symbol.is_valid = valid
-        old_symbol.save()
-        update_str = "更新"
+        if old_symbol.is_valid != valid:
+            old_symbol.is_valid = valid
+            old_symbol.save()
+            update_str = "更新"
+        else:
+            update_str = "无需更新"
     else:
         market.BnSymbolTable(symbol=symbol, is_valid=valid).save()
         update_str = "新增"
