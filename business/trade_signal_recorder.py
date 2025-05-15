@@ -201,7 +201,7 @@ class TradeSignalHandler(object):
 
             market_price_handler = MarketPriceHandler()
             market_price_handler.set_limit_price(
-                _d.symbol, sl_price, tp_price, bid_ts)
+                self.symbol, sl_price, tp_price, bid_ts)
 
     async def update_ask_ticket(self, curr_price, ask_price, ask_ts, ask_plot_type, ask_plot_msg):
         # TODO: redis加锁
