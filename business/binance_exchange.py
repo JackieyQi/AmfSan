@@ -6,7 +6,7 @@ import hmac
 import time
 import json
 import aiohttp
-from urllib.parse import urlencode
+import urllib.parse
 
 from utils.hrequest import http_get_request, http_post_request
 
@@ -34,14 +34,16 @@ class BinanceExchangeRequestHandle(object):
         if symbol:
             params = {"symbol": symbol.upper()}
         elif symbol_list:
-            symbols_json = json.dumps([symbol.upper() for symbol in symbol_list])
-            params = {"symbols": symbols_json}
+            symbols_json = json.dumps(
+                [symbol.upper() for symbol in symbol_list],
+                separators=(',', ':'))
+            params = {"symbols": urllib.parse.quote(symbols_json)}
         else:
             return
             
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                 self.base_url + "/api/v3/ticker/price?" + urlencode(params)
+                self.base_url + "/api/v3/ticker/price", params=params
             ) as response:
                 return await response.json()
             
