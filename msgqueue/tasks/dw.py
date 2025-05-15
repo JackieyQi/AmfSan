@@ -14,7 +14,7 @@ from business.binance_exchange import BinanceExchangeRequestHandle
 from business.market import MarketPriceHandler, MacdInitData, KdjInitData, EmaInitData
 from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable, BollTable
 from models.order import OrderTradeHistoryTable
-from models.user import UserSymbolPlotTable as SymbolPlotTable
+from models.user import UserSymbolPlotTable
 from models.wallet import TotalBalanceHistoryTable
 from settings.setting import cfgs
 from settings.constants import PLOT_INTERVAL_LIST, PLOT_INTERVAL_CONFIG, STRATEGY_INTERVAL_LIST
@@ -23,7 +23,7 @@ from utils.common import decimal2str, str2decimal, locking, \
 from utils.hrequest import http_get_request
 from exts import async_database
 from cache import AllCache, RedisPoolContext
-from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache, FearAndGreedIndexCache
+from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache, FearAndGreedIndexCache, MarketPriceCache
 from msgqueue.queue import push_symbol_mq
 
 from .base import get_plot_symbols_info
@@ -138,9 +138,22 @@ async def update_fng_job(*args, **kwargs):
 
 
 async def update_price(*args, **kwargs):
+    symbol_list = []
+    
     market_price_handler = MarketPriceHandler()
     for symbol, price in market_price_handler.get_all_limit_price().items():
-        market_price_handler.update_current_price(symbol)
+        symbol_list.append(symbol)
+        
+    query = await UserSymbolPlotTable.select(UserSymbolPlotTable.symbol).aio_execute()
+    for row in query:
+        symbol_list.append(row.symbol)
+
+    result = await BinanceExchangeRequestHandle().get_current_price_async(
+        symbol_list=list(set(symbol_list)))
+    for item in result:
+        symbol = item["symbol"]
+        price = item["price"]
+        MarketPriceCache.hset(symbol.lower(), price)
 
 
 @locking("save_kline_job")
