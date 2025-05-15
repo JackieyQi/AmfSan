@@ -34,12 +34,15 @@ class ModeBase:
     kline_4h_factors: Optional[CandlestickFactor] = None
     kline_1h_factors: Optional[CandlestickFactor] = None
     kline_15m_factors: Optional[CandlestickFactor] = None
+    
     macd_4h_factors: Optional[MacdFactor] = None
     macd_1h_factors: Optional[MacdFactor] = None
     macd_15m_factors: Optional[MacdFactor] = None
+    
     kdj_4h_factors: Optional[KdjFactor] = None
     kdj_1h_factors: Optional[KdjFactor] = None
     kdj_15m_factors: Optional[KdjFactor] = None
+    
     rsi_4h_factors: Optional[RsiFactor] = None
     rsi_1h_factors: Optional[RsiFactor] = None
     rsi_15m_factors: Optional[RsiFactor] = None
@@ -125,9 +128,7 @@ class ModelBollTopRise(ModeBase):
         }
 
     def is_detected(self):
-        kline_list_1h = self.kline_1h_factors.kline_list
-        bb_list_1h = self.kline_1h_factors.bb_list
-        
+
         # 大时间周期: ema多头排列
         if self.kline_1d_factors.is_ema_bullish_stack(window_size=1):
         
@@ -143,7 +144,8 @@ class ModelBollTopRise(ModeBase):
             # 当前时间周期: 连续 {window_size} 根以上K线收于布林带上轨上方或贴近上轨
             window_size = 3
             tolerance = Decimal("0.3")
-            count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(index=i, tolerance=tolerance) for i in range(window_size)]
+            count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(
+                index=i, tolerance=tolerance) for i in range(window_size)]
             is_bullish_boll = sum(count_4h_close_gt_bbupper) >= window_size
             
             if is_bullish_k and is_bullish_ema12 and is_bullish_boll:
@@ -154,7 +156,7 @@ class ModelBollTopRise(ModeBase):
                 is_bullish_k = sum(count_1h_bullish_k) >= 3
 
                 # 小周期: 至少连续3根K线收于布林带上轨上方或贴近上轨
-                is_bullish_boll = self.kline_1h_factors.is_along_upper_band(window_size=3)
+                is_bullish_boll = self.kline_1h_factors.is_along_upper_band(n=3)
                 
                 if is_bullish_k or is_bullish_boll:
                     return True

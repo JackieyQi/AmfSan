@@ -189,6 +189,19 @@ class TradeSignalHandler(object):
                 buy_ts=bid_ts,
                 status=1,
             )
+            redis_client = AllCache.get_client()
+            cache_data = redis_client.get(f"sl_tp:{self.symbol}")
+            if not cache_data:
+                sl_price = curr_price * Decimal("0.95")
+                tp_price = curr_price * Decimal("1.05")
+            else:
+                _d = cache_data.split(":")
+                sl_price = Decimal(_d[0])
+                tp_price = Decimal(_d[1])
+
+            market_price_handler = MarketPriceHandler()
+            market_price_handler.set_limit_price(
+                _d.symbol, sl_price, tp_price, bid_ts)
 
     async def update_ask_ticket(self, curr_price, ask_price, ask_ts, ask_plot_type, ask_plot_msg):
         # TODO: redis加锁

@@ -99,27 +99,32 @@ class BacktestStrategy(bt.Strategy):
 
         kline_list_4h = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "4h", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
         kline_list_1h = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "1h", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
+        kline_list_15m = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "15m", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
 
         bb_list_4h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "4h", BollTable.open_ts < curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
-        bb_list_1h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "1h", BollTable.open_ts <= curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
+        bb_list_1h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "1h", BollTable.open_ts < curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
+        bb_list_15m = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "15m", BollTable.open_ts < curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
 
         macd_list_1d = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "1d", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
         macd_list_4h = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "4h", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
         macd_list_1h = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "1h", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
-        
+        macd_list_15m = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "15m", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
+
         kdj_list_1d = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "1d", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
         kdj_list_4h = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "4h", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
         kdj_list_1h = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "1h", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
+        kdj_list_15m = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "15m", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
         
         rsi_list_4h = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "4h", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
         rsi_list_1h = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "1h", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
+        rsi_list_15m = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "15m", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
 
         handler = StrategyHandle(
-            kline_list_4h, kline_list_1h,
-            bb_list_4h, bb_list_1h,
-            macd_list_1d, macd_list_4h, macd_list_1h,
-            kdj_list_1d, kdj_list_4h, kdj_list_1h,
-            rsi_list_4h, rsi_list_1h)
+            kline_list_4h, kline_list_1h, kline_list_15m,
+            bb_list_4h, bb_list_1h, bb_list_15m,
+            macd_list_1d, macd_list_4h, macd_list_1h, macd_list_15m,
+            kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
+            rsi_list_4h, rsi_list_1h, rsi_list_15m)
         
         return handler.get_buy_by_model_detect(self.data.close[0])
         
@@ -134,25 +139,30 @@ class BacktestStrategy(bt.Strategy):
         curr_1h_open_ts = int(self.data.datetime.datetime().timestamp())
         kline_list_4h = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "4h", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
         kline_list_1h = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "1h", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
+        kline_list_15m = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "15m", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
 
         bb_list_4h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "4h", BollTable.open_ts <= curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
         bb_list_1h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "1h", BollTable.open_ts <= curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
+        bb_list_15m = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "15m", BollTable.open_ts <= curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
 
         macd_list_1d = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "1d", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
         macd_list_4h = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "4h", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
         macd_list_1h = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "1h", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
-        
+        macd_list_15m = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "15m", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
+
         kdj_list_1d = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "1d", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
         kdj_list_4h = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "4h", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
         kdj_list_1h = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "1h", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
-        
+        kdj_list_15m = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "15m", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
+
         rsi_list_4h = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "4h", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
         rsi_list_1h = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "1h", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
+        rsi_list_15m = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "15m", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
 
         handler = StrategyHandle(
-            kline_list_4h, kline_list_1h,
-            bb_list_4h, bb_list_1h,
-            macd_list_1d, macd_list_4h, macd_list_1h,
-            kdj_list_1d, kdj_list_4h, kdj_list_1h,
-            rsi_list_4h, rsi_list_1h)
+            kline_list_4h, kline_list_1h, kline_list_15m,
+            bb_list_4h, bb_list_1h, bb_list_15m,
+            macd_list_1d, macd_list_4h, macd_list_1h, macd_list_15m,
+            kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
+            rsi_list_4h, rsi_list_1h, rsi_list_15m)
         return handler.get_sell_direction(self.data.close[0])
