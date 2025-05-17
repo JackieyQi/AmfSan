@@ -434,26 +434,25 @@ class StrategyCheckHandle(BasePlotHandle):
             else:
                 return
 
-            if is_buy:
-                recommend_price_data = self.get_recommend_price(curr_price)
-                recommend_bid_price = recommend_bid_price or recommend_price_data["recommend_bid_price"]
-                recommend_sl_price = recommend_price_data["sl_price"]
-                recommend_tp_price = recommend_price_data["tp_price"]
+            recommend_price_data = self.get_recommend_price(curr_price)
+            recommend_bid_price = recommend_bid_price or recommend_price_data["recommend_bid_price"]
+            recommend_sl_price = recommend_price_data["sl_price"]
+            recommend_tp_price = recommend_price_data["tp_price"]
 
-                self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                        f"symbol={self.symbol}" \
-                                        f"&low_price={recommend_sl_price}" \
-                                        f"&high_price={recommend_tp_price}&buy_price="
+            self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+                                    f"symbol={self.symbol}" \
+                                    f"&low_price={recommend_sl_price}" \
+                                    f"&high_price={recommend_tp_price}&buy_price="
 
-                redis_client = AllCache.get_client()
-                redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
+            redis_client = AllCache.get_client()
+            redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
 
-                direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
-                            f"\n<br> 总分: {sum(score_info.values())}。" \
-                            f"\n<br> 策略详情： {strategy_text}。" \
-                            f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
-                            f"当前价: {decimal2str(curr_price)}。<br><br>"
-                func_str = "get_buy_score_info"
+            direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
+                        f"\n<br> 总分: {sum(score_info.values())}。" \
+                        f"\n<br> 策略详情： {strategy_text}。" \
+                        f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
+                        f"当前价: {decimal2str(curr_price)}。<br><br>"
+            func_str = "get_buy_score_info"
 
             # TODO: 这里应该是实盘记录，回测记录需要单独出来，供策略回测优化。
 
