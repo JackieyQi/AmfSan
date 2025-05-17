@@ -444,8 +444,9 @@ class StrategyCheckHandle(BasePlotHandle):
                                     f"&low_price={recommend_sl_price}" \
                                     f"&high_price={recommend_tp_price}&buy_price="
 
-            redis_client = AllCache.get_client()
-            redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
+            if is_buy:
+                redis_client = AllCache.get_client()
+                redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
 
             direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
                         f"\n<br> 总分: {sum(score_info.values())}。" \
@@ -516,6 +517,8 @@ class StrategyCheckHandle(BasePlotHandle):
 
                 func_str = "tp_sl"
                 limit_price = MarketPriceLimitCache.hget(self.symbol)
+                if not limit_price:
+                    return 
                 set_time, limit_low_price, limit_high_price = limit_price.split(":")
 
                 sl_price, tp_price = map(Decimal, (limit_low_price, limit_high_price))
