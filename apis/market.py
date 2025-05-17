@@ -242,6 +242,6 @@ class MarketPlotManageView(ProtectedView):
 
         symbol_handler = SymbolHandle(symbol, user_id=user.user_id)
         symbol_handler.del_plot()
-        result_info = await symbol_handler.del_plot_to_db()
+        result_info = await symbol_handler.delete_symbol()
         symbol_handler.refresh_symbol_cache()
         return result_info
