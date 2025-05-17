@@ -19,7 +19,7 @@ from utils.exception import StandardResponseExc
 from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
 from exts import async_database
-from cache import AllCache, RedisPoolContext
+from cache import AllCache
 
 
 class MarketPriceHandler(object):
@@ -238,7 +238,7 @@ class SymbolHandle(object):
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
 
     async def delete_symbol(self):
-        with RedisPoolContext().lock(f"lock_delete_symbol:{self.symbol}", timeout=10) as lock:
+        with AllCache.get_client().lock(f"lock_delete_symbol:{self.symbol}", timeout=10) as lock:
             async with async_database.aio_atomic():
                 if self.user_id == "root":
                     plot_row = await UserSymbolPlotTable.delete().where(
@@ -273,7 +273,7 @@ class SymbolHandle(object):
             if plot_count >= 3:
                 return None
 
-        with RedisPoolContext().lock(f"lock_add_symbol:{self.symbol}", timeout=10) as lock:
+        with AllCache.get_client().lock(f"lock_add_symbol:{self.symbol}", timeout=10) as lock:
             async with async_database.aio_atomic():
                 try:
                     symbol_row = await UserSymbolPlotTable.select().where(

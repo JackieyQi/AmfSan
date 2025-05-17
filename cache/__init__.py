@@ -45,10 +45,14 @@ class Base(object):
 
 
 class AllCache(Base):
+    _client = None
+
     @classmethod
     def get_client(cls):
-        pool = RedisClient.get_connection_pool()
-        return redis.Redis(connection_pool=pool)
+        if cls._client is None:
+            pool = RedisClient.get_connection_pool()
+            cls._client = redis.Redis(connection_pool=pool)
+        return cls._client
 
     @classmethod
     def get_all(cls):
