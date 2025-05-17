@@ -238,7 +238,7 @@ class SymbolHandle(object):
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
 
     async def delete_symbol(self):
-        with AllCache.get_client().lock(f"lock_delete_symbol:{self.symbol}", timeout=10) as lock:
+        with AllCache.get_client().lock(f"lock_delete_symbol:{self.symbol}", timeout=60) as lock:
             async with async_database.aio_atomic():
                 if self.user_id == "root":
                     plot_row = await UserSymbolPlotTable.delete().where(
