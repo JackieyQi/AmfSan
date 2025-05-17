@@ -5,7 +5,6 @@ import time
 
 from peewee import (BooleanField, CharField, DecimalField, IntegerField,
                     TextField, AutoField)
-
 from . import Base
 
 

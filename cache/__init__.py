@@ -2,6 +2,7 @@
 # coding:utf8
 
 import redis
+from redis.lock import Lock
 from exts import RedisClient
 
 
@@ -16,6 +17,27 @@ class RedisPoolContext(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.redis:
             self.redis.close()
+            
+    def lock(self, name, timeout=None, sleep=0.1, blocking=True, blocking_timeout=None, thread_local=True):
+        """
+        获取一个分布式锁
+        :param name: 锁的名称
+        :param timeout: 锁的超时时间
+        :param sleep: 重试间隔
+        :param blocking: 是否阻塞
+        :param blocking_timeout: 阻塞超时时间
+        :param thread_local: 是否线程本地
+        :return: 锁对象
+        """
+        return Lock(
+            self.redis,
+            name,
+            timeout=timeout,
+            sleep=sleep,
+            blocking=blocking,
+            blocking_timeout=blocking_timeout,
+            thread_local=thread_local
+        )
 
 
 class Base(object):

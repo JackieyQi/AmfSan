@@ -12,14 +12,14 @@ from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     SymbolPlotTableCache, CheckKdjCrossGateCache, CheckKdjCvGateCache
 from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable, BollTable
 from models.order import SymbolPriceChangeHistoryTable
-from models.user import UserSymbolPlotTable as SymbolPlotTable
+from models.user import UserSymbolPlotTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime, decimal2str, Decimal
 from utils.exception import StandardResponseExc
 from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
 from exts import async_database
-from cache import AllCache
+from cache import AllCache, RedisPoolContext
 
 
 class MarketPriceHandler(object):
@@ -185,8 +185,8 @@ class MarketPriceHandler(object):
         return Decimal(last_trade_price) or Decimal("0")
 
     def get_last_trade_price_by_db(self, symbol):
-        query = SymbolPlotTable.select(SymbolPlotTable.last_price).where(
-            SymbolPlotTable.symbol == symbol
+        query = UserSymbolPlotTable.select(UserSymbolPlotTable.last_price).where(
+            UserSymbolPlotTable.symbol == symbol
         )
         if query:
             price = query.get().last_price
@@ -202,11 +202,11 @@ class SymbolHandle(object):
 
     async def get_all(self):
         if self.user_id == "root":
-            db_rows = await SymbolPlotTable.select().order_by(SymbolPlotTable.create_ts).aio_execute()
+            db_rows = await UserSymbolPlotTable.select().order_by(UserSymbolPlotTable.create_ts).aio_execute()
         else:
-            db_rows = await SymbolPlotTable.select().where(
-                SymbolPlotTable.user_id == self.user_id
-            ).order_by(SymbolPlotTable.create_ts).aio_execute()
+            db_rows = await UserSymbolPlotTable.select().where(
+                UserSymbolPlotTable.user_id == self.user_id
+            ).order_by(UserSymbolPlotTable.create_ts).aio_execute()
 
         result = []
         symbol_list = []
@@ -231,66 +231,64 @@ class SymbolHandle(object):
     def add_plot(self):
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 1)
 
-    async def add_plot_to_db(self):
-        if self.user_id != "root":
-            plot_count = await SymbolPlotTable.select(SymbolPlotTable.id).where(
-                SymbolPlotTable.user_id == self.user_id,
-            ).aio_count()
-            if plot_count >= 3:
-                return None
-
-        async with async_database.aio_atomic():
-            try:
-                db_row = await SymbolPlotTable.select().where(
-                    SymbolPlotTable.user_id == self.user_id,
-                    SymbolPlotTable.symbol == self.symbol,
-                ).aio_get()
-
-                if db_row.is_valid is False:
-                    db_row.is_valid = True
-                    await db_row.aio_save()
-                return db_row
-
-            except SymbolPlotTable.DoesNotExist:
-                new_row = SymbolPlotTable(
-                    user_id=self.user_id,
-                    symbol=self.symbol,
-                )
-                await new_row.aio_save()
-                return new_row
-
     def del_plot(self):
         self.del_macd_gate()
         self.del_kdj_gate()
 
         return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
 
-    async def del_plot_to_db(self):
-        async with async_database.aio_atomic():
-            if self.user_id == "root":
-                plot_row = await SymbolPlotTable.delete().where(
-                    SymbolPlotTable.symbol == self.symbol,
-                ).aio_execute()
-            else:
-                plot_row = await SymbolPlotTable.delete().where(
-                    SymbolPlotTable.user_id == self.user_id,
-                    SymbolPlotTable.symbol == self.symbol,
-                ).aio_execute()
+    async def delete_symbol(self):
+        with RedisPoolContext().lock(f"lock_delete_symbol:{self.symbol}", timeout=10) as lock:
+            async with async_database.aio_atomic():
+                if self.user_id == "root":
+                    plot_row = await UserSymbolPlotTable.delete().where(
+                        UserSymbolPlotTable.symbol == self.symbol,
+                    ).aio_execute()
+                else:
+                    plot_row = await UserSymbolPlotTable.delete().where(
+                        UserSymbolPlotTable.user_id == self.user_id,
+                        UserSymbolPlotTable.symbol == self.symbol,
+                    ).aio_execute()
 
-            if await SymbolPlotTable.select(SymbolPlotTable.id).where(
-                    SymbolPlotTable.symbol == self.symbol).aio_exists():
-                return {"plot_row": plot_row, }
+                if await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
+                        UserSymbolPlotTable.symbol == self.symbol).aio_exists():
+                    return {"plot_row": plot_row, }
 
-            kline_del_rows = await KlineTable.delete().where(KlineTable.symbol == self.symbol).aio_execute()
-            macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == self.symbol).aio_execute()
-            kdj_del_rows = await KdjTable.delete().where(KdjTable.symbol == self.symbol).aio_execute()
-            rsi_del_rows = await RsiTable.delete().where(RsiTable.symbol == self.symbol).aio_execute()
-            boll_del_rows = await BollTable.delete().where(BollTable.symbol == self.symbol).aio_execute()
+                kline_del_rows = await KlineTable.delete().where(KlineTable.symbol == self.symbol).aio_execute()
+                macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == self.symbol).aio_execute()
+                kdj_del_rows = await KdjTable.delete().where(KdjTable.symbol == self.symbol).aio_execute()
+                rsi_del_rows = await RsiTable.delete().where(RsiTable.symbol == self.symbol).aio_execute()
+                boll_del_rows = await BollTable.delete().where(BollTable.symbol == self.symbol).aio_execute()
 
-        return {
-            "plot_row": plot_row, "kline_del_rows": kline_del_rows, "macd_del_rows": macd_del_rows,
-            "kdj_del_rows": kdj_del_rows, "rsi_del_rows": rsi_del_rows, "boll_del_rows": boll_del_rows,
-        }
+            return {
+                "plot_row": plot_row, "kline_del_rows": kline_del_rows, "macd_del_rows": macd_del_rows,
+                "kdj_del_rows": kdj_del_rows, "rsi_del_rows": rsi_del_rows, "boll_del_rows": boll_del_rows,
+            }
+
+    async def add_symbol(self):
+        if self.user_id != "root":
+            plot_count = await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
+                UserSymbolPlotTable.user_id == self.user_id,
+            ).aio_count()
+            if plot_count >= 3:
+                return None
+
+        with RedisPoolContext().lock(f"lock_add_symbol:{self.symbol}", timeout=10) as lock:
+            async with async_database.aio_atomic():
+                try:
+                    symbol_row = await UserSymbolPlotTable.select().where(
+                        UserSymbolPlotTable.user_id == self.user_id,
+                        UserSymbolPlotTable.symbol == self.symbol).aio_get()
+                    if not symbol_row.is_valid:
+                        symbol_row.is_valid = True
+                        await symbol_row.aio_save()
+                    return symbol_row
+
+                except UserSymbolPlotTable.DoesNotExist:
+                    return await UserSymbolPlotTable.aio_create(
+                        user_id=self.user_id,
+                        symbol=self.symbol,
+                    )
 
     def add_macd_gate(self, interval=""):
         if interval in PLOT_INTERVAL_LIST:

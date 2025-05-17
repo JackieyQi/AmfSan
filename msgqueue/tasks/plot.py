@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import aiohttp
 
-from business.market import MarketPriceHandler
+from business.market import MarketPriceHandler, SymbolHandle
 from business.trade_signal_recorder import TradeSignalHandler
 from cache import AllCache
 from cache.plot import (CheckKdjCrossGateCache,
@@ -32,7 +32,7 @@ from utils.templates import (template_asset_notice, template_ema_cross_notice,
                              template_kdj_cross_notice, template_macd_cross_notice,
                              template_macd_trend_notice)
 
-from .base import BasePlotHandle, get_plot_symbols_info
+from msgqueue.tasks.base import BasePlotHandle, get_plot_symbols_info
 from msgqueue.tasks.strategy import StrategyCheckHandle
 
 logger = logging.getLogger(__name__)
@@ -49,11 +49,11 @@ async def check_price(*args, **kwargs):
     
 
 async def check_break_history_top_price(*args, **kwargs):
-    await TopPriceHandle().check_break_history_top_price()
+    await TopPriceTaskHandle().check_break_history_top_price()
 
 
 async def update_all_symbols(*args, **kwargs):
-    await TopPriceHandle().update_all_symbols()
+    await TopPriceTaskHandle().update_all_symbols()
 
 
 async def check_balance(*args, **kwargs):
@@ -230,7 +230,7 @@ class PlotAssetHandle(BasePlotHandle):
         await self.send_msg(email_title, email_content)
 
 
-class TopPriceHandle(BasePlotHandle):
+class TopPriceTaskHandle(BasePlotHandle):
     def __init__(self):
         self.price_url = "https://api.binance.com/api/v3/ticker/price"
         self.kline_url = "https://api.binance.com/api/v3/klines"
@@ -306,6 +306,10 @@ class TopPriceHandle(BasePlotHandle):
                 if curr_high_price <= history_high_price:
                     return
                 curr_ts = data[-1][0]
+
+        symbol_handler = SymbolHandle(symbol=symbol, user_id="root")
+        await symbol_handler.add_symbol()
+        symbol_handler.refresh_symbol_cache()
                 
         email_title = f"{symbol} Top Price Notice"
         
@@ -331,6 +335,10 @@ class TopPriceHandle(BasePlotHandle):
         history_high_price = max(high_price_list[1:])
         if curr_high_price <= history_high_price:
             return
+        
+        symbol_handler = SymbolHandle(symbol=symbol, user_id="root")
+        await symbol_handler.add_symbol()
+        symbol_handler.refresh_symbol_cache()
 
         email_title = f"{symbol} Top Price Notice"
         

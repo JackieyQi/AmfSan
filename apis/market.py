@@ -225,7 +225,7 @@ class MarketPlotManageView(ProtectedView):
 
         symbol_handler = SymbolHandle(symbol, user_id=user.user_id)
         symbol_handler.add_plot()
-        user_symbol_info = await symbol_handler.add_plot_to_db()
+        user_symbol_info = await symbol_handler.add_symbol()
         if not user_symbol_info:
             raise StandardResponseExc(msg="Plot limit!")
 
