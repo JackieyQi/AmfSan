@@ -423,7 +423,7 @@ class StrategyCheckHandle(BasePlotHandle):
 
             is_buy = False
             if model_info := strategy_handler.check_in_by_model(last_model_msg):
-                recommend_bid_price = model_info["recommend_bid_price"]
+                recommend_bid_price = model_info.get("recommend_bid_price")
                 strategy_text += model_info["model_name"]
                 is_buy = model_info.get("is_buy")
 
@@ -491,7 +491,7 @@ class StrategyCheckHandle(BasePlotHandle):
             is_sell = False
             part_direction = ""
             if model_info := strategy_handler.check_out_by_model(last_model_msg):
-                recommend_ask_price = model_info["recommend_ask_price"]
+                recommend_ask_price = model_info.get("recommend_ask_price")
                 ask_plot_type = 5
                 func_str = model_info["model_name"]
                 part_direction = func_str
