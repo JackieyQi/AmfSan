@@ -30,6 +30,7 @@ class BacktestStrategy(bt.Strategy):
         self.order = None
         self.buy_price = None
         self.buy_time = None
+        self.order_model_name = None
         
         # 添加交易分析器
         self.analyzers.trades = bt.analyzers.TradeAnalyzer()
@@ -60,12 +61,14 @@ class BacktestStrategy(bt.Strategy):
             
         pnl_perc = trade.pnl / trade.price * 100
         self.log(f'交易利润: symbol={self.p.symbol}, 毛利润={trade.pnl:.8f}, 净利润={trade.pnlcomm:.8f}, 盈亏比例={pnl_perc:.2f}%')
+        self.log("***************************************")
         
     def log(self, txt, dt=None):
         dt = dt or self.data.datetime.datetime()
         print(f'{dt.isoformat()}, {txt}')
         
     def next(self):
+        # self.log("nexting")
         # 如果有未完成的订单，不执行新的交易
         if self.order:
             return
@@ -73,18 +76,22 @@ class BacktestStrategy(bt.Strategy):
         # 如果没有持仓
         if not self.position:
             # 检查是否满足买入条件
-            if model_info := self._check_buy_signal():
-                self.log(f"检测到买入信号: symbol={self.p.symbol}, model={model_info.get('model_name')}, "
+            if buy_info := self._check_buy_signal():
+                self.log(f"检测到买入信号: symbol={self.p.symbol}, model={buy_info.get('model_name')}, "
                          f"open_price={self.data.open[0]}, close_price={self.data.close[0]}")
+                
+                model_name = buy_info.get("model_name")
                 self.order = self.buy()
+                self.order_model_name = model_name
                 
         # 如果有持仓
         else:
             # 检查是否满足卖出条件
-            if part_direction := self._check_sell_signal():
-                self.log(f"检测到卖出信号: symbol={self.p.symbol}, direction={part_direction}, "
+            if sell_info := self._check_sell_signal():
+                self.log(f"检测到卖出信号: symbol={self.p.symbol}, sell_info={sell_info}, "
                          f"open_price={self.data.open[0]}, close_price={self.data.close[0]}")
                 self.order = self.sell()
+                self.order_model_name = sell_info.get("model_name")
                 
     def _check_buy_signal(self):
         """
@@ -126,7 +133,7 @@ class BacktestStrategy(bt.Strategy):
             kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
             rsi_list_4h, rsi_list_1h, rsi_list_15m)
         
-        return handler.get_buy_by_model_detect(self.data.close[0])
+        return handler.check_in_by_model(self.order_model_name or "")
         
     def _check_sell_signal(self) -> bool:
         """
@@ -165,4 +172,5 @@ class BacktestStrategy(bt.Strategy):
             macd_list_1d, macd_list_4h, macd_list_1h, macd_list_15m,
             kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
             rsi_list_4h, rsi_list_1h, rsi_list_15m)
-        return handler.get_sell_direction(self.data.close[0])
+        # return handler.get_sell_direction(self.data.close[0])
+        return handler.check_out_by_model(self.order_model_name)

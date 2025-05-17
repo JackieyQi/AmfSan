@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 # -*- coding: UTF-8 -*-
 
+import numpy as np
 from decimal import Decimal
 from utils.common import autoscale
 from utils.indicators import analyze_list_trend, enhanced_analyze_list_trend_by_groups, calculate_cv, analyze_crossovers
@@ -29,8 +30,9 @@ class CandlestickFactor:
         return self.kline_list[index].low_price < self.get_donchian_channel(
             index=index, window_size=window_size)["min_price"]
 
-    def is_new_high_price(self, window_size):
-        return self.kline_list[0].high_price < self.get_donchian_channel(window_size)["max_price"]
+    def is_new_high_price(self, window_size, index=0):
+        return self.kline_list[index].high_price > self.get_donchian_channel(
+            index=index, window_size=window_size)["max_price"]
 
     def is_bullish_k(self, index=0):
         return self.kline_list[index].open_price < self.kline_list[index].close_price
@@ -56,7 +58,7 @@ class CandlestickFactor:
             and (self.kline_list[index].open_price >= self.kline_list[index+1].close_price) \
             and (self.kline_list[index].close_price < self.kline_list[index+1].open_price)
 
-    def get_long_upper_shadow(self, index=0, scale=Decimal("1.5")):
+    def is_long_upper_shadow(self, index=0, scale=Decimal("1.5")):
         """
         长上影线可能是诱多 -> -2 分
         """
@@ -66,7 +68,7 @@ class CandlestickFactor:
 
         return upper_shadow_body > real_body * scale
 
-    def get_crosshairs(self, index=0, scale=Decimal("0.15")):
+    def is_crosshairs(self, index=0, scale=Decimal("0.15")):
         """ 长十字线"""
         real_body = abs(self.kline_list[index].close_price - self.kline_list[index].open_price)
         range_total_body = self.kline_list[index].high_price - self.kline_list[index].low_price
@@ -87,7 +89,7 @@ class CandlestickFactor:
         """
         判断：长十字线 + 下影线更长 -> -3 分
         """
-        is_crosshairs = self.get_crosshairs(index)
+        is_crosshairs = self.is_crosshairs(index)
 
         upper_shadow_body = self.kline_list[index].high_price - max(
             self.kline_list[index].open_price, self.kline_list[index].close_price)
@@ -182,10 +184,24 @@ class CandlestickFactor:
             return True
         else:
             return False
+        
+    def is_high_price_away_from_bbupper(self, index=0, tolerance=Decimal("0.08")):
+        """ 基于“价格与上轨”的偏离率 """
+        if self.kline_list[index].high_price < self.bb_list[index].bbupper:
+            return False
+
+        return (self.kline_list[index].high_price - self.bb_list[index].bbupper) / self.bb_list[index].bbupper > tolerance
+    
+    def is_curr_price_away_from_bbupper(self, index=0, tolerance=Decimal("0.07")):
+        """ 基于“价格与上轨”的偏离率 """
+        if self.kline_list[index].close_price < self.bb_list[index].bbupper:
+            return False
+
+        return (self.kline_list[index].close_price - self.bb_list[index].bbupper) / self.bb_list[index].bbupper > tolerance
 
     def is_near_upper(self, index=0, tolerance=Decimal("0.1")):
         """
-        当前价格接近或突破布林带上轨
+        当前价格接近或突破布林带上轨, 基于带宽
 
             if ratio <= 0.05:
                 score += 5  # 极贴轨
@@ -200,14 +216,14 @@ class CandlestickFactor:
         band_width = self.bb_list[index].bbupper - self.bb_list[index].bbmid
         return (self.bb_list[index].bbupper - self.kline_list[index].close_price) / band_width <= tolerance
 
-    def is_near_mid(self, index=0, tolerance=Decimal("0.02")):
+    def is_near_mid(self, index=0, tolerance=Decimal("0.2")):
         """
         当前价格接近或突破布林带中轨
         """
         if self.kline_list[index].close_price < self.bb_list[index].bblower:
             return False
 
-        band_width = self.bb_list[index].bbupper - self.bb_list[index].bbmid
+        band_width = self.bb_list[index].bbupper - self.bb_list[index].bblower
         return abs(self.kline_list[index].close_price - self.bb_list[index].bbmid) / band_width <= tolerance
 
     def is_near_lower(self, index=0, tolerance=Decimal("0.1")):
@@ -384,7 +400,7 @@ class CandlestickFactor:
     def is_ema26_continue_up(self, window_size=7):
         return all(self.macd_list[i].ema_26 < self.macd_list[i - 1].ema_26 for i in range(1, window_size))
 
-    def get_vol_factor(self, window_size, rate_threshold=Decimal("1.3")):
+    def get_vol_factor(self, window_size, index=0, rate_threshold=Decimal("1.3")):
         """
         交易量策略:
             短期趋势 → 5~10 天的成交量均线，举例：
@@ -392,12 +408,12 @@ class CandlestickFactor:
                 4小时成交量 **高于过去3根均值**，资金持续流入，增强信号。
         :return:
         """
-        factors = {"curr_high_price": self.kline_list[0].high_price, }
-        curr_volume = self.kline_list[0].volume
+        factors = {"curr_high_price": self.kline_list[index].high_price, }
+        curr_volume = self.kline_list[index].volume
 
         volume_list = []
         high_price_list = []
-        for i in self.kline_list[1:window_size+1]:
+        for i in self.kline_list[index+1:index+window_size+1]:
             volume_list.append(i.volume)
             high_price_list.append(i.high_price)
 
@@ -420,6 +436,10 @@ class MacdFactor:
     def __init__(self, macd_list):
         # 时间倒序
         self.macd_list = macd_list
+        
+    def is_near_zero(self, index=0, threshold=Decimal("0.4")):
+        mean_macd = np.mean([abs(i.macd) for i in self.macd_list[index:index+10]])
+        return abs(self.macd_list[index].macd) < mean_macd * threshold
 
     def is_golden_cross(self, index=0):
         """
@@ -466,7 +486,7 @@ class MacdFactor:
         return {"trend": trend_str, }
 
     def is_continue_up(self, window_size=3):
-        return all(self.macd_list[i].macd < self.macd_list[i - 1].macd for i in range(1, window_size))
+        return all(self.macd_list[i].macd <= self.macd_list[i - 1].macd for i in range(1, window_size))
 
     def is_continue_down(self, index=0, window_size=3):
         """ macd连续下跌 """
@@ -528,15 +548,15 @@ class KdjFactor:
         crossovers_data = analyze_crossovers(self.kdj_list[:window_size])
         return crossovers_data["golden_cross"] and crossovers_data["death_cross"]
 
-    def get_curr_golden_cross(self):
+    def get_curr_golden_cross(self, index=0):
         """检查 KDJ当前金叉"""
-        return (self.kdj_list[1].k_val < self.kdj_list[1].d_val and
-                self.kdj_list[0].k_val > self.kdj_list[0].d_val)
+        return (self.kdj_list[index+1].k_val < self.kdj_list[index+1].d_val and
+                self.kdj_list[index].k_val > self.kdj_list[index].d_val)
 
-    def get_curr_death_cross(self):
+    def is_death_cross(self, index=0):
         """检查 KDJ当前死叉"""
-        return (self.kdj_list[1].k_val > self.kdj_list[1].d_val and
-                self.kdj_list[0].k_val < self.kdj_list[0].d_val)
+        return (self.kdj_list[index+1].k_val > self.kdj_list[index+1].d_val and
+                self.kdj_list[index].k_val < self.kdj_list[index].d_val)
 
     def get_curr_golden_cross_by_threshold(self, threshold):
         """检查 KDJ当前低位金叉"""
@@ -573,7 +593,7 @@ class KdjFactor:
         return False
     
     def is_j_continue_down(self, index=0, window_size=3):
-        return all(self.kdj_list[i].j_val > self.kdj_list[i - 1].j_val for i in range(index+1, index+window_size))
+        return all(self.kdj_list[i].j_val > self.kdj_list[i - 1].j_val for i in range(index+1, index+window_size+1))
 
 
 class RsiFactor:
@@ -627,4 +647,13 @@ class RsiFactor:
         """
         4 小时 RSI-6 突破 60，增强趋势信号 → +3 分。
         """
-        return self.rsi_list[index].rsi > threshold > self.rsi_list[index+1].rsi
+        return self.rsi_list[index].rsi > threshold and min([i.rsi for i in self.rsi_list[index:3+index]]) < threshold
+    
+    def is_fast_down(self, index=0, threshold=Decimal("1.3")):
+        """
+        当前 RSI 跌幅 > 最近3根K线 RSI 变化幅度均值的 1.3 倍
+        """
+        drop_speed = abs(self.rsi_list[index].rsi - self.rsi_list[index + 1].rsi)
+        avg_recent_rsi_change = np.mean(
+            [abs(self.rsi_list[i].rsi - self.rsi_list[i + 1].rsi) for i in range(index + 1, index + 5)])
+        return drop_speed > avg_recent_rsi_change * threshold

@@ -413,10 +413,19 @@ class StrategyCheckHandle(BasePlotHandle):
                 self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h, self.kdj_list_15m,
                 self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m
             )
+            try:
+                last_order = await PlotBackTestTable.select().where(
+                    PlotBackTestTable.symbol == self.symbol,
+                ).order_by(PlotBackTestTable.id.desc()).limit(1).aio_get()
+                last_model_msg = last_order.ask_plot_msg if last_order.ask_plot_msg else last_order.bid_plot_msg
+            except PlotBackTestTable.DoesNotExist:
+                last_model_msg = ""
 
-            if model_info := strategy_handler.get_buy_by_model_detect(curr_price):
+            is_buy = False
+            if model_info := strategy_handler.check_in_by_model(last_model_msg):
                 recommend_bid_price = model_info["recommend_bid_price"]
                 strategy_text += model_info["model_name"]
+                is_buy = model_info.get("is_buy")
 
             # elif score_info := await self.get_buy_by_multi_factor_score(curr_price):
             #     for k, v in score_info.items():
@@ -425,25 +434,26 @@ class StrategyCheckHandle(BasePlotHandle):
             else:
                 return
 
-            recommend_price_data = self.get_recommend_price(curr_price)
-            recommend_bid_price = recommend_bid_price or recommend_price_data["recommend_bid_price"]
-            recommend_sl_price = recommend_price_data["sl_price"]
-            recommend_tp_price = recommend_price_data["tp_price"]
+            if is_buy:
+                recommend_price_data = self.get_recommend_price(curr_price)
+                recommend_bid_price = recommend_bid_price or recommend_price_data["recommend_bid_price"]
+                recommend_sl_price = recommend_price_data["sl_price"]
+                recommend_tp_price = recommend_price_data["tp_price"]
 
-            self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                       f"symbol={self.symbol}" \
-                                       f"&low_price={recommend_sl_price}" \
-                                       f"&high_price={recommend_tp_price}&buy_price="
+                self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
+                                        f"symbol={self.symbol}" \
+                                        f"&low_price={recommend_sl_price}" \
+                                        f"&high_price={recommend_tp_price}&buy_price="
 
-            redis_client = AllCache.get_client()
-            redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
+                redis_client = AllCache.get_client()
+                redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
 
-            direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
-                        f"\n<br> 总分: {sum(score_info.values())}。" \
-                        f"\n<br> 策略详情： {strategy_text}。" \
-                        f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
-                        f"当前价: {decimal2str(curr_price)}。<br><br>"
-            func_str = "get_buy_score_info"
+                direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
+                            f"\n<br> 总分: {sum(score_info.values())}。" \
+                            f"\n<br> 策略详情： {strategy_text}。" \
+                            f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
+                            f"当前价: {decimal2str(curr_price)}。<br><br>"
+                func_str = "get_buy_score_info"
 
             # TODO: 这里应该是实盘记录，回测记录需要单独出来，供策略回测优化。
 
@@ -452,8 +462,11 @@ class StrategyCheckHandle(BasePlotHandle):
                 recommend_bid_price,
                 self.check_time,
                 5,
-                direction
+                strategy_text,
+                is_buy=is_buy
             )
+            if not is_buy:
+                return
 
         elif await self.has_limit_price_check((1,)):
             logger.debug(f"strategy sell check start, symbol:{self.symbol}")
@@ -467,25 +480,40 @@ class StrategyCheckHandle(BasePlotHandle):
                 self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h, self.kdj_list_15m,
                 self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m
             )
+            try:
+                last_order = await PlotBackTestTable.select().where(
+                    PlotBackTestTable.symbol == self.symbol,
+                ).order_by(PlotBackTestTable.id.desc()).limit(1).aio_get()
+                last_model_msg = last_order.ask_plot_msg if last_order.ask_plot_msg else last_order.bid_plot_msg
+            except PlotBackTestTable.DoesNotExist:
+                last_model_msg = ""
 
-            # 海象运算符, py3.8新特性
-            if part_direction_info := strategy_handler._get_sell_direction_active_taking_profit(curr_price):
-                ask_plot_type = 6
-                func_str = "_get_sell_direction_active_taking_profit"
+            is_sell = False
+            part_direction = ""
+            if model_info := strategy_handler.check_out_by_model(last_model_msg):
+                recommend_ask_price = model_info["recommend_ask_price"]
+                ask_plot_type = 5
+                func_str = model_info["model_name"]
+                part_direction = func_str
+                is_sell = model_info.get("is_sell")
+                
+            # elif part_direction_info := strategy_handler._get_sell_direction_active_taking_profit(curr_price):
+            #     ask_plot_type = 6
+            #     func_str = "_get_sell_direction_active_taking_profit"
 
-                part_direction = part_direction_info.get("direction")
-                recommend_ask_price = part_direction_info.get("recommend_ask_price")
-            elif part_direction := strategy_handler._get_sell_direction_stop_loss(curr_price):
-                ask_plot_type = 7
-                func_str = "_get_sell_direction_stop_loss"
-            elif part_direction := strategy_handler._get_exit_score():
-                ask_plot_type = 8
-                func_str = "_get_exit_score"
+            #     part_direction = part_direction_info.get("direction")
+            #     recommend_ask_price = part_direction_info.get("recommend_ask_price")
+            # elif part_direction := strategy_handler._get_sell_direction_stop_loss(curr_price):
+            #     ask_plot_type = 7
+            #     func_str = "_get_sell_direction_stop_loss"
+            # elif part_direction := strategy_handler._get_exit_score():
+            #     ask_plot_type = 8
+            #     func_str = "_get_exit_score"
             else:
-                # redis_client = AllCache.get_client()
-                # cache_data = redis_client.get(f"sl_tp:{self.symbol}")
-                # if not cache_data:
-                #     return
+                redis_client = AllCache.get_client()
+                cache_data = redis_client.get(f"sl_tp:{self.symbol}")
+                if not cache_data:
+                    return
 
                 func_str = "tp_sl"
                 limit_price = MarketPriceLimitCache.hget(self.symbol)
@@ -518,8 +546,12 @@ class StrategyCheckHandle(BasePlotHandle):
                 recommend_ask_price,
                 self.check_time,
                 ask_plot_type,
-                direction
+                part_direction,
+                is_sell=is_sell
             )
+            
+            if not is_sell:
+                return
 
         else:
             return
@@ -740,7 +772,7 @@ class StrategyCheckHandle(BasePlotHandle):
         if (curr_price > self.bb_list_4h[0].bbupper) and (open_price > self.bb_list_4h[0].bbupper):
             score -= 3 # 开盘价突破上轨，当前价突破上轨，高开高走 -> -3 分
 
-        if self.kline_list_4h[0].high_price > self.bb_list_4h[0].bbupper and kline_4h_factors.get_crosshairs():
+        if self.kline_list_4h[0].high_price > self.bb_list_4h[0].bbupper and kline_4h_factors.is_crosshairs():
             curr_score_info["overheat_4h_upper_crosshairs"] = -5 # 4小时的当前k线最高价突破上轨且为十字线 -> -5 分
 
         return score + sum(curr_score_info.values())
@@ -749,7 +781,7 @@ class StrategyCheckHandle(BasePlotHandle):
         curr_score_info = {}
 
         for index in (0, 1):
-            if kline_1h_factors.get_long_upper_shadow(index) and kline_1h_factors.get_fake_breakout_by_bb(index):
+            if kline_1h_factors.is_long_upper_shadow(index) and kline_1h_factors.get_fake_breakout_by_bb(index):
                 # TODO: 假突破需要结合当前k线->回测判断是否需要 close_p<bbupper
                 curr_score_info["overheat_fake_breakout"] = -5 # 1小时的前K线(或者当前线)为长上影线且其最高价击穿上轨为假突破 -> -5 分
                 break
@@ -775,7 +807,7 @@ class StrategyCheckHandle(BasePlotHandle):
         return score + sum(curr_score_info.values())
 
     def _get_adjust_score_kline_4h(self, score, kline_4h_factors):
-        if kline_4h_factors.get_long_upper_shadow():
+        if kline_4h_factors.is_long_upper_shadow():
             score -= 2 # 当前4小时k线形成上影线 -> -2 分
         return score
 

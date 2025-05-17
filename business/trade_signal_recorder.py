@@ -166,7 +166,7 @@ class TradeSignalHandler(object):
         key = "lastTradeTs"
         redis_client.set(key, ts)
 
-    async def add_bid_ticket(self, curr_price, bid_price, bid_ts, bid_plot_type, bid_plot_msg):
+    async def add_bid_ticket(self, curr_price, bid_price, bid_ts, bid_plot_type, bid_plot_msg, is_buy=False):
         async with async_database.aio_atomic():
             # await PlotBackTestTable.aio_create(
             #     symbol=self.symbol,
@@ -199,11 +199,12 @@ class TradeSignalHandler(object):
                 sl_price = Decimal(_d[0])
                 tp_price = Decimal(_d[1])
 
-            market_price_handler = MarketPriceHandler()
-            market_price_handler.set_limit_price(
-                self.symbol, sl_price, tp_price, bid_ts)
+            if is_buy:
+                market_price_handler = MarketPriceHandler()
+                market_price_handler.set_limit_price(
+                    self.symbol, sl_price, tp_price, bid_ts)
 
-    async def update_ask_ticket(self, curr_price, ask_price, ask_ts, ask_plot_type, ask_plot_msg):
+    async def update_ask_ticket(self, curr_price, ask_price, ask_ts, ask_plot_type, ask_plot_msg, is_sell=False):
         # TODO: redis加锁
         async with async_database.aio_atomic():
             try:

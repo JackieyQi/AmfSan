@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ModeBase:
+class ModelBase:
     kline_1d_factors: Optional[CandlestickFactor] = None
     kline_4h_factors: Optional[CandlestickFactor] = None
     kline_1h_factors: Optional[CandlestickFactor] = None
@@ -47,7 +47,7 @@ class ModeBase:
     rsi_1h_factors: Optional[RsiFactor] = None
     rsi_15m_factors: Optional[RsiFactor] = None
     
-    def has_bearish(self):
+    def has_bearish_1h(self):
         is_4h_ema12_continue_down = self.kline_4h_factors.is_ema12_continue_down(window_size=3)
         
         if self.macd_4h_factors.is_death_cross(index=0):
@@ -103,11 +103,18 @@ class ModeBase:
             return True
         
         return False
+    
+    def has_bearish_4h(self):
+        # 当前价格偏离上轨不超过X%
+        if any([self.kline_4h_factors.is_curr_price_away_from_bbupper(index=i) for i in range(2)]):
+            return True
+        
+        return False
 
 
-class ModelBollTopRise(ModeBase):
+class ModelTopRise(ModelBase):
     """
-    4小时波段交易: 布林贴顶加速上涨模型(贴顶上涨):
+    4小时波段交易: 布林贴顶加速上涨模型(贴顶上涨)(主升浪):
             结构节奏：几乎无回调，连续阳线
             入场逻辑：强势追涨（跟随）
             风控点位：前一小时K线最低点或短EMA线
@@ -117,17 +124,24 @@ class ModelBollTopRise(ModeBase):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        self.name = "mode_boll_top_rise"
+        self.name = "model_top_rise"
         self.name_str = "布林贴顶加速上涨模型"
-        self.curr_price = self.kline_1h_factors.kline_list[0].close_price
         self.score = 0
 
-    def get_recommend_price(self):
-        return {
-            "recommend_bid_price": self.curr_price,
-        }
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price if self.kline_1h_factors else None
+        self.recommend_bid_price = None
+        self.recommend_ask_price = None
+        self.recommend_sl_price = None
+        self.recommend_tp_price = None
 
-    def is_detected(self):
+    def cal_recommend_price(self):
+        self.recommend_bid_price = self.curr_price
+        
+        self.recommend_ask_price = self.curr_price
+
+    def is_in(self):
+        if self.has_bearish_4h():
+            return False
 
         # 大时间周期: ema多头排列
         if self.kline_1d_factors.is_ema_bullish_stack(window_size=1):
@@ -148,9 +162,8 @@ class ModelBollTopRise(ModeBase):
                 index=i, tolerance=tolerance) for i in range(window_size)]
             is_bullish_boll = sum(count_4h_close_gt_bbupper) >= window_size
             
-            if is_bullish_k and is_bullish_ema12 and is_bullish_boll:
+            if sum([is_bullish_k, is_bullish_ema12, is_bullish_boll]) >= 3:
                 # 小周期: 具体入场点
-                
                 # 小周期: 连续3根阳线
                 count_1h_bullish_k = [self.kline_1h_factors.is_bullish_k(index=i) for i in range(3)]
                 is_bullish_k = sum(count_1h_bullish_k) >= 3
@@ -158,13 +171,150 @@ class ModelBollTopRise(ModeBase):
                 # 小周期: 至少连续3根K线收于布林带上轨上方或贴近上轨
                 is_bullish_boll = self.kline_1h_factors.is_along_upper_band(n=3)
                 
-                if is_bullish_k or is_bullish_boll:
+                if sum([is_bullish_k, is_bullish_boll]) >= 1:
                     return True
                 
         return False
+    
+    def is_in_twice(self):
+        """
+        短期盘整后, 二次进入
+        """
+        if self.has_bearish_4h():
+            return False
+        
+        # 当前价格突破前高
+        if self.kline_4h_factors.is_new_high_price(20, index=0):
+            # 盘整区间不超过 {window_size} 根K线
+            window_size = 10
+            is_in_range = any([self.kline_4h_factors.is_near_upper(index=i) for i in range(window_size)])
+            if is_in_range:
+                # 小周期: 放量突破（当前K线量 > 近10根均量 1.5倍）
+                is_vol = False
+                vol_1h = self.kline_1h_factors.get_vol_factor(10, index=0, rate_threshold=Decimal("1.5"))
+                if "has_enhance_spike_volume" in vol_1h and vol_1h["has_enhance_spike_volume"]:
+                    is_vol = True
+                else:
+                    vol_1h = self.kline_1h_factors.get_vol_factor(10, index=1, rate_threshold=Decimal("1.5"))
+                    if "has_enhance_spike_volume" in vol_1h and vol_1h["has_enhance_spike_volume"]:
+                        is_vol = True
+                
+                # 小周期: macd柱体放大
+                is_macd_continue_up = self.macd_1h_factors.is_continue_up(window_size=5)
+                if is_macd_continue_up and vol_1h["has_spike_volume"]:
+                    is_macd = True
+                else:
+                    is_macd = False
+                
+                # 小周期: RSI突破 60 并继续走高  
+                if self.rsi_1h_factors.rsi_list[0].rsi > Decimal("70") and self.rsi_1h_factors.get_breakout():
+                    is_rsi = True
+                else:
+                    is_rsi = False
+                    
+                if any([is_vol, is_macd, is_rsi]):
+                    return True
+
+        return False
+    
+    def is_out(self):
+        # 当前时间周期: MACD柱体连续缩短
+        is_macd_bullish = self.macd_4h_factors.is_continue_down(index=0)
+        # 当前时间周期: KDJ 死叉 + J值钝化
+        is_kdj_death_cross = any([self.kdj_4h_factors.is_death_cross(index=i) for i in range(2)])
+        is_kdj_j_downtrend = self.kdj_4h_factors.is_j_continue_down(index=0, window_size=2) and \
+            self.kdj_4h_factors.kdj_list[0].j_val < Decimal("70")
+        is_kdj_bullish = all([is_kdj_death_cross, is_kdj_j_downtrend])
+        # 当前时间周期: RSI快速跌破70或60
+        is_rsi_bullish = any([self.rsi_4h_factors.is_fast_down(index=i) for i in range(2)]) and \
+            self.rsi_4h_factors.rsi_list[0].rsi < 70
+        
+        # 主趋势减弱
+        if sum([is_macd_bullish, is_kdj_bullish, is_rsi_bullish]) >= 2:
+            
+            # 当前时间周期: k线出现看跌吞没
+            is_bearish_engulfing_k = any([self.kline_4h_factors.is_bearish_engulfing_k(index=i) for i in range(2)])
+            # 当前时间周期: 当前K线最高价远离布林带上轨+RSI > 85
+            is_away = any([self.kline_4h_factors.is_high_price_away_from_bbupper(index=i) for i in range(2)])
+            is_rsi_gt_85 = any([self.rsi_4h_factors.rsi_list[i].rsi > 85 for i in range(2)])
+            # 当前时间周期: kdj出场死叉
+            is_kdj = any([self.kdj_4h_factors.is_death_cross(index=i) for i in range(2)])
+            
+            # 价格行为触发
+            if is_bearish_engulfing_k or (is_away and is_rsi_gt_85) or is_kdj:
+                
+                # 小周期
+                # 1小时EMA12死叉EMA26
+                # RSI在1小时级别下穿60 + MACD跌破0
+                # 高位横盘3根以上K线后跌破布林中轨
+                # TODO:
+                return True
+        return False
 
 
-class ModelBollMidRebound(ModeBase):
+class ModelOscillation(ModelBase):
+    """
+    4小时波段交易: 震荡模型
+        : 震荡突破 ≠ 一定趋势启动
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        self.name = "model_oscillation"
+        self.name_str = "4小时波段交易: 震荡模型"
+        self.score = 0
+
+        self.curr_price = self.kline_1h_factors.kline_list[0].close_price if self.kline_1h_factors else None
+        self.recommend_bid_price = None
+        self.recommend_ask_price = None
+        self.recommend_sl_price = None
+        self.recommend_tp_price = None
+        
+    def is_in(self):
+        # k线 实体小、方向混乱、多影线、收敛形态
+        kline_count = 0
+        for i in range(5):
+            if self.kline_4h_factors.is_long_upper_shadow(index=i):
+                kline_count += 1
+            elif self.kline_4h_factors.is_crosshairs(index=i):
+                kline_count += 1
+            elif self.kline_4h_factors.is_long_lower_shadow_k(index=i):
+                kline_count += 1
+        is_kline = kline_count >= 3
+        # 价格 贴近布林带中轨
+        bbmid_count = sum([self.kline_4h_factors.is_near_mid(index=i) for i in range(5)])
+        is_bbmid = bbmid_count >= 3
+        # macd 柱体变短 → 接近 0 附近震荡
+        is_macd_downtrend = self.macd_4h_factors.is_continue_down(index=0)
+        is_macd_zero = any([self.macd_4h_factors.is_near_zero(index=i) for i in range(2)])
+        is_macd = is_macd_downtrend and is_macd_zero
+        # rsi 没有进入过超买（>70）或超卖（<30）区间
+        is_rsi = all([Decimal("30") <= self.rsi_4h_factors.rsi_list[i].rsi <= Decimal("70") for i in range(5)])
+
+        return sum([is_kline, is_bbmid, is_macd, is_rsi]) >= 2
+    
+    def is_out(self):
+        window_size = 20
+        # 当前K线突破震荡区间高低点
+        if self.kline_4h_factors.is_new_high_price(window_size, index=0):
+            # 同时击穿布林带上/下轨（辅助确认）
+            if self.kline_4h_factors.kline_list[0].high_price > self.kline_4h_factors.bb_list[0].bbupper:
+                # TODO:放量 + 动能指标确认（MACD、KDJ）
+                
+                self.name += ":up"
+                return True
+            
+        if self.kline_4h_factors.is_new_low_price(window_size, index=0):
+            if self.kline_4h_factors.kline_list[0].low_price < self.kline_4h_factors.bb_list[0].bblower:
+                # TODO:放量 + 动能指标确认（MACD、KDJ）
+                
+                self.name += ":down"
+                return True
+
+        return False
+
+
+class ModelBollMidRebound(ModelBase):
     """
     |         | （中轨反弹）   |
     | 结构节奏 | 有回调→确认支撑→拉升 |
@@ -223,7 +373,7 @@ class ModelBollMidRebound(ModeBase):
                         break
 
                 # 子因子A3：1小时前k线为十字线，当前k线为阳线且收盘价突破中轨
-                if self.kline_1h_factors.get_crosshairs(index=1) and (
+                if self.kline_1h_factors.is_crosshairs(index=1) and (
                         self.kline_1h_factors.is_bullish_k(index=0)
                         and self.kline_1h_factors.kline_list[0].close_price > self.kline_1h_factors.bb_list[0].bbmid):
                     self.score += 5
@@ -231,7 +381,7 @@ class ModelBollMidRebound(ModeBase):
         return self.score >= 22.5  # 大于总分的1/2
 
 
-class ModelBollLowReboundBullishSideways(ModeBase):
+class ModelBollLowReboundBullishSideways(ModelBase):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -283,7 +433,7 @@ class ModelBollLowReboundBullishSideways(ModeBase):
         return self.score >= 25  # 任一子因子满足
 
 
-class ModelBollLowReboundBullishDown(ModeBase):
+class ModelBollLowReboundBullishDown(ModelBase):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -333,7 +483,7 @@ class ModelBollLowReboundBullishDown(ModeBase):
         return self.score >= 25  # 任一子因子满足
 
 
-class ModelLTypeRebound(ModeBase):
+class ModelLTypeRebound(ModelBase):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -370,7 +520,7 @@ class ModelLTypeRebound(ModeBase):
         return self.score >= 20  # 任一子因子满足
 
 
-class ModelWTypeRebound(ModeBase):
+class ModelWTypeRebound(ModelBase):
     """
     结构判断：
         定义时间窗 window_size=15（蜡烛图长度）：
@@ -461,7 +611,7 @@ class ModelWTypeRebound(ModeBase):
         return self.score >= 5
 
 
-class ModelVTypeRebound(ModeBase):
+class ModelVTypeRebound(ModelBase):
     """
     1小时V型，从下轨到中轨，过中轨后的k线的收盘价没有下落中轨，平行布林带口袋向上贴上轨。
 

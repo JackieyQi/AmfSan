@@ -3,14 +3,12 @@
 
 """
 🧠
-
-
 """
 
 from decimal import Decimal
 
 from models.factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
-from models.strategy import ModelBollTopRise, ModelBollMidRebound, ModelBollLowReboundBullishSideways, \
+from models.strategy import ModelTopRise, ModelOscillation, ModelBollMidRebound, ModelBollLowReboundBullishSideways, \
     ModelBollLowReboundBullishDown, ModelLTypeRebound, ModelWTypeRebound, ModelVTypeRebound
 
 
@@ -20,6 +18,7 @@ class StrategyHandle:
                  macd_list_1d, macd_list_4h, macd_list_1h, macd_list_15m,
                  kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
                  rsi_list_4h, rsi_list_1h, rsi_list_15m):
+        self.symbol = kline_list_1h[0].symbol
         self.kline_list_4h = kline_list_4h
         self.kline_list_1h = kline_list_1h
         self.kline_list_15m = kline_list_15m
@@ -58,7 +57,7 @@ class StrategyHandle:
         self.rsi_1h_factors = RsiFactor(self.rsi_list_1h)
         self.rsi_15m_factors = RsiFactor(self.rsi_list_15m)
         
-    def get_buy_by_model_detect(self, curr_price):
+    def check_in_by_model(self, last_model_msg):
         kwargs = {
             "kline_1d_factors": self.kline_1d_factors,
             "kline_4h_factors": self.kline_4h_factors,
@@ -74,12 +73,60 @@ class StrategyHandle:
             "rsi_1h_factors": self.rsi_1h_factors,
             "rsi_15m_factors": self.rsi_15m_factors,
         }
-        model_boll_top_rise = ModelBollTopRise(**kwargs)
-        if model_boll_top_rise.is_detected():
-            model_recommend_price_data = model_boll_top_rise.get_recommend_price()
-            return {"model_name": model_boll_top_rise.name,
-                    "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
+        model_top_rise = ModelTopRise(**kwargs)
+        model_oscillation = ModelOscillation(**kwargs)
+        
+        if model_top_rise.name in last_model_msg:
+            if model_oscillation.is_in():
+                return {"model_name": model_oscillation.name,}
+        
+        if model_oscillation.name in last_model_msg and "up" in last_model_msg:
+            if model_top_rise.is_in_twice():
+                model_top_rise.cal_recommend_price()
+                return {"model_name": model_top_rise.name,
+                        "recommend_bid_price": model_top_rise.recommend_bid_price,
+                        "is_buy": True}
+                
+            elif model_top_rise.is_in():
+                model_top_rise.cal_recommend_price()
+                return {"model_name": model_top_rise.name,
+                        "recommend_bid_price": model_top_rise.recommend_bid_price,
+                        "is_buy": True}
+        
+        if model_oscillation.name in last_model_msg and "down" in last_model_msg:
+            if model_top_rise.is_in():
+                model_top_rise.cal_recommend_price()
+                return {"model_name": model_top_rise.name,
+                        "recommend_bid_price": model_top_rise.recommend_bid_price,
+                        "is_buy": True}
 
+        if model_top_rise.is_in():
+            model_top_rise.cal_recommend_price()
+            return {"model_name": model_top_rise.name,
+                    "recommend_bid_price": model_top_rise.recommend_bid_price,
+                    "is_buy": True}
+        if model_oscillation.is_in():
+            return {"model_name": model_oscillation.name,}
+
+        return None
+
+    def check_in_by_model_1h(self, last_model_msg):
+        kwargs = {
+            "kline_1d_factors": self.kline_1d_factors,
+            "kline_4h_factors": self.kline_4h_factors,
+            "kline_1h_factors": self.kline_1h_factors,
+            "kline_15m_factors": self.kline_15m_factors,
+            "macd_4h_factors": self.macd_4h_factors,
+            "macd_1h_factors": self.macd_1h_factors,
+            "macd_15m_factors": self.macd_15m_factors,
+            "kdj_4h_factors": self.kdj_4h_factors,
+            "kdj_1h_factors": self.kdj_1h_factors,
+            "kdj_15m_factors": self.kdj_15m_factors,
+            "rsi_4h_factors": self.rsi_4h_factors,
+            "rsi_1h_factors": self.rsi_1h_factors,
+            "rsi_15m_factors": self.rsi_15m_factors,
+        }
+                
         model_boll_mid_rebound = ModelBollMidRebound(**kwargs)
         if model_boll_mid_rebound.is_detected():
             model_recommend_price_data = model_boll_mid_rebound.get_recommend_price()
@@ -116,6 +163,39 @@ class StrategyHandle:
             return {"model_name": model_v.name,
                     "recommend_bid_price": model_recommend_price_data["recommend_bid_price"]}
 
+        return None
+    
+    def check_out_by_model(self, curr_model_msg):
+        kwargs = {
+            "kline_1d_factors": self.kline_1d_factors,
+            "kline_4h_factors": self.kline_4h_factors,
+            "kline_1h_factors": self.kline_1h_factors,
+            "kline_15m_factors": self.kline_15m_factors,
+            "macd_4h_factors": self.macd_4h_factors,
+            "macd_1h_factors": self.macd_1h_factors,
+            "macd_15m_factors": self.macd_15m_factors,
+            "kdj_4h_factors": self.kdj_4h_factors,
+            "kdj_1h_factors": self.kdj_1h_factors,
+            "kdj_15m_factors": self.kdj_15m_factors,
+            "rsi_4h_factors": self.rsi_4h_factors,
+            "rsi_1h_factors": self.rsi_1h_factors,
+            "rsi_15m_factors": self.rsi_15m_factors,
+        }
+        
+        model_top_rise = ModelTopRise(**kwargs)
+        model_oscillation = ModelOscillation(**kwargs)
+        
+        if model_top_rise.name in curr_model_msg:
+            if model_top_rise.is_out():
+                model_top_rise.cal_recommend_price()
+                return {"model_name": model_top_rise.name,
+                        "recommend_ask_price": model_top_rise.recommend_ask_price,
+                        "is_sell": True}
+                
+        if model_oscillation.name in curr_model_msg:
+            if model_oscillation.is_out():
+                return {"model_name": model_oscillation.name,}
+            
         return None
     
     def get_sell_direction(self, curr_price):
