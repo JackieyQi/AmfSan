@@ -238,7 +238,7 @@ class TopPriceTaskHandle(BasePlotHandle):
         super().__init__()
 
     async def delete_no_top_symbols(self):
-        target_ts = int(time.time()) - 40 * 3600
+        target_ts = int(time.time()) - 10 * 3600
         has_in_symbol_list = []
         has_pending_symbol_list = []
         for row in await PlotBackTestTable.select().where(
@@ -303,9 +303,6 @@ class TopPriceTaskHandle(BasePlotHandle):
                     count += 1
                 
         logger.info("update_all_symbols, count: %s", count)
-
-        await self.delete_no_top_symbols()
-        SymbolHandle(symbol=symbol, user_id="root").refresh_symbol_cache()
         return all_symbols_list
                     
     async def check_break_history_top_price(self):
@@ -325,6 +322,9 @@ class TopPriceTaskHandle(BasePlotHandle):
         
         for symbol in bn_symbols_list:
             await self._check_break_history_top_price_from_api(symbol)
+
+        await self.delete_no_top_symbols()
+        SymbolHandle().refresh_symbol_cache()
             
     async def _check_break_history_top_price_from_api(self, symbol):
         await asyncio.sleep(random.uniform(0.1, 0.8))
