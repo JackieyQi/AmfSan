@@ -312,7 +312,7 @@ class TopPriceTaskHandle(BasePlotHandle):
                                BnSymbolTable.is_valid).aio_execute()]
         if not bn_symbols_list:
             bn_symbols_list = await self.update_all_symbols()
-        
+
         user_symbols_list = [i.symbol for i in
                              await UserSymbolPlotTable.select(UserSymbolPlotTable.symbol).aio_execute()]
         for symbol in user_symbols_list:
@@ -338,23 +338,28 @@ class TopPriceTaskHandle(BasePlotHandle):
         
         self._last_request_time = time.time()
         
-        async with aiohttp.ClientSession() as session:
-            limit = 36
-            async with session.get(
-                    self.kline_url,
-                    params={
-                        "symbol": symbol.upper(), "interval": "1h", "limit": limit}
-            ) as response:
-                data = await response.json()
-                if len(data) < limit:
-                    return
-                
-                high_price_list = [i[2] for i in data]
-                curr_high_price = high_price_list[-1]
-                history_high_price = max(high_price_list[:-1])
-                if curr_high_price <= history_high_price:
-                    return
-                curr_ts = data[-1][0]
+        try:
+            async with aiohttp.ClientSession() as session:
+                limit = 36
+                async with session.get(
+                        self.kline_url,
+                        params={
+                            "symbol": symbol.upper(), "interval": "1h", "limit": limit},
+                        timeout=10  # 设置10秒超时
+                ) as response:
+                    data = await response.json()
+                    if len(data) < limit:
+                        return
+                    
+                    high_price_list = [i[2] for i in data]
+                    curr_high_price = high_price_list[-1]
+                    history_high_price = max(high_price_list[:-1])
+                    if curr_high_price <= history_high_price:
+                        return
+                    curr_ts = data[-1][0]
+        except Exception as e:
+            logger.error(f"_check_break_history_top_price_from_api: {e} - {symbol}")
+            return
 
         symbol_handler = SymbolHandle(symbol=symbol, user_id="root")
         await symbol_handler.add_symbol()
