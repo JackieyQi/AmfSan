@@ -489,6 +489,7 @@ class StrategyCheckHandle(BasePlotHandle):
                 curr_model_msg = ""
 
             is_sell = False
+            need_notify = False
             part_direction = ""
             if model_info := strategy_handler.check_out_by_model(curr_model_msg):
                 recommend_ask_price = model_info.get("recommend_ask_price")
@@ -496,6 +497,8 @@ class StrategyCheckHandle(BasePlotHandle):
                 func_str = model_info["model_name"]
                 part_direction = func_str
                 is_sell = model_info.get("is_sell")
+                if is_sell:
+                    need_notify = True
                 
             # elif part_direction_info := strategy_handler._get_sell_direction_active_taking_profit(curr_price):
             #     ask_plot_type = 6
@@ -527,10 +530,12 @@ class StrategyCheckHandle(BasePlotHandle):
                     part_direction += "当前价格触及止盈价，止盈离场。"
                     recommend_ask_price = curr_price
                     ask_plot_type = 8
+                    need_notify = True
                 elif curr_price <= min(sl_price, self.bb_list_1h[0].bblower):
                     part_direction += "当前价格触及止损价，止损离场。"
                     recommend_ask_price = sl_price
                     ask_plot_type = 9
+                    need_notify = True
                 else:
                     return
 
@@ -543,16 +548,17 @@ class StrategyCheckHandle(BasePlotHandle):
                         f"<br><br> 📉 建议卖出价：{decimal2str(recommend_ask_price)}，" \
                         f"当前价: {decimal2str(curr_price)}。" \
 
-            await TradeSignalHandler(self.symbol).update_ask_ticket(
-                curr_price,
-                recommend_ask_price,
-                self.check_time,
-                ask_plot_type,
-                part_direction,
-                is_sell=is_sell
-            )
+            if ask_plot_type in [5, 9]:
+                await TradeSignalHandler(self.symbol).update_ask_ticket(
+                    curr_price,
+                    recommend_ask_price,
+                    self.check_time,
+                    ask_plot_type,
+                    part_direction,
+                    is_sell=is_sell
+                )
             
-            if not is_sell:
+            if not need_notify:
                 return
 
         else:
