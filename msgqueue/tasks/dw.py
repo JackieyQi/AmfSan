@@ -171,7 +171,7 @@ async def save_indicators_job(*args, **kwargs):
     redis_client = AllCache.get_client()
 
     symbols_info = await get_plot_symbols_info(redis_client)
-    for symbol, _info in symbols_info.items():
+    for symbol, _ in symbols_info.items():
         for _interval in STRATEGY_INTERVAL_LIST:
 
             if redis_client.get(f"s_indicators:{symbol}:{_interval}"):

@@ -16,8 +16,9 @@ from cache import AllCache
 from cache.plot import (CheckKdjCrossGateCache,
                         CheckMacdCrossGateCache, CheckMacdTrendGateCache)
 from exts import async_database
-from models.market import BnSymbolTable, EmaTable, KdjTable, KlineTable, MacdTable
+from models.market import BnSymbolTable, EmaTable, KdjTable, KlineTable, MacdTable, RsiTable, BollTable
 from models.user import EmailMsgHistoryTable, UserSymbolPlotTable
+from models.order import PlotBackTestTable
 from models.wallet import TotalBalanceHistoryTable
 from msgqueue.queue import push_plot_mq
 from settings.constants import (INNER_GET_DELETE_KDJ_CROSS_URL,
@@ -235,7 +236,51 @@ class TopPriceTaskHandle(BasePlotHandle):
         self.price_url = "https://api.binance.com/api/v3/ticker/price"
         self.kline_url = "https://api.binance.com/api/v3/klines"
         super().__init__()
-        
+
+    async def delete_no_top_symbols(self):
+        target_ts = int(time.time()) - 40 * 3600
+        has_in_symbol_list = []
+        has_pending_symbol_list = []
+        for row in await PlotBackTestTable.select().where(
+                PlotBackTestTable.bid_ts <= target_ts,
+        ).aio_execute():
+            if row.bid_plot_msg:
+                if 'model_top_rise' in row.bid_plot_msg:
+                    has_in_symbol_list.append(row.symbol)
+                elif 'model_oscillation' in row.bid_plot_msg:
+                    has_pending_symbol_list.append(row.symbol)
+
+            elif row.ask_plot_msg:
+                if 'model_top_rise' in row.ask_plot_msg:
+                    has_in_symbol_list.append(row.symbol)
+                elif 'model_oscillation' in row.ask_plot_msg:
+                    has_pending_symbol_list.append(row.symbol)
+
+        need_update_del_symbol_list = []
+        for symbol in has_pending_symbol_list:
+            if symbol not in has_in_symbol_list:
+                need_update_del_symbol_list.append(symbol)
+
+        all_in_symbol_list = [i.symbol for i in await UserSymbolPlotTable.select().aio_execute()]
+        for symbol in all_in_symbol_list:
+            if symbol in ["btcusdt", "ethusdt", "solusdt", "dogeusdt", "xrpusdt"]:
+                continue
+            if symbol not in has_in_symbol_list:
+                need_update_del_symbol_list.append(symbol)
+        need_update_del_symbol_list = list(set(need_update_del_symbol_list))
+
+        # print(f"需要更新的交易对：{need_update_del_symbol_list}")
+        for symbol in need_update_del_symbol_list:
+            await PlotBackTestTable.delete().where(PlotBackTestTable.symbol == symbol).aio_execute()
+
+            await UserSymbolPlotTable.delete().where(UserSymbolPlotTable.symbol == symbol).aio_execute()
+
+            kline_del_rows = await KlineTable.delete().where(KlineTable.symbol == symbol).aio_execute()
+            macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == symbol).aio_execute()
+            kdj_del_rows = await KdjTable.delete().where(KdjTable.symbol == symbol).aio_execute()
+            rsi_del_rows = await RsiTable.delete().where(RsiTable.symbol == symbol).aio_execute()
+            boll_del_rows = await BollTable.delete().where(BollTable.symbol == symbol).aio_execute()
+
     async def update_all_symbols(self):
         all_symbols_list = []
         async with aiohttp.ClientSession() as session:
@@ -258,6 +303,9 @@ class TopPriceTaskHandle(BasePlotHandle):
                     count += 1
                 
         logger.info("update_all_symbols, count: %s", count)
+
+        await self.delete_no_top_symbols()
+        SymbolHandle(symbol=symbol, user_id="root").refresh_symbol_cache()
         return all_symbols_list
                     
     async def check_break_history_top_price(self):
