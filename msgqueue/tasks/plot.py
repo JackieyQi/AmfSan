@@ -270,6 +270,7 @@ class TopPriceTaskHandle(BasePlotHandle):
         need_update_del_symbol_list = list(set(need_update_del_symbol_list))
 
         # print(f"需要更新的交易对：{need_update_del_symbol_list}")
+        logger.info(f"check_break_history_top_price, need_update_del_symbol_list:{need_update_del_symbol_list}")
         for symbol in need_update_del_symbol_list:
             await PlotBackTestTable.delete().where(PlotBackTestTable.symbol == symbol).aio_execute()
 
