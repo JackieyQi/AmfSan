@@ -481,16 +481,16 @@ class StrategyCheckHandle(BasePlotHandle):
                 self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m
             )
             try:
-                last_order = await PlotBackTestTable.select().where(
+                curr_order = await PlotBackTestTable.select().where(
                     PlotBackTestTable.symbol == self.symbol,
                 ).order_by(PlotBackTestTable.id.desc()).limit(1).aio_get()
-                last_model_msg = last_order.ask_plot_msg if last_order.ask_plot_msg else last_order.bid_plot_msg
+                curr_model_msg = curr_order.ask_plot_msg if curr_order.ask_plot_msg else curr_order.bid_plot_msg
             except PlotBackTestTable.DoesNotExist:
-                last_model_msg = ""
+                curr_model_msg = ""
 
             is_sell = False
             part_direction = ""
-            if model_info := strategy_handler.check_out_by_model(last_model_msg):
+            if model_info := strategy_handler.check_out_by_model(curr_model_msg):
                 recommend_ask_price = model_info.get("recommend_ask_price")
                 ask_plot_type = 5
                 func_str = model_info["model_name"]
@@ -518,7 +518,7 @@ class StrategyCheckHandle(BasePlotHandle):
                 func_str = "tp_sl"
                 limit_price = MarketPriceLimitCache.hget(self.symbol)
                 if not limit_price:
-                    return 
+                    return
                 set_time, limit_low_price, limit_high_price = limit_price.split(":")
 
                 sl_price, tp_price = map(Decimal, (limit_low_price, limit_high_price))

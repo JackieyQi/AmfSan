@@ -205,40 +205,41 @@ class TradeSignalHandler(object):
                     self.symbol, sl_price, tp_price, bid_ts)
 
     async def update_ask_ticket(self, curr_price, ask_price, ask_ts, ask_plot_type, ask_plot_msg, is_sell=False):
-        # TODO: redis加锁
-        async with async_database.aio_atomic():
-            try:
-                last_ticket = await PlotBackTestTable.select().where(
-                    PlotBackTestTable.symbol == self.symbol,
-                ).order_by(PlotBackTestTable.bid_ts.desc()).aio_get()
-                if last_ticket.status != 1:
-                    return
+        with AllCache.get_client().lock(f"lock_update_ask_ticket:{self.symbol}", timeout=10) as lock:
+            async with async_database.aio_atomic():
+                try:
+                    last_ticket = await PlotBackTestTable.select().where(
+                        PlotBackTestTable.symbol == self.symbol,
+                    ).order_by(PlotBackTestTable.bid_ts.desc()).aio_get()
+                    if last_ticket.status != 1:
+                        return
 
-                # last_ticket.ask_curr_price = curr_price
-                # last_ticket.ask_price = ask_price
-                # last_ticket.ask_ts = ask_ts
-                # last_ticket.ask_plot_type = ask_plot_type
-                # last_ticket.ask_plot_msg = ask_plot_msg
-                # last_ticket.status = 3
-                # await last_ticket.aio_save()
-                
-                # TODO: 强制卖出，当前价格为卖出价格 -> 检查策略效果
-                last_ticket.ask_curr_price = curr_price
-                last_ticket.ask_price = ask_price
-                last_ticket.ask_ts = ask_ts
-                last_ticket.ask_plot_type = ask_plot_type
-                last_ticket.ask_plot_msg = ask_plot_msg
-                last_ticket.sell_price = ask_price
-                last_ticket.sell_ts = ask_ts
-                last_ticket.hold_time = ask_ts - last_ticket.buy_ts
-                last_ticket.profit_percent = decimal2decimal(((ask_price - last_ticket.buy_price) / last_ticket.buy_price)*Decimal("100"), 1)
-                last_ticket.status = 4 if is_sell else 5
-                await last_ticket.aio_save()
-                self.set_last_trade_time(ask_ts)
+                    # last_ticket.ask_curr_price = curr_price
+                    # last_ticket.ask_price = ask_price
+                    # last_ticket.ask_ts = ask_ts
+                    # last_ticket.ask_plot_type = ask_plot_type
+                    # last_ticket.ask_plot_msg = ask_plot_msg
+                    # last_ticket.status = 3
+                    # await last_ticket.aio_save()
 
-                MarketPriceLimitCache.hdel(self.symbol)
-            except PlotBackTestTable.DoesNotExist:
-                pass
+                    # TODO: 强制卖出，当前价格为卖出价格 -> 检查策略效果
+                    last_ticket.ask_curr_price = curr_price
+                    last_ticket.ask_price = ask_price
+                    last_ticket.ask_ts = ask_ts
+                    last_ticket.ask_plot_type = ask_plot_type
+                    last_ticket.ask_plot_msg = ask_plot_msg
+                    last_ticket.sell_price = ask_price
+                    last_ticket.sell_ts = ask_ts
+                    last_ticket.hold_time = ask_ts - last_ticket.buy_ts
+                    last_ticket.profit_percent = decimal2decimal(
+                        ((ask_price - last_ticket.buy_price) / last_ticket.buy_price) * Decimal("100"), 1)
+                    last_ticket.status = 4 if is_sell else 5
+                    await last_ticket.aio_save()
+                    self.set_last_trade_time(ask_ts)
+
+                    MarketPriceLimitCache.hdel(self.symbol)
+                except PlotBackTestTable.DoesNotExist:
+                    pass
 
     async def update_real_ticket(self, all_curr_prices):
         curr_ts = int(time.time())
