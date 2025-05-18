@@ -141,3 +141,25 @@ class HashCache(AllCache):
     @classmethod
     def delete(cls):
         return cls.get_client().delete(cls.key)
+
+
+def check_rate_limit(key, limit=100, expire=600):
+    """
+    通用的限流检查函数
+    :param key: Redis键名
+    :param limit: 限制次数
+    :param expire: 过期时间（秒）
+    :return: True表示达到限制，False表示未达到限制
+    """
+    redis_client = AllCache.get_client()
+    count = redis_client.get(key)
+    if count and int(count) >= limit:
+        redis_client.close()
+        return True
+    
+    if count is None:
+        redis_client.set(key, 1, ex=expire)
+    else:
+        redis_client.incr(key)
+    redis_client.close()
+    return False

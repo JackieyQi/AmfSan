@@ -6,7 +6,7 @@ import time
 from decimal import Decimal
 
 from exts import async_database
-from cache import AllCache
+from cache import AllCache, check_rate_limit
 from cache.order import MarketPriceLimitCache, FearAndGreedIndexCache
 from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
 from models.order import PlotBackTestTable
@@ -389,6 +389,9 @@ class StrategyCheckHandle(BasePlotHandle):
 
         interval_sec = PLOT_INTERVAL_CONFIG["4h"]["interval_sec"]
         if self.macd_list_4h[0].opening_ts < (self.check_time - interval_sec * limit_count):
+            if check_rate_limit("no_latest_macd_data", limit=3, expire=600):
+                return
+
             self.result[
                 self.symbol
             ] = f"""
