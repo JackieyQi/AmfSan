@@ -9,6 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import Header
 from email.utils import formatdate
+from cache import AllCache
 
 from settings.setting import cfgs
 
@@ -16,7 +17,25 @@ from settings.setting import cfgs
 logger = logging.getLogger(__name__)
 
 
+def check_email_send_limit():
+    redis_client = AllCache.get_client()
+    redis_key = "email_send_limit"
+    count = redis_client.get(redis_key)
+    if count and int(count) >= 100:
+        return True
+    
+    if count is None:
+        redis_client.set(redis_key, 1, ex=600)
+    else:
+        redis_client.incr(redis_key)
+    redis_client.close()
+    return False
+
+
 def send_email(recipient, subject, text, from_name="AMF"):
+    if check_email_send_limit():
+        return
+
     if isinstance(recipient, list):
         # msg["To"] = ";".join(recipient)
         for _recipient in recipient:

@@ -187,6 +187,7 @@ class TradeSignalHandler(object):
                 bid_plot_msg=bid_plot_msg,
                 buy_price=curr_price,
                 buy_ts=bid_ts,
+                ask_plot_msg="",
                 status=1,
             )
             redis_client = AllCache.get_client()
