@@ -394,8 +394,8 @@ class CandlestickFactor:
     def is_ema12_continue_up(self, window_size=7):
         return all(self.macd_list[i].ema_12 < self.macd_list[i - 1].ema_12 for i in range(1, window_size))
 
-    def is_ema12_continue_lt_close(self, window_size=7):
-        return all(self.macd_list[i].ema_12 < self.kline_list[i].close_price for i in range(window_size))
+    def is_ema12_continue_lt_close(self, index=0, window_size=7):
+        return all(self.macd_list[i].ema_12 < self.kline_list[i].close_price for i in range(index, index+window_size))
 
     def is_ema26_continue_up(self, window_size=7):
         return all(self.macd_list[i].ema_26 < self.macd_list[i - 1].ema_26 for i in range(1, window_size))

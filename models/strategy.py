@@ -148,18 +148,18 @@ class ModelTopRise(ModelBase):
         
             # 当前时间周期: {window_size} 根k线的阳线比例 >= 70%
             window_size = 4
-            count_1h_bullish_k = [self.kline_4h_factors.is_bullish_k(index=i) for i in range(window_size)]
+            count_1h_bullish_k = [self.kline_4h_factors.is_bullish_k(index=i) for i in range(1, 1+window_size)]
             is_bullish_k = sum(count_1h_bullish_k) >= window_size * 0.7
 
             # 当前时间周期: 至少连续 {window_size} 根K线收盘价 > EMA12
             window_size = 3
-            is_bullish_ema12 = self.kline_4h_factors.is_ema12_continue_lt_close(window_size=window_size)
+            is_bullish_ema12 = self.kline_4h_factors.is_ema12_continue_lt_close(index=1, window_size=window_size)
 
             # 当前时间周期: 连续 {window_size} 根以上K线收于布林带上轨上方或贴近上轨
             window_size = 3
             tolerance = Decimal("0.3")
             count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(
-                index=i, tolerance=tolerance) for i in range(window_size)]
+                index=i, tolerance=tolerance) for i in range(1, 1+window_size)]
             is_bullish_boll = sum(count_4h_close_gt_bbupper) >= window_size
             
             if sum([is_bullish_k, is_bullish_ema12, is_bullish_boll]) >= 3:
