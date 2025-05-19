@@ -241,19 +241,15 @@ class TopPriceTaskHandle(BasePlotHandle):
         target_ts = int(time.time()) - 10 * 3600
         has_in_symbol_list = []
         has_pending_symbol_list = []
-        for row in await PlotBackTestTable.select().where(
-                PlotBackTestTable.bid_ts <= target_ts,
-        ).aio_execute():
-            if row.bid_plot_msg:
-                if 'model_top_rise' in row.bid_plot_msg:
-                    has_in_symbol_list.append(row.symbol)
-                elif 'model_oscillation' in row.bid_plot_msg:
-                    has_pending_symbol_list.append(row.symbol)
+        for row in await PlotBackTestTable.select().aio_execute():
+            if row.bid_plot_msg and 'model_top_rise' in row.bid_plot_msg:
+                has_in_symbol_list.append(row.symbol)
+                continue
 
-            elif row.ask_plot_msg:
-                if 'model_top_rise' in row.ask_plot_msg:
-                    has_in_symbol_list.append(row.symbol)
-                elif 'model_oscillation' in row.ask_plot_msg:
+            if row.bid_ts <= target_ts:
+                if row.bid_plot_msg and 'model_oscillation' in row.bid_plot_msg:
+                    has_pending_symbol_list.append(row.symbol)
+                elif row.ask_plot_msg and 'model_oscillation' in row.ask_plot_msg:
                     has_pending_symbol_list.append(row.symbol)
 
         need_update_del_symbol_list = []
@@ -263,8 +259,6 @@ class TopPriceTaskHandle(BasePlotHandle):
 
         all_in_symbol_list = [i.symbol for i in await UserSymbolPlotTable.select().aio_execute()]
         for symbol in all_in_symbol_list:
-            if symbol in ["btcusdt", "ethusdt", "solusdt", "dogeusdt", "xrpusdt"]:
-                continue
             if symbol not in has_in_symbol_list:
                 need_update_del_symbol_list.append(symbol)
         need_update_del_symbol_list = list(set(need_update_del_symbol_list))
@@ -272,6 +266,9 @@ class TopPriceTaskHandle(BasePlotHandle):
         # print(f"需要更新的交易对：{need_update_del_symbol_list}")
         logger.info(f"check_break_history_top_price, need_update_del_symbol_list:{need_update_del_symbol_list}")
         for symbol in need_update_del_symbol_list:
+            if symbol in ["btcusdt", "ethusdt", "solusdt", "dogeusdt", "xrpusdt"]:
+                continue
+
             await PlotBackTestTable.delete().where(PlotBackTestTable.symbol == symbol).aio_execute()
 
             await UserSymbolPlotTable.delete().where(UserSymbolPlotTable.symbol == symbol).aio_execute()
@@ -345,7 +342,7 @@ class TopPriceTaskHandle(BasePlotHandle):
                         self.kline_url,
                         params={
                             "symbol": symbol.upper(), "interval": "1h", "limit": limit},
-                        timeout=10  # 设置10秒超时
+                        # timeout=10  # 设置10秒超时
                 ) as response:
                     data = await response.json()
                     if len(data) < limit:
