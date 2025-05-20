@@ -57,6 +57,11 @@ async def update_all_symbols(*args, **kwargs):
     await TopPriceTaskHandle().update_all_symbols()
 
 
+async def cleanup_inactive_symbols(*args, **kwargs):
+    await TopPriceTaskHandle().cleanup_inactive_symbols()
+    SymbolHandle().refresh_symbol_cache()
+
+
 async def check_balance(*args, **kwargs):
     await PlotAssetHandle().check_balance()
 
@@ -237,8 +242,9 @@ class TopPriceTaskHandle(BasePlotHandle):
         self.kline_url = "https://api.binance.com/api/v3/klines"
         super().__init__()
 
-    async def delete_no_top_symbols(self):
-        target_ts = int(time.time()) - 10 * 3600
+    async def cleanup_inactive_symbols(self):
+        """ 清除没有产生 有效交易信号 的symbol """
+        target_ts = int(time.time()) - 40 * 3600
         has_in_symbol_list = []
         has_pending_symbol_list = []
         for row in await PlotBackTestTable.select().aio_execute():
@@ -257,10 +263,11 @@ class TopPriceTaskHandle(BasePlotHandle):
             if symbol not in has_in_symbol_list:
                 need_update_del_symbol_list.append(symbol)
 
-        all_in_symbol_list = [i.symbol for i in await UserSymbolPlotTable.select().aio_execute()]
-        for symbol in all_in_symbol_list:
-            if symbol not in has_in_symbol_list:
-                need_update_del_symbol_list.append(symbol)
+        for i in await UserSymbolPlotTable.select().aio_execute():
+            if i.create_ts > target_ts:
+                continue
+            if i.symbol not in has_in_symbol_list:
+                need_update_del_symbol_list.append(i.symbol)
         need_update_del_symbol_list = list(set(need_update_del_symbol_list))
 
         # print(f"需要更新的交易对：{need_update_del_symbol_list}")
@@ -321,9 +328,6 @@ class TopPriceTaskHandle(BasePlotHandle):
         for symbol in bn_symbols_list:
             await self._check_break_history_top_price_from_api(symbol)
 
-        await self.delete_no_top_symbols()
-        SymbolHandle().refresh_symbol_cache()
-            
     async def _check_break_history_top_price_from_api(self, symbol):
         await asyncio.sleep(random.uniform(0.1, 0.8))
         

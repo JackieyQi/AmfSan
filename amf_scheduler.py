@@ -85,6 +85,7 @@ class JobScheduler(object):
         schedule.every(1).minute.do(lambda: self.push_to_amf("update_price_job", amf_queue))
         schedule.every().day.at("00:17").do(lambda: self.push_to_amf("update_fng_job", amf_queue))
         schedule.every().day.at("01:00").do(lambda: self.push_to_amf("update_all_symbols_job", amf_queue))
+        schedule.every().day.at("14:00").do(lambda: self.push_to_amf("cleanup_inactive_symbols_job", amf_queue))
 
         # Save indicators jobs
         schedule.every(1).minutes.do(lambda: self.push_to_amf("save_kline_job", amf_kline_queue))

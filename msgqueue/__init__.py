@@ -35,6 +35,7 @@ route_map = {
     "check_strategy_by_symbol": plot.check_strategy_by_symbol,
     #
     "update_all_symbols_job": plot.update_all_symbols,
+    "cleanup_inactive_symbols_job": plot.cleanup_inactive_symbols,
 }
 
 
