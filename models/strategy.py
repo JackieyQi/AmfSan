@@ -213,6 +213,8 @@ class ModelTopRise(ModelBase):
                     is_rsi = False
                     
                 if any([is_vol, is_macd, is_rsi]):
+                    
+                    self.name += ":twice"
                     return True
 
         return False

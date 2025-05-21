@@ -57,7 +57,7 @@ class StrategyHandle:
         self.rsi_1h_factors = RsiFactor(self.rsi_list_1h)
         self.rsi_15m_factors = RsiFactor(self.rsi_list_15m)
         
-    def check_in_by_model(self, last_model_msg):
+    def check_in_by_model(self, last_model_msg, last_model_msg_2):
         kwargs = {
             "kline_1d_factors": self.kline_1d_factors,
             "kline_4h_factors": self.kline_4h_factors,
@@ -79,15 +79,9 @@ class StrategyHandle:
         if model_top_rise.name in last_model_msg:
             if model_oscillation.is_in():
                 return {"model_name": model_oscillation.name,}
-        
-        if model_oscillation.name in last_model_msg and "up" in last_model_msg:
+
+        if model_top_rise.name in last_model_msg_2 and model_oscillation.name in last_model_msg and "up" in last_model_msg:
             if model_top_rise.is_in_twice():
-                model_top_rise.cal_recommend_price()
-                return {"model_name": model_top_rise.name,
-                        "recommend_bid_price": model_top_rise.recommend_bid_price,
-                        "is_buy": True}
-                
-            elif model_top_rise.is_in():
                 model_top_rise.cal_recommend_price()
                 return {"model_name": model_top_rise.name,
                         "recommend_bid_price": model_top_rise.recommend_bid_price,

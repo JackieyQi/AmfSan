@@ -30,7 +30,8 @@ class BacktestStrategy(bt.Strategy):
         self.order = None
         self.buy_price = None
         self.buy_time = None
-        self.order_model_name = None
+        
+        self.order_model_name_list = []
         
         # 添加交易分析器
         self.analyzers.trades = bt.analyzers.TradeAnalyzer()
@@ -82,7 +83,7 @@ class BacktestStrategy(bt.Strategy):
                 
                 model_name = buy_info.get("model_name")
                 self.order = self.buy()
-                self.order_model_name = model_name
+                self.order_model_name_list.append(model_name)
                 
         # 如果有持仓
         else:
@@ -91,7 +92,7 @@ class BacktestStrategy(bt.Strategy):
                 self.log(f"检测到卖出信号: symbol={self.p.symbol}, sell_info={sell_info}, "
                          f"open_price={self.data.open[0]}, close_price={self.data.close[0]}")
                 self.order = self.sell()
-                self.order_model_name = sell_info.get("model_name")
+                self.order_model_name_list.append(sell_info.get("model_name"))
                 
     def _check_buy_signal(self):
         """
@@ -133,7 +134,17 @@ class BacktestStrategy(bt.Strategy):
             kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
             rsi_list_4h, rsi_list_1h, rsi_list_15m)
         
-        return handler.check_in_by_model(self.order_model_name or "")
+        if not self.order_model_name_list:
+            last_model_msg = ""
+            last_model_msg_2 = ""
+        elif len(self.order_model_name_list) == 1:
+            last_model_msg = self.order_model_name_list[-1]
+            last_model_msg_2 = ""
+        else:
+            last_model_msg = self.order_model_name_list[-1]
+            last_model_msg_2 = self.order_model_name_list[-2]
+            
+        return handler.check_in_by_model(last_model_msg, last_model_msg_2)
         
     def _check_sell_signal(self) -> bool:
         """
@@ -173,4 +184,4 @@ class BacktestStrategy(bt.Strategy):
             kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
             rsi_list_4h, rsi_list_1h, rsi_list_15m)
         # return handler.get_sell_direction(self.data.close[0])
-        return handler.check_out_by_model(self.order_model_name)
+        return handler.check_out_by_model(self.order_model_name_list[-1])

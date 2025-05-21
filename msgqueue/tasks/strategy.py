@@ -417,15 +417,22 @@ class StrategyCheckHandle(BasePlotHandle):
                 self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m
             )
             try:
-                last_order = await PlotBackTestTable.select().where(
+                history_orders = await PlotBackTestTable.select().where(
                     PlotBackTestTable.symbol == self.symbol,
-                ).order_by(PlotBackTestTable.id.desc()).limit(1).aio_get()
-                last_model_msg = last_order.ask_plot_msg if last_order.ask_plot_msg else last_order.bid_plot_msg
-            except PlotBackTestTable.DoesNotExist:
+                ).order_by(PlotBackTestTable.id.desc()).limit(2).aio_execute()
+                last_model_msg = history_orders[0].ask_plot_msg if history_orders[0].ask_plot_msg else \
+                    history_orders[0].bid_plot_msg
+                if len(history_orders) > 1:
+                    last_model_msg_2 = history_orders[1].ask_plot_msg if history_orders[1].ask_plot_msg else \
+                        history_orders[1].bid_plot_msg
+                else:
+                    last_model_msg_2 = ""
+            except Exception as e:
                 last_model_msg = ""
+                last_model_msg_2 = ""
 
             is_buy = False
-            if model_info := strategy_handler.check_in_by_model(last_model_msg):
+            if model_info := strategy_handler.check_in_by_model(last_model_msg, last_model_msg_2):
                 recommend_bid_price = model_info.get("recommend_bid_price")
                 strategy_text += model_info["model_name"]
                 is_buy = model_info.get("is_buy")
