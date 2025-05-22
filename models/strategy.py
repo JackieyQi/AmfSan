@@ -156,11 +156,16 @@ class ModelTopRise(ModelBase):
             is_bullish_ema12 = self.kline_4h_factors.is_ema12_continue_lt_close(index=1, window_size=window_size)
 
             # 当前时间周期: 连续 {window_size} 根以上K线收于布林带上轨上方或贴近上轨
+            # #TODO: 上轨贴近,实测指标不稳定
+            # window_size = 3
+            # tolerance = Decimal("0.3")
+            # count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(
+            #     index=i, tolerance=tolerance) for i in range(1, 1+window_size)]
+            # is_bullish_boll = sum(count_4h_close_gt_bbupper) >= window_size
+            
+            # 当前时间周期: 连续 {window_size} 次布林带开口扩大
             window_size = 3
-            tolerance = Decimal("0.3")
-            count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(
-                index=i, tolerance=tolerance) for i in range(1, 1+window_size)]
-            is_bullish_boll = sum(count_4h_close_gt_bbupper) >= window_size
+            is_bullish_boll = self.kline_4h_factors.is_boll_widen(index=1, window_size=window_size)
             
             if sum([is_bullish_k, is_bullish_ema12, is_bullish_boll]) >= 3:
                 # 小周期: 具体入场点

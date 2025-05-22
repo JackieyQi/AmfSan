@@ -267,6 +267,15 @@ class CandlestickFactor:
             elif self.kline_list[i].low_price < self.bb_list[i].bblower:
                 count += 1
         return count > n * 0.7  # 至少70%贴近上轨
+    
+    def is_boll_widen(self, index=0, window_size=3):
+        """
+        布林带开口扩大
+        window_size: 连续扩大次数
+        """
+        return all([(self.bb_list[i].bbupper - self.bb_list[i].bblower) > (
+                    self.bb_list[i + 1].bbupper - self.bb_list[i + 1].bblower) for i in
+                    range(index, index + window_size + 1)])
 
     def get_boll_bandwidth_trend(self, window_size=24):
         bandwidth_list = [i.bbupper - i.bblower for i in self.bb_list[:window_size-1]][::-1]
