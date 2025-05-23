@@ -75,32 +75,53 @@ class StrategyHandle:
         }
         model_top_rise = ModelTopRise(**kwargs)
         model_oscillation = ModelOscillation(**kwargs)
-        
-        if model_top_rise.name in last_model_msg:
-            if model_oscillation.is_in():
-                return {"model_name": model_oscillation.name,}
 
-        if model_top_rise.name in last_model_msg_2 and model_oscillation.name in last_model_msg and "up" in last_model_msg:
-            if model_top_rise.is_in_twice():
-                model_top_rise.cal_recommend_price()
-                return {"model_name": model_top_rise.name,
-                        "recommend_bid_price": model_top_rise.recommend_bid_price,
-                        "is_buy": True}
-        
-        if model_oscillation.name in last_model_msg and "down" in last_model_msg:
+        if not last_model_msg and not last_model_msg_2:
+            # 初始流程: 都判断
             if model_top_rise.is_in():
                 model_top_rise.cal_recommend_price()
                 return {"model_name": model_top_rise.name,
                         "recommend_bid_price": model_top_rise.recommend_bid_price,
                         "is_buy": True}
+            if model_oscillation.is_in():
+                return {"model_name": model_oscillation.name, }
 
-        if model_top_rise.is_in():
-            model_top_rise.cal_recommend_price()
-            return {"model_name": model_top_rise.name,
-                    "recommend_bid_price": model_top_rise.recommend_bid_price,
-                    "is_buy": True}
-        if model_oscillation.is_in():
-            return {"model_name": model_oscillation.name,}
+        elif last_model_msg and not last_model_msg_2:
+            if model_top_rise.name in last_model_msg:
+                if model_oscillation.is_in():
+                    return {"model_name": model_oscillation.name,}
+            elif model_oscillation.name in last_model_msg:
+                if "down" in last_model_msg:
+                    if model_top_rise.is_in():
+                        model_top_rise.cal_recommend_price()
+                        return {"model_name": model_top_rise.name,
+                                "recommend_bid_price": model_top_rise.recommend_bid_price,
+                                "is_buy": True}
+                elif "up" in last_model_msg:
+                    if model_top_rise.is_in():
+                        model_top_rise.cal_recommend_price()
+                        return {"model_name": model_top_rise.name,
+                                "recommend_bid_price": model_top_rise.recommend_bid_price,
+                                "is_buy": True}
+
+        elif last_model_msg and last_model_msg_2:
+            if model_top_rise.name in last_model_msg_2 and model_oscillation.name in last_model_msg and "up" in last_model_msg:
+                if model_top_rise.is_in_twice():
+                    model_top_rise.cal_recommend_price()
+                    return {"model_name": model_top_rise.name,
+                            "recommend_bid_price": model_top_rise.recommend_bid_price,
+                            "is_buy": True}
+            elif model_top_rise.name in last_model_msg:
+                if model_oscillation.is_in():
+                    return {"model_name": model_oscillation.name,}
+            elif model_oscillation.name in last_model_msg:
+                if model_top_rise.is_in():
+                    model_top_rise.cal_recommend_price()
+                    return {"model_name": model_top_rise.name,
+                            "recommend_bid_price": model_top_rise.recommend_bid_price,
+                            "is_buy": True}
+                if model_oscillation.is_in():
+                    return {"model_name": model_oscillation.name, }
 
         return None
 
