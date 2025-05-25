@@ -11,7 +11,7 @@ from . import Base
 
 class BnSymbolTable(Base):
     id = AutoField()
-    symbol = CharField(db_column="symbol", max_length=10)
+    symbol = CharField(db_column="symbol", max_length=10, unique=True)
     is_valid = BooleanField(db_column="is_valid", default=True)
     create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
 

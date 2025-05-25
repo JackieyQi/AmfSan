@@ -300,7 +300,7 @@ class TopPriceTaskHandle(BasePlotHandle):
 
         count = 0
         async with async_database.aio_atomic(): 
-            for symbol in all_symbols_list:
+            for symbol in list(set(all_symbols_list)):
                 if symbol in old_symbols_list:
                     continue
                 else:
