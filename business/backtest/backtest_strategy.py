@@ -4,6 +4,8 @@
 import backtrader as bt
 from typing import Dict, Optional
 from decimal import Decimal
+from exts import MysqlClient
+from datetime import datetime
 
 
 class BacktestStrategy(bt.Strategy):
@@ -35,6 +37,8 @@ class BacktestStrategy(bt.Strategy):
         
         # 添加交易分析器
         self.analyzers.trades = bt.analyzers.TradeAnalyzer()
+        
+        self.db = MysqlClient.get_database()
         
         # 打印策略参数
         self.log(f'****** 策略初始化: symbol={self.p.symbol} ******')
@@ -105,27 +109,39 @@ class BacktestStrategy(bt.Strategy):
 
         curr_1h_open_ts = int(self.data.datetime.datetime().timestamp())
 
-        kline_list_4h = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "4h", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
-        kline_list_1h = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "1h", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
-        kline_list_15m = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "15m", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
+        with self.db.connection_context():
+            earliest_bb = BollTable.select(BollTable.open_ts).where(
+                BollTable.symbol == self.p.symbol,
+                BollTable.interval_val == "4h"
+            ).order_by(BollTable.open_ts.asc()).first()
+            
+            if earliest_bb and earliest_bb.open_ts > curr_1h_open_ts:
+                earliest_time = datetime.fromtimestamp(earliest_bb.open_ts).strftime("%Y-%m-%d_%H:%M")
+                curr_time = datetime.fromtimestamp(curr_1h_open_ts).strftime("%Y-%m-%d_%H:%M")
+                self.log(f"错误: 布林带数据时间不匹配 - 最早数据时间({earliest_time}) > 当前时间({curr_time})")
+                raise ValueError(f"布林带数据时间不匹配 - 最早数据时间({earliest_time}) > 当前时间({curr_time})")
+            
+            kline_list_4h = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "4h", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
+            kline_list_1h = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "1h", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
+            kline_list_15m = KlineTable.select().where(KlineTable.symbol == self.p.symbol, KlineTable.interval_val == "15m", KlineTable.open_ts <= curr_1h_open_ts).order_by(KlineTable.open_ts.desc()).limit(30)
+            
+            bb_list_4h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "4h", BollTable.open_ts <= curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
+            bb_list_1h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "1h", BollTable.open_ts <= curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
+            bb_list_15m = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "15m", BollTable.open_ts <= curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
+            
+            macd_list_1d = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "1d", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
+            macd_list_4h = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "4h", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
+            macd_list_1h = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "1h", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
+            macd_list_15m = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "15m", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
 
-        bb_list_4h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "4h", BollTable.open_ts < curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
-        bb_list_1h = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "1h", BollTable.open_ts < curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
-        bb_list_15m = BollTable.select().where(BollTable.symbol == self.p.symbol, BollTable.interval_val == "15m", BollTable.open_ts < curr_1h_open_ts).order_by(BollTable.open_ts.desc()).limit(30)
-
-        macd_list_1d = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "1d", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
-        macd_list_4h = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "4h", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
-        macd_list_1h = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "1h", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
-        macd_list_15m = MacdTable.select().where(MacdTable.symbol == self.p.symbol, MacdTable.interval_val == "15m", MacdTable.opening_ts <= curr_1h_open_ts).order_by(MacdTable.opening_ts.desc()).limit(30)
-
-        kdj_list_1d = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "1d", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
-        kdj_list_4h = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "4h", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
-        kdj_list_1h = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "1h", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
-        kdj_list_15m = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "15m", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
-        
-        rsi_list_4h = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "4h", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
-        rsi_list_1h = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "1h", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
-        rsi_list_15m = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "15m", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
+            kdj_list_1d = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "1d", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
+            kdj_list_4h = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "4h", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
+            kdj_list_1h = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "1h", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
+            kdj_list_15m = KdjTable.select().where(KdjTable.symbol == self.p.symbol, KdjTable.interval_val == "15m", KdjTable.open_ts <= curr_1h_open_ts).order_by(KdjTable.open_ts.desc()).limit(30)
+            
+            rsi_list_4h = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "4h", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
+            rsi_list_1h = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "1h", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
+            rsi_list_15m = RsiTable.select().where(RsiTable.symbol == self.p.symbol, RsiTable.interval_val == "15m", RsiTable.open_ts <= curr_1h_open_ts).order_by(RsiTable.open_ts.desc()).limit(30)
 
         handler = StrategyHandle(
             kline_list_4h, kline_list_1h, kline_list_15m,
