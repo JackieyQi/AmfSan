@@ -143,37 +143,38 @@ class ModelTopRise(ModelBase):
         if self.has_bearish_4h():
             return False
 
-        # 大时间周期: ema多头排列
+        # 大时间周期: ema多头排列 eg:[当前日线ema12大于ema26]
         if self.kline_1d_factors.is_ema_bullish_stack(window_size=1):
         
-            # 当前时间周期: {window_size} 根k线的阳线比例 >= 70%
+            # 当前时间周期: {window_size} 根k线的阳线比例 >= 70% eg:[4小时的前4根k线的阳线比例 >= 70%]
             window_size = 4
             count_1h_bullish_k = [self.kline_4h_factors.is_bullish_k(index=i) for i in range(1, 1+window_size)]
             is_bullish_k = sum(count_1h_bullish_k) >= window_size * 0.7
 
-            # 当前时间周期: 至少连续 {window_size} 根K线收盘价 > EMA12
+            # 当前时间周期: 至少连续 {window_size} 根K线收盘价 > EMA12 eg:[4小时的前3根K线收盘价 > EMA12]
             window_size = 3
             is_bullish_ema12 = self.kline_4h_factors.is_ema12_continue_lt_close(index=1, window_size=window_size)
 
             # 当前时间周期: 连续 {window_size} 根以上K线收于布林带上轨上方或贴近上轨
-            # #TODO: 上轨贴近,实测指标不稳定
-            # window_size = 3
-            # tolerance = Decimal("0.3")
-            # count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(
-            #     index=i, tolerance=tolerance) for i in range(1, 1+window_size)]
-            # is_bullish_boll = sum(count_4h_close_gt_bbupper) >= window_size
-            
-            # 当前时间周期: 连续 {window_size} 次布林带开口扩大
             window_size = 3
-            is_bullish_boll = self.kline_4h_factors.is_boll_widen(index=1, window_size=window_size)
+            tolerance = Decimal("0.03")
+            count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(
+                index=i, tolerance=tolerance) for i in range(1, 1+window_size)]
+            is_boll_gt_signal = sum(count_4h_close_gt_bbupper) >= window_size-1
+            
+            # 当前时间周期: 连续 {window_size} 次布林带开口扩大 eg: [4小时的前3次布林带开口逐渐扩大]
+            window_size = 3
+            is_boll_widen_signal = self.kline_4h_factors.is_boll_widen(index=1, window_size=window_size)
+            is_bullish_boll = all([is_boll_gt_signal, is_boll_widen_signal])
             
             if sum([is_bullish_k, is_bullish_ema12, is_bullish_boll]) >= 3:
                 # 小周期: 具体入场点
-                # 小周期: 连续3根阳线
+
+                # 小周期: 连续3根阳线 eg: [1小时的连续3根阳线(包含当前未成型的k线)]
                 count_1h_bullish_k = [self.kline_1h_factors.is_bullish_k(index=i) for i in range(3)]
                 is_bullish_k = sum(count_1h_bullish_k) >= 3
 
-                # 小周期: 至少连续3根K线收于布林带上轨上方或贴近上轨
+                # 小周期: 至少连续3根K线收于布林带上轨上方或贴近上轨 eg: [1小时的连续3根K线收于布林带上轨上方或贴近上轨(包含当前未成型的k线)]
                 is_bullish_boll = self.kline_1h_factors.is_along_upper_band(n=3)
                 
                 if sum([is_bullish_k, is_bullish_boll]) >= 1:
