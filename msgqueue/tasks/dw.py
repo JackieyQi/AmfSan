@@ -1383,7 +1383,7 @@ class IndicatorsCalculateHandle(object):
                         curr_bb_data.sum_sq_close = curr_bb_info["sum_sq_close"]
                         curr_bb_data.period = curr_bb_info["period"]
                         await curr_bb_data.aio_save()
-                    else:
+                    elif curr_bb_info:
                         inst = await BollTable.aio_create(
                             symbol=self.symbol,
                             interval_val=self.interval,
