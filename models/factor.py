@@ -192,7 +192,7 @@ class CandlestickFactor:
 
         return (self.kline_list[index].high_price - self.bb_list[index].bbupper) / self.bb_list[index].bbupper > tolerance
     
-    def is_curr_price_away_from_bbupper(self, index=0, tolerance=Decimal("0.07")):
+    def is_curr_price_away_from_bbupper(self, index=0, tolerance=Decimal("0.01")):
         """ 基于“价格与上轨”的偏离率 """
         if self.kline_list[index].close_price < self.bb_list[index].bbupper:
             return False
