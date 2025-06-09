@@ -34,18 +34,18 @@ class StrategyCheckHandle(BasePlotHandle):
         self.close_monitor_url = f"{INNER_GET_DELETE_LIMIT_PRICE_URL}{symbol}"
         self.set_limit_price_url = ""
 
-        self._kline_list_4h = None
-        self._kline_list_1h = None
+        self.kline_list_4h = None
+        self.kline_list_1h = None
         self.kline_list_15m = None
         
-        self._macd_list_1d = None
-        self._macd_list_4h = None
-        self._macd_list_1h = None
+        self.macd_list_1d = None
+        self.macd_list_4h = None
+        self.macd_list_1h = None
         self.macd_list_15m = None
         
-        self._kdj_list_1d = None
-        self._kdj_list_4h = None
-        self._kdj_list_1h = None
+        self.kdj_list_1d = None
+        self.kdj_list_4h = None
+        self.kdj_list_1h = None
         self.kdj_list_15m = None
 
         self.rsi_list_1h = None
@@ -60,11 +60,11 @@ class StrategyCheckHandle(BasePlotHandle):
         async with async_database.aio_atomic():
             _query = self.get_kline_query("4h", limit_count=30)
             _kline_list_4h = await _query.aio_execute()
-            self._kline_list_4h = list(_kline_list_4h)
+            self.kline_list_4h = list(_kline_list_4h)
 
             _query = self.get_kline_query("1h", limit_count=30)
             _kline_list_1h = await _query.aio_execute()
-            self._kline_list_1h = list(_kline_list_1h)
+            self.kline_list_1h = list(_kline_list_1h)
 
             _query = self.get_kline_query("15m", limit_count=30)
             _kline_list_15m = await _query.aio_execute()
@@ -72,15 +72,15 @@ class StrategyCheckHandle(BasePlotHandle):
 
             _query = self.get_macd_query("1d", limit_count=30)
             _macd_list_1d = await _query.aio_execute()
-            self._macd_list_1d = list(_macd_list_1d)
+            self.macd_list_1d = list(_macd_list_1d)
 
             _query = self.get_macd_query("4h", limit_count=30)
             _macd_list_4h = await _query.aio_execute()
-            self._macd_list_4h = list(_macd_list_4h)
+            self.macd_list_4h = list(_macd_list_4h)
 
             _query = self.get_macd_query("1h", limit_count=30)
             _macd_list_1h = await _query.aio_execute()
-            self._macd_list_1h = list(_macd_list_1h)
+            self.macd_list_1h = list(_macd_list_1h)
 
             _query = self.get_macd_query("15m", limit_count=30)
             _macd_list_15m = await _query.aio_execute()
@@ -88,15 +88,15 @@ class StrategyCheckHandle(BasePlotHandle):
 
             _query = self.get_kdj_query("1d", limit_count=2)
             _kdj_list_1d = await _query.aio_execute()
-            self._kdj_list_1d = list(_kdj_list_1d)
+            self.kdj_list_1d = list(_kdj_list_1d)
 
             _query = self.get_kdj_query("4h", limit_count=30)
             _kdj_list_4h = await _query.aio_execute()
-            self._kdj_list_4h = list(_kdj_list_4h)
+            self.kdj_list_4h = list(_kdj_list_4h)
 
             _query = self.get_kdj_query("1h", limit_count=30)
             _kdj_list_1h = await _query.aio_execute()
-            self._kdj_list_1h = list(_kdj_list_1h)
+            self.kdj_list_1h = list(_kdj_list_1h)
 
             _query = self.get_kdj_query("15m", limit_count=30)
             _kdj_list_15m = await _query.aio_execute()
@@ -170,54 +170,6 @@ class StrategyCheckHandle(BasePlotHandle):
             ).order_by(BollTable.id.desc()).limit(limit_count)
         )
         return query
-
-    @property
-    def kline_list_4h(self):
-        if self._kline_list_4h is None:
-            self._kline_list_4h = self.get_kline_list("4h", limit_count=30)
-        return self._kline_list_4h
-
-    @property
-    def kline_list_1h(self):
-        if self._kline_list_1h is None:
-            self._kline_list_1h = self.get_kline_list("1h", limit_count=30)
-        return self._kline_list_1h
-
-    @property
-    def macd_list_1d(self):
-        if self._macd_list_1d is None:
-            self._macd_list_1d = self.get_macd_list("1d", limit_count=30)
-        return self._macd_list_1d
-
-    @property
-    def macd_list_4h(self):
-        if self._macd_list_4h is None:
-            self._macd_list_4h = self.get_macd_list("4h", limit_count=30)
-        return self._macd_list_4h
-
-    @property
-    def macd_list_1h(self):
-        if self._macd_list_1h is None:
-            self._macd_list_1h = self.get_macd_list("1h", limit_count=30)
-        return self._macd_list_1h
-
-    @property
-    def kdj_list_1d(self):
-        if self._kdj_list_1d is None:
-            self._kdj_list_1d = self.get_kdj_list("1d", limit_count=2)
-        return self._kdj_list_1d
-
-    @property
-    def kdj_list_4h(self):
-        if self._kdj_list_4h is None:
-            self._kdj_list_4h = self.get_kdj_list("4h", limit_count=8)
-        return self._kdj_list_4h
-
-    @property
-    def kdj_list_1h(self):
-        if self._kdj_list_1h is None:
-            self._kdj_list_1h = self.get_kdj_list("1h", limit_count=8)
-        return self._kdj_list_1h
 
     async def has_limit_price_check(self, statuses):
         all_limit_prices = MarketPriceLimitCache.hgetall()
