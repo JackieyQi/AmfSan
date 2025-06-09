@@ -90,8 +90,8 @@ class StrategyHandle:
         self.kline_list_1h, self.bb_list_1h, self.macd_list_1h, self.kdj_list_1h, self.rsi_list_1h = \
             self._align_data(self.kline_list_1h, self.bb_list_1h, self.macd_list_1h, self.kdj_list_1h, self.rsi_list_1h)
             
-        self.kline_list_15m, self.bb_list_15m, self.macd_list_15m, self.kdj_list_15m, self.rsi_list_15m = \
-            self._align_data(self.kline_list_15m, self.bb_list_15m, self.macd_list_15m, self.kdj_list_15m, self.rsi_list_15m)
+        # self.kline_list_15m, self.bb_list_15m, self.macd_list_15m, self.kdj_list_15m, self.rsi_list_15m = \
+        #     self._align_data(self.kline_list_15m, self.bb_list_15m, self.macd_list_15m, self.kdj_list_15m, self.rsi_list_15m)
 
         # 初始化因子
         self.initialize_factors()
