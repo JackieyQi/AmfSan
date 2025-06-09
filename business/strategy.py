@@ -19,28 +19,61 @@ class StrategyHandle:
                  kdj_list_1d, kdj_list_4h, kdj_list_1h, kdj_list_15m,
                  rsi_list_4h, rsi_list_1h, rsi_list_15m):
         self.symbol = kline_list_1h[0].symbol
-        self.kline_list_4h = kline_list_4h
-        self.kline_list_1h = kline_list_1h
-        self.kline_list_15m = kline_list_15m
-        self.bb_list_4h = bb_list_4h
-        self.bb_list_1h = bb_list_1h
-        self.bb_list_15m = bb_list_15m
-
+        
+        # 对齐数据
+        self.kline_list_4h, self.bb_list_4h, self.macd_list_4h, self.kdj_list_4h, self.rsi_list_4h = \
+            self._align_data(kline_list_4h, bb_list_4h, macd_list_4h, kdj_list_4h, rsi_list_4h)
+            
+        self.kline_list_1h, self.bb_list_1h, self.macd_list_1h, self.kdj_list_1h, self.rsi_list_1h = \
+            self._align_data(kline_list_1h, bb_list_1h, macd_list_1h, kdj_list_1h, rsi_list_1h)
+            
+        self.kline_list_15m, self.bb_list_15m, self.macd_list_15m, self.kdj_list_15m, self.rsi_list_15m = \
+            self._align_data(kline_list_15m, bb_list_15m, macd_list_15m, kdj_list_15m, rsi_list_15m)
+            
         self.macd_list_1d = macd_list_1d
-        self.macd_list_4h = macd_list_4h
-        self.macd_list_1h = macd_list_1h
-        self.macd_list_15m = macd_list_15m
-
         self.kdj_list_1d = kdj_list_1d
-        self.kdj_list_4h = kdj_list_4h
-        self.kdj_list_1h = kdj_list_1h
-        self.kdj_list_15m = kdj_list_15m
-
-        self.rsi_list_4h = rsi_list_4h
-        self.rsi_list_1h = rsi_list_1h
-        self.rsi_list_15m = rsi_list_15m
 
         self.initialize_factors()
+
+    def _align_data(self, kline_list, bb_list, macd_list, kdj_list, rsi_list):
+        """
+        确保同一时间周期的数据基于 open_ts 对齐
+        以 kline 数据为基准
+        """
+        if not kline_list:
+            raise ValueError("kline_list is empty")
+
+        kline_map = {k.open_ts: k for k in kline_list}
+        bb_map = {b.open_ts: b for b in bb_list}
+        macd_map = {m.opening_ts: m for m in macd_list}
+        kdj_map = {k.open_ts: k for k in kdj_list}
+        rsi_map = {r.open_ts: r for r in rsi_list}
+        
+        # 使用 kline 的时间戳作为基准
+        all_ts = sorted(kline_map.keys(), reverse=True)
+        
+        # 重新排序数据
+        aligned_kline = []
+        aligned_bb = []
+        aligned_macd = []
+        aligned_kdj = []
+        aligned_rsi = []
+        
+        for ts in all_ts:
+            if ts not in bb_map or ts not in macd_map or ts not in kdj_map or ts not in rsi_map:
+                continue
+                
+            aligned_kline.append(kline_map[ts])
+            aligned_bb.append(bb_map[ts])
+            aligned_macd.append(macd_map[ts])
+            aligned_kdj.append(kdj_map[ts])
+            aligned_rsi.append(rsi_map[ts])
+            
+        # 验证所有列表长度一致
+        assert len(aligned_kline) == len(aligned_bb) == len(aligned_macd) == len(aligned_kdj) == len(aligned_rsi), \
+            f"数据长度不一致: kline={len(aligned_kline)}, bb={len(aligned_bb)}, macd={len(aligned_macd)}, kdj={len(aligned_kdj)}, rsi={len(aligned_rsi)}"
+            
+        return aligned_kline, aligned_bb, aligned_macd, aligned_kdj, aligned_rsi
 
     def initialize_factors(self):
         self.kline_1d_factors = CandlestickFactor(None, self.macd_list_1d, None)
