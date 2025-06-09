@@ -20,20 +20,24 @@ class StrategyHandle:
                  rsi_list_4h, rsi_list_1h, rsi_list_15m):
         self.symbol = kline_list_1h[0].symbol
         
-        # 对齐数据
-        self.kline_list_4h, self.bb_list_4h, self.macd_list_4h, self.kdj_list_4h, self.rsi_list_4h = \
-            self._align_data(kline_list_4h, bb_list_4h, macd_list_4h, kdj_list_4h, rsi_list_4h)
-            
-        self.kline_list_1h, self.bb_list_1h, self.macd_list_1h, self.kdj_list_1h, self.rsi_list_1h = \
-            self._align_data(kline_list_1h, bb_list_1h, macd_list_1h, kdj_list_1h, rsi_list_1h)
-            
-        self.kline_list_15m, self.bb_list_15m, self.macd_list_15m, self.kdj_list_15m, self.rsi_list_15m = \
-            self._align_data(kline_list_15m, bb_list_15m, macd_list_15m, kdj_list_15m, rsi_list_15m)
-            
+        # 保存原始数据
+        self.kline_list_4h = kline_list_4h
+        self.kline_list_1h = kline_list_1h
+        self.kline_list_15m = kline_list_15m
+        self.bb_list_4h = bb_list_4h
+        self.bb_list_1h = bb_list_1h
+        self.bb_list_15m = bb_list_15m
         self.macd_list_1d = macd_list_1d
+        self.macd_list_4h = macd_list_4h
+        self.macd_list_1h = macd_list_1h
+        self.macd_list_15m = macd_list_15m
         self.kdj_list_1d = kdj_list_1d
-
-        self.initialize_factors()
+        self.kdj_list_4h = kdj_list_4h
+        self.kdj_list_1h = kdj_list_1h
+        self.kdj_list_15m = kdj_list_15m
+        self.rsi_list_4h = rsi_list_4h
+        self.rsi_list_1h = rsi_list_1h
+        self.rsi_list_15m = rsi_list_15m
 
     def _align_data(self, kline_list, bb_list, macd_list, kdj_list, rsi_list):
         """
@@ -75,6 +79,23 @@ class StrategyHandle:
             
         return aligned_kline, aligned_bb, aligned_macd, aligned_kdj, aligned_rsi
 
+    def prepare_data(self):
+        """
+        准备数据：对齐数据并初始化因子
+        """
+        # 对齐数据
+        self.kline_list_4h, self.bb_list_4h, self.macd_list_4h, self.kdj_list_4h, self.rsi_list_4h = \
+            self._align_data(self.kline_list_4h, self.bb_list_4h, self.macd_list_4h, self.kdj_list_4h, self.rsi_list_4h)
+            
+        self.kline_list_1h, self.bb_list_1h, self.macd_list_1h, self.kdj_list_1h, self.rsi_list_1h = \
+            self._align_data(self.kline_list_1h, self.bb_list_1h, self.macd_list_1h, self.kdj_list_1h, self.rsi_list_1h)
+            
+        self.kline_list_15m, self.bb_list_15m, self.macd_list_15m, self.kdj_list_15m, self.rsi_list_15m = \
+            self._align_data(self.kline_list_15m, self.bb_list_15m, self.macd_list_15m, self.kdj_list_15m, self.rsi_list_15m)
+
+        # 初始化因子
+        self.initialize_factors()
+
     def initialize_factors(self):
         self.kline_1d_factors = CandlestickFactor(None, self.macd_list_1d, None)
         self.kline_4h_factors = CandlestickFactor(self.kline_list_4h, self.macd_list_4h, self.bb_list_4h)
@@ -89,8 +110,11 @@ class StrategyHandle:
         self.rsi_4h_factors = RsiFactor(self.rsi_list_4h)
         self.rsi_1h_factors = RsiFactor(self.rsi_list_1h)
         self.rsi_15m_factors = RsiFactor(self.rsi_list_15m)
-        
+
     def check_in_by_model(self, last_model_msg, last_model_msg_2):
+        # 准备数据
+        self.prepare_data()
+
         kwargs = {
             "kline_1d_factors": self.kline_1d_factors,
             "kline_4h_factors": self.kline_4h_factors,
@@ -214,6 +238,8 @@ class StrategyHandle:
         return None
     
     def check_out_by_model(self, curr_model_msg):
+        self.prepare_data()
+        
         kwargs = {
             "kline_1d_factors": self.kline_1d_factors,
             "kline_4h_factors": self.kline_4h_factors,
