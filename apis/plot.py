@@ -1,112 +1,12 @@
 #! /usr/bin/env python
 # coding:utf8
 
-import ujson as json
 from utils.authentication import HTTPMethodView, ProtectedView
-from cache.order import MarketMacdCache, MarketKdjCache, MarketEmaCache
-from settings.constants import PLOT_INTERVAL_LIST
-from business.market import SymbolHandle
 from business.trade_signal_recorder import TradeSignalViewHandler
+from business.strategy import StrategyHandle
 from utils.exception import StandardResponseExc
-
-
-class PlotMacdView(HTTPMethodView):
-    async def get(self, request):
-        symbol = request.form.get("symbol")
-
-        return symbol
-
-    async def post(self, request):
-        """
-        json:
-            {
-            "peopleusdt":{
-            "15m":[
-                {
-                    "symbol": "peopleusdt",
-                    "interval": "15m",
-                    "opening_ts": 1721471400,
-                    "opening_price": "0.08617",
-                    "closing_price": "0.08614",
-                    "ema_12": "0.08614",
-                    "ema_26": "0.08623",
-                    "dea": "-0.00005",
-                    "macd": "-0.00003"
-                },
-                {
-                    "symbol": "peopleusdt",
-                    "interval": "15m",
-                    "opening_ts": 1721472300,
-                    "opening_price": "0.08613",
-                    "closing_price": "0.08620",
-                    "ema_12": "0.08615",
-                    "ema_26": "0.08622",
-                    "dea": "-0.00006",
-                    "macd": "-0.00002"
-                }
-            ]
-        }
-        }
-        :param request:
-        :return:
-        """
-        json_data = request.json
-        for symbol, data in json_data.items():
-            for _interval in PLOT_INTERVAL_LIST:
-
-                if _interval in data:
-                    MarketMacdCache(
-                        symbol.lower(),
-                        _interval
-                    ).set(json.dumps(data[_interval]))
-
-                    SymbolHandle(symbol).add_macd_gate(_interval)
-
-        return "handle over!"
-
-
-class PlotKdjView(HTTPMethodView):
-    async def get(self, request):
-        symbol = request.form.get("symbol")
-
-        return symbol
-
-    async def post(self, request):
-        json_data = request.json
-        for symbol, data in json_data.items():
-            for _interval in PLOT_INTERVAL_LIST:
-
-                if _interval in data:
-                    MarketKdjCache(
-                        symbol.lower(),
-                        _interval
-                    ).set(json.dumps(data[_interval]))
-
-                    SymbolHandle(symbol).add_kdj_gate(_interval)
-
-        return "handle over!"
-
-
-class PlotEmaView(HTTPMethodView):
-    async def get(self, request):
-        symbol = request.form.get("symbol")
-
-        return symbol
-
-    async def post(self, request):
-        json_data = request.json
-        for symbol, data in json_data.items():
-            for _interval in PLOT_INTERVAL_LIST:
-
-                if _interval in data:
-                    MarketEmaCache(
-                        symbol.lower(),
-                        _interval
-                    ).set(json.dumps(data[_interval]))
-
-                    # SymbolHandle(symbol).add_kdj_gate(_interval)
-
-        return "handle over!"
+from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
+from exts import async_database
 
 
 class TradeSignalRecordsView(ProtectedView):
@@ -136,3 +36,149 @@ class TradeSignalRecordDetailView(ProtectedView):
             raise StandardResponseExc(msg="Missing required fields")
 
         return await TradeSignalViewHandler(user.user_id).get_detail_record(symbol, record_id)
+
+
+class SymbolScoreView(HTTPMethodView):
+    async def get(self, request):
+        """
+        获取symbol的进出场分数
+        参数:
+            symbol: 交易对符号 (必填)
+        
+        返回:
+            {
+                "symbol": "btcusdt",
+                "entry_score": 0.75,    # 进场分数 (0-1)
+                "exit_score": 0.25,     # 出场分数 (0-1)
+                "recommendation": "buy|sell|hold",
+                "timestamp": 1234567890
+            }
+        """
+        symbol = request.args.get("symbol")
+        
+        if not symbol:
+            raise StandardResponseExc(msg="Missing required field: symbol")
+        return await self._calculate_symbol_score(symbol.strip().lower())
+    
+    async def _calculate_symbol_score(self, symbol: str) -> dict:
+        """
+        计算symbol的进出场分数
+        
+        Args:
+            symbol: 交易对符号
+            
+        Returns:
+            包含进出场分数的字典
+        """
+        
+        async with async_database.aio_atomic():
+            # 获取K线数据
+            kline_4h = await KlineTable.select().where(
+                KlineTable.symbol == symbol,
+                KlineTable.interval_val == "4h"
+            ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
+            
+            kline_1h = await KlineTable.select().where(
+                KlineTable.symbol == symbol,
+                KlineTable.interval_val == "1h"
+            ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
+            
+            kline_15m = await KlineTable.select().where(
+                KlineTable.symbol == symbol,
+                KlineTable.interval_val == "15m"
+            ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
+            
+            # 获取MACD数据
+            macd_1d = await MacdTable.select().where(
+                MacdTable.symbol == symbol,
+                MacdTable.interval_val == "1d"
+            ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
+            
+            macd_4h = await MacdTable.select().where(
+                MacdTable.symbol == symbol,
+                MacdTable.interval_val == "4h"
+            ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
+            
+            macd_1h = await MacdTable.select().where(
+                MacdTable.symbol == symbol,
+                MacdTable.interval_val == "1h"
+            ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
+            
+            macd_15m = await MacdTable.select().where(
+                MacdTable.symbol == symbol,
+                MacdTable.interval_val == "15m"
+            ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
+            
+            # 获取KDJ数据
+            kdj_1d = await KdjTable.select().where(
+                KdjTable.symbol == symbol,
+                KdjTable.interval_val == "1d"
+            ).order_by(KdjTable.id.desc()).limit(2).aio_execute()
+            
+            kdj_4h = await KdjTable.select().where(
+                KdjTable.symbol == symbol,
+                KdjTable.interval_val == "4h"
+            ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
+            
+            kdj_1h = await KdjTable.select().where(
+                KdjTable.symbol == symbol,
+                KdjTable.interval_val == "1h"
+            ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
+            
+            kdj_15m = await KdjTable.select().where(
+                KdjTable.symbol == symbol,
+                KdjTable.interval_val == "15m"
+            ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
+            
+            # 获取RSI数据
+            rsi_4h = await RsiTable.select().where(
+                RsiTable.symbol == symbol,
+                RsiTable.interval_val == "4h"
+            ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
+            
+            rsi_1h = await RsiTable.select().where(
+                RsiTable.symbol == symbol,
+                RsiTable.interval_val == "1h"
+            ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
+            
+            rsi_15m = await RsiTable.select().where(
+                RsiTable.symbol == symbol,
+                RsiTable.interval_val == "15m"
+            ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
+            
+            # 获取布林带数据
+            bb_4h = await BollTable.select().where(
+                BollTable.symbol == symbol,
+                BollTable.interval_val == "4h"
+            ).order_by(BollTable.id.desc()).limit(30).aio_execute()
+            
+            bb_1h = await BollTable.select().where(
+                BollTable.symbol == symbol,
+                BollTable.interval_val == "1h"
+            ).order_by(BollTable.id.desc()).limit(30).aio_execute()
+            
+            bb_15m = await BollTable.select().where(
+                BollTable.symbol == symbol,
+                BollTable.interval_val == "15m"
+            ).order_by(BollTable.id.desc()).limit(30).aio_execute()
+
+        strategy_handle = StrategyHandle(
+            kline_list_4h=list(kline_4h), 
+            kline_list_1h=list(kline_1h), 
+            kline_list_15m=list(kline_15m),
+            bb_list_4h=list(bb_4h), 
+            bb_list_1h=list(bb_1h), 
+            bb_list_15m=list(bb_15m),
+            macd_list_1d=list(macd_1d), 
+            macd_list_4h=list(macd_4h), 
+            macd_list_1h=list(macd_1h), 
+            macd_list_15m=list(macd_15m),
+            kdj_list_1d=list(kdj_1d), 
+            kdj_list_4h=list(kdj_4h), 
+            kdj_list_1h=list(kdj_1h), 
+            kdj_list_15m=list(kdj_15m),
+            rsi_list_4h=list(rsi_4h), 
+            rsi_list_1h=list(rsi_1h), 
+            rsi_list_15m=list(rsi_15m)
+        )
+        return strategy_handle.get_symbol_score(symbol)
