@@ -159,7 +159,7 @@ class SymbolScoreView(HTTPMethodView):
             BollTable.interval_val == "15m"
         ).order_by(BollTable.id.desc()).limit(30).aio_execute()
             
-        if not all([kline_4h, kline_1h, kline_15m, bb_4h, bb_1h, bb_15m, macd_1d, macd_4h, macd_1h, macd_15m, kdj_1d, kdj_4h, kdj_1h, kdj_15m, rsi_4h, rsi_1h, rsi_15m]):
+        if not all([kline_4h, bb_4h, macd_4h, kdj_4h, rsi_4h]):
             return "No data found."
 
         strategy_handle = StrategyHandle(
