@@ -6,7 +6,6 @@ from business.trade_signal_recorder import TradeSignalViewHandler
 from business.strategy import StrategyHandle
 from utils.exception import StandardResponseExc
 from models.market import KlineTable, MacdTable, KdjTable, RsiTable, BollTable
-from exts import async_database
 
 
 class TradeSignalRecordsView(ProtectedView):
@@ -70,97 +69,98 @@ class SymbolScoreView(HTTPMethodView):
         Returns:
             包含进出场分数的字典
         """
+        # 获取K线数据
+        kline_4h = await KlineTable.select().where(
+            KlineTable.symbol == symbol,
+            KlineTable.interval_val == "4h"
+        ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
         
-        async with async_database.aio_atomic():
-            # 获取K线数据
-            kline_4h = await KlineTable.select().where(
-                KlineTable.symbol == symbol,
-                KlineTable.interval_val == "4h"
-            ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
+        kline_1h = await KlineTable.select().where(
+            KlineTable.symbol == symbol,
+            KlineTable.interval_val == "1h"
+        ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
+        
+        kline_15m = await KlineTable.select().where(
+            KlineTable.symbol == symbol,
+            KlineTable.interval_val == "15m"
+        ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
+        
+        # 获取MACD数据
+        macd_1d = await MacdTable.select().where(
+            MacdTable.symbol == symbol,
+            MacdTable.interval_val == "1d"
+        ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
+        
+        macd_4h = await MacdTable.select().where(
+            MacdTable.symbol == symbol,
+            MacdTable.interval_val == "4h"
+        ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
+        
+        macd_1h = await MacdTable.select().where(
+            MacdTable.symbol == symbol,
+            MacdTable.interval_val == "1h"
+        ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
+        
+        macd_15m = await MacdTable.select().where(
+            MacdTable.symbol == symbol,
+            MacdTable.interval_val == "15m"
+        ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
+        
+        # 获取KDJ数据
+        kdj_1d = await KdjTable.select().where(
+            KdjTable.symbol == symbol,
+            KdjTable.interval_val == "1d"
+        ).order_by(KdjTable.id.desc()).limit(2).aio_execute()
+        
+        kdj_4h = await KdjTable.select().where(
+            KdjTable.symbol == symbol,
+            KdjTable.interval_val == "4h"
+        ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
+        
+        kdj_1h = await KdjTable.select().where(
+            KdjTable.symbol == symbol,
+            KdjTable.interval_val == "1h"
+        ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
+        
+        kdj_15m = await KdjTable.select().where(
+            KdjTable.symbol == symbol,
+            KdjTable.interval_val == "15m"
+        ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
+        
+        # 获取RSI数据
+        rsi_4h = await RsiTable.select().where(
+            RsiTable.symbol == symbol,
+            RsiTable.interval_val == "4h"
+        ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
+        
+        rsi_1h = await RsiTable.select().where(
+            RsiTable.symbol == symbol,
+            RsiTable.interval_val == "1h"
+        ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
+        
+        rsi_15m = await RsiTable.select().where(
+            RsiTable.symbol == symbol,
+            RsiTable.interval_val == "15m"
+        ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
+        
+        # 获取布林带数据
+        bb_4h = await BollTable.select().where(
+            BollTable.symbol == symbol,
+            BollTable.interval_val == "4h"
+        ).order_by(BollTable.id.desc()).limit(30).aio_execute()
+        
+        bb_1h = await BollTable.select().where(
+            BollTable.symbol == symbol,
+            BollTable.interval_val == "1h"
+        ).order_by(BollTable.id.desc()).limit(30).aio_execute()
+        
+        bb_15m = await BollTable.select().where(
+            BollTable.symbol == symbol,
+            BollTable.interval_val == "15m"
+        ).order_by(BollTable.id.desc()).limit(30).aio_execute()
             
-            kline_1h = await KlineTable.select().where(
-                KlineTable.symbol == symbol,
-                KlineTable.interval_val == "1h"
-            ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
-            
-            kline_15m = await KlineTable.select().where(
-                KlineTable.symbol == symbol,
-                KlineTable.interval_val == "15m"
-            ).order_by(KlineTable.id.desc()).limit(30).aio_execute()
-            
-            # 获取MACD数据
-            macd_1d = await MacdTable.select().where(
-                MacdTable.symbol == symbol,
-                MacdTable.interval_val == "1d"
-            ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
-            
-            macd_4h = await MacdTable.select().where(
-                MacdTable.symbol == symbol,
-                MacdTable.interval_val == "4h"
-            ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
-            
-            macd_1h = await MacdTable.select().where(
-                MacdTable.symbol == symbol,
-                MacdTable.interval_val == "1h"
-            ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
-            
-            macd_15m = await MacdTable.select().where(
-                MacdTable.symbol == symbol,
-                MacdTable.interval_val == "15m"
-            ).order_by(MacdTable.id.desc()).limit(30).aio_execute()
-            
-            # 获取KDJ数据
-            kdj_1d = await KdjTable.select().where(
-                KdjTable.symbol == symbol,
-                KdjTable.interval_val == "1d"
-            ).order_by(KdjTable.id.desc()).limit(2).aio_execute()
-            
-            kdj_4h = await KdjTable.select().where(
-                KdjTable.symbol == symbol,
-                KdjTable.interval_val == "4h"
-            ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
-            
-            kdj_1h = await KdjTable.select().where(
-                KdjTable.symbol == symbol,
-                KdjTable.interval_val == "1h"
-            ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
-            
-            kdj_15m = await KdjTable.select().where(
-                KdjTable.symbol == symbol,
-                KdjTable.interval_val == "15m"
-            ).order_by(KdjTable.id.desc()).limit(30).aio_execute()
-            
-            # 获取RSI数据
-            rsi_4h = await RsiTable.select().where(
-                RsiTable.symbol == symbol,
-                RsiTable.interval_val == "4h"
-            ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
-            
-            rsi_1h = await RsiTable.select().where(
-                RsiTable.symbol == symbol,
-                RsiTable.interval_val == "1h"
-            ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
-            
-            rsi_15m = await RsiTable.select().where(
-                RsiTable.symbol == symbol,
-                RsiTable.interval_val == "15m"
-            ).order_by(RsiTable.id.desc()).limit(30).aio_execute()
-            
-            # 获取布林带数据
-            bb_4h = await BollTable.select().where(
-                BollTable.symbol == symbol,
-                BollTable.interval_val == "4h"
-            ).order_by(BollTable.id.desc()).limit(30).aio_execute()
-            
-            bb_1h = await BollTable.select().where(
-                BollTable.symbol == symbol,
-                BollTable.interval_val == "1h"
-            ).order_by(BollTable.id.desc()).limit(30).aio_execute()
-            
-            bb_15m = await BollTable.select().where(
-                BollTable.symbol == symbol,
-                BollTable.interval_val == "15m"
-            ).order_by(BollTable.id.desc()).limit(30).aio_execute()
+        if not all([kline_4h, kline_1h, kline_15m, bb_4h, bb_1h, bb_15m, macd_1d, macd_4h, macd_1h, macd_15m, kdj_1d, kdj_4h, kdj_1h, kdj_15m, rsi_4h, rsi_1h, rsi_15m]):
+            return "No data found."
 
         strategy_handle = StrategyHandle(
             kline_list_4h=list(kline_4h), 
