@@ -134,7 +134,7 @@ async def parse_response_body(request, response):
             "code": 0,
             "message": "success",
             "data": response
-        })
+        }, ensure_ascii=False)
 
 
 class CustormErrorHandler(ErrorHandler):
