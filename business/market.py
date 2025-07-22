@@ -9,7 +9,7 @@ from cache.order import (LimitPriceNoticeValueCache,
                          LimitPriceNoticeValveCache, MarketPriceLimitCache, SymbolPriceChangeHistoryTableCache,
                          MarketPriceCache)
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
-    SymbolPlotTableCache, CheckKdjCrossGateCache, CheckKdjCvGateCache
+    CheckKdjCrossGateCache, CheckKdjCvGateCache
 from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable, BollTable
 from models.order import SymbolPriceChangeHistoryTable
 from models.user import UserSymbolPlotTable
@@ -180,20 +180,6 @@ class MarketPriceHandler(object):
             result[k] = (set_time, limit_low_price, limit_high_price)
         return result
 
-    def get_last_trade_price(self, symbol):
-        last_trade_price = SymbolPlotTableCache.hget(f"{symbol.lower()}:last_price") or "0"
-        return Decimal(last_trade_price) or Decimal("0")
-
-    def get_last_trade_price_by_db(self, symbol):
-        query = UserSymbolPlotTable.select(UserSymbolPlotTable.last_price).where(
-            UserSymbolPlotTable.symbol == symbol
-        )
-        if query:
-            price = query.get().last_price
-        else:
-            price = Decimal("0")
-        return price
-
 
 class SymbolHandle(object):
     def __init__(self, symbol="", user_id=""):
@@ -228,14 +214,9 @@ class SymbolHandle(object):
         redis_client.delete(redis_key)
         redis_client.close()
 
-    def add_plot(self):
-        return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 1)
-
     def del_plot(self):
         self.del_macd_gate()
         self.del_kdj_gate()
-
-        return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
 
     async def delete_symbol(self):
         with AllCache.get_client().lock(f"lock_delete_symbol:{self.symbol}", timeout=60) as lock:

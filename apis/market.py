@@ -20,9 +20,6 @@ class MarketPriceView(HTTPMethodView):
             symbol = symbol.strip().lower()
             price_data = price_handler.get_limit_price(symbol)
 
-            last_my_trade_price = price_handler.get_last_trade_price(symbol)
-            price_data["last_my_trade_price"] = decimal2str(last_my_trade_price, num=2)
-
             result[symbol] = price_data
         else:
             all_symbol_limit_price_dict = price_handler.get_all_limit_price()
@@ -30,13 +27,11 @@ class MarketPriceView(HTTPMethodView):
                 set_time, limit_low_price, limit_high_price = v
 
                 current_price = price_handler.get_current_price(k).get(k)
-                last_my_trade_price = price_handler.get_last_trade_price(k)
                 result[k] = {
                     "symbol": k,
                     "current_price": decimal2str(current_price),
                     "limit_low_price": decimal2str(limit_low_price),
                     "limit_high_price": decimal2str(limit_high_price),
-                    "last_my_trade_price": decimal2str(last_my_trade_price),
                     "set_time": set_time,
                 }
 
@@ -64,7 +59,6 @@ class MarketPriceView(HTTPMethodView):
             set_limit_price_result = "fail"
             set_limit_price_code = None
 
-        # new_plot_result = SymbolHandle(symbol).add_plot()
         # _ = SymbolHandle(symbol).add_macd_gate()
         # _ = SymbolHandle(symbol).add_kdj_gate()
         return {
@@ -141,7 +135,6 @@ class SubmitMarketLimitPriceView(HTTPMethodView):
             except PlotBackTestTable.DoesNotExist:
                 pass
 
-        # new_plot_result = SymbolHandle(symbol).add_plot()
         # _ = SymbolHandle(symbol).add_macd_gate()
         # _ = SymbolHandle(symbol).add_kdj_gate()
         return {
@@ -224,7 +217,6 @@ class MarketPlotManageView(ProtectedView):
         symbol = symbol.strip().lower()
 
         symbol_handler = SymbolHandle(symbol, user_id=user.user_id)
-        symbol_handler.add_plot()
         user_symbol_info = await symbol_handler.add_symbol()
         if not user_symbol_info:
             raise StandardResponseExc(msg="Plot limit!")

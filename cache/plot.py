@@ -25,13 +25,3 @@ class CheckKdjCvGateCache(HashCache):
     离散系数: coefficient of variation
     """
     key = "gate:kdj:cv"
-
-
-class SymbolPlotTableCache(HashCache):
-    """
-    mapping database: models.order.SymbolPlotTable
-    :argument:
-        hget SymbolPlotTable btcusdt:last_price 20000
-        hget SymbolPlotTable btcusdt:is_valid 1
-    """
-    key = "SymbolPlotTable"

@@ -271,7 +271,7 @@ class TopPriceTaskHandle(BasePlotHandle):
         need_update_del_symbol_list = list(set(need_update_del_symbol_list))
 
         # print(f"需要更新的交易对：{need_update_del_symbol_list}")
-        logger.info(f"check_break_history_top_price, need_update_del_symbol_list:{need_update_del_symbol_list}")
+        logger.info(f"cleanup_inactive_symbols, need_update_del_symbol_list:{need_update_del_symbol_list}")
         for symbol in need_update_del_symbol_list:
             if symbol in ["btcusdt", "ethusdt", "solusdt", "dogeusdt", "xrpusdt"]:
                 continue

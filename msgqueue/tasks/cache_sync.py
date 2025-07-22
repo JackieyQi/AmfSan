@@ -6,7 +6,6 @@ from utils.hrequest import http_get_request
 from cache import AllCache
 from utils.common import locking
 from cache.order import MarketPriceCache, MarketPriceLimitCache, MarketMacdCache
-from cache.plot import SymbolPlotTableCache
 from business.market import MarketPriceHandler, SymbolHandle
 
 
@@ -29,13 +28,3 @@ async def sync_cache_job(*args, **kwargs):
             redis_client.delete(k)
             for _k, _v in val["redis_data"].items():
                 redis_client.hset(k, _k, _v)
-
-                if k == SymbolPlotTableCache.key:
-                    _symbol = _k.split(":")[0]
-                    is_valid = int(_v)
-                    if is_valid:
-                        SymbolHandle(_symbol).add_plot()
-                        SymbolHandle(_symbol).add_plot_to_db()
-                    else:
-                        SymbolHandle(_symbol).del_plot()
-                        SymbolHandle(_symbol).del_plot_to_db()
