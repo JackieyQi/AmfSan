@@ -28,6 +28,7 @@ logging.config.dictConfig(LOG_SANIC_CONF)
 
 redis_client = AllCache.get_client()
 
+
 # 优化后的数据库连接中间件
 @app.middleware('request')
 async def ensure_database_connection(request):
@@ -130,11 +131,15 @@ async def parse_request_params(request):
 async def parse_response_body(request, response):
     """标准化响应格式"""
     if isinstance(response, (list, dict, str, int)):
-        return json_view({
-            "code": 0,
-            "message": "success",
-            "data": response
-        }, ensure_ascii=False)
+        return json_view(
+            {
+                "code": 0,
+                "message": "success",
+                "data": response
+            },
+            ensure_ascii=False,
+            content_type="application/json; charset=utf-8"
+        )
 
 
 class CustormErrorHandler(ErrorHandler):
