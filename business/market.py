@@ -10,7 +10,7 @@ from cache.order import (LimitPriceNoticeValueCache,
                          MarketPriceCache)
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
     CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable, BollTable
+from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable, BollTable, BnSymbolTable
 from models.order import SymbolPriceChangeHistoryTable
 from models.user import UserSymbolPlotTable
 from settings.constants import *
@@ -311,6 +311,26 @@ class SymbolHandle(object):
 
     def del_kdj_cross_gate(self, interval):
         return CheckKdjCrossGateCache.hdel(f"{self.symbol}:{interval}")
+
+
+class BnSymbolHandle(object):
+    def __init__(self):
+        self.user_id = "root"
+
+    async def get_all(self):
+        db_rows = await BnSymbolTable.select().where(
+            BnSymbolTable.is_valid).order_by(BnSymbolTable.create_ts.desc()).aio_execute()
+        result = []
+        for row in db_rows:
+            result.append({
+                "symbol": row.symbol,
+                "is_valid": row.is_valid,
+                "create_ts": row.create_ts,
+            })
+        return result
+    
+    async def add_symbol(self, symbol):
+        pass
 
 
 class MacdInitData(object):

@@ -5,7 +5,7 @@ from .huobi_exchange import AccountInfoView as HuobiAccountInfoView
 from .market import (MarketInnerPriceView, MarketMacdCrossGateView,
                      MarketMacdTrendGateView, MarketPriceGateView,
                      MarketPriceView, MarketKdjCrossGateView,
-                     SubmitMarketLimitPriceView, MarketPlotManageView)
+                     SubmitMarketLimitPriceView, MarketPlotManageView, BnSymbolView)
 from .plot import TradeSignalRecordsView, TradeSignalRecordDetailView, SymbolScoreView
 from .test import ServerTimeView, TestView
 from .cache_sync import CacheSyncView
@@ -27,6 +27,7 @@ urls_bp = [
         "api/market/innerprice/<side_str>/<symbol>/<new_price>/",
     ),
     (MarketPlotManageView.as_view(), "api/market/plot"),
+    (BnSymbolView.as_view(), "api/market/bn/symbol"),
 
     (CacheSyncView.as_view(), "api/cache/sync/"),
 

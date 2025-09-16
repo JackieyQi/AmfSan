@@ -4,7 +4,7 @@
 import time
 from decimal import Decimal
 
-from business.market import MarketPriceHandler, SymbolHandle
+from business.market import MarketPriceHandler, SymbolHandle, BnSymbolHandle
 from utils.authentication import HTTPMethodView, ProtectedView
 from utils.common import str2decimal, decimal2str
 from utils.exception import StandardResponseExc
@@ -237,3 +237,15 @@ class MarketPlotManageView(ProtectedView):
         result_info = await symbol_handler.delete_symbol()
         symbol_handler.refresh_symbol_cache()
         return result_info
+
+
+class BnSymbolView(ProtectedView):
+    need_auth = {"get": True, "post": True, "delete": True}
+
+    async def get(self, request):
+        user = request.ctx.user
+        if user.user_id != "root":
+            raise StandardResponseExc(msg="Permission denied")
+        return await BnSymbolHandle().get_all()
+    
+    
