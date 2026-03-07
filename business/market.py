@@ -67,6 +67,13 @@ class MarketPriceHandler(object):
             }
         return {}
 
+    def get_current_price_by_cache(self, symbol=""):
+        if not symbol:
+            result = MarketPriceCache.hgetall()
+        else:
+            result = MarketPriceCache.hget(symbol.lower())
+        return result
+
     def set_value_times4limit_price_notice(self, count: int = 1):
         val = LimitPriceNoticeValueCache.get()
         val = 0 if not val else int(val)

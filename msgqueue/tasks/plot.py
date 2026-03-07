@@ -25,6 +25,7 @@ from settings.constants import (INNER_GET_DELETE_KDJ_CROSS_URL,
                                 INNER_GET_DELETE_LIMIT_PRICE_URL,
                                 INNER_GET_DELETE_MACD_CROSS_URL,
                                 INNER_GET_DELETE_MACD_TREND_URL,
+                                INNER_GET_DELETE_KDJ_CROSS_URL,
                                 INNER_GET_PRICE_URL,
                                 INNER_GET_UPDATE_PRICE_URL, PLOT_INTERVAL_CONFIG,
                                 PLOT_INTERVAL_LIST)
