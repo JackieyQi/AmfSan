@@ -3,25 +3,53 @@
 
 import json
 from decimal import Decimal as D
+import asyncio
+import click
+from datetime import datetime, timedelta
 
-from exts import database
+from cache import RedisPoolContext
+from exts import MysqlClient
 from models import order, user, wallet, market
+from business.backtest.backtest_engine import BacktestEngine
+from business.backtest.backtest_strategy import BacktestStrategy
+from business.backtest.data_loader import DataLoader
+
+database = MysqlClient.get_database()
 
 
-def command_create_tables():
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+def cmd_test():
+    print("test")
+
+
+@cli.command()
+def cmd_create_tables():
+    """
+    创建表
+    """
     print("***************start command_create_tables**************")
     with database:
         database.create_tables(
             [
                 order.SymbolPriceChangeHistoryTable,
                 order.OrderTradeHistoryTable,
-                order.SymbolPlotTable,
-                order.MacdTable,
-                order.KdjTable,
+                order.PlotBackTestTable,
                 wallet.BalanceHistoryTable,
                 wallet.TotalBalanceHistoryTable,
                 user.EmailMsgHistoryTable,
+                user.UserInfoTable,
+                user.UserSymbolPlotTable,
                 market.KlineTable,
+                market.MacdTable,
+                market.KdjTable,
+                market.RsiTable,
+                market.BollTable,
+                market.BnSymbolTable,
             ]
         )
 
@@ -85,69 +113,215 @@ def command_insert_mytrades(key, secret, symbol):
     print("***************end command_insert_mytrades****************")
 
 
-def command_add_new_symbol(symbol):
-    from models.order import OrderTradeHistoryTable, SymbolPlotTable
+def command_del_symbol(symbol):
+    from models.user import UserSymbolPlotTable
+    from models.market import KlineTable, MacdTable, KdjTable, RsiTable
+    from cache import AllCache
 
     print("***************start command_add_new_symbol**************")
     symbol = symbol.lower()
 
-    last_trade = (
-        OrderTradeHistoryTable.select()
-            .where(OrderTradeHistoryTable.symbol == symbol)
-            .order_by(OrderTradeHistoryTable.id.desc())
-            .get()
-    )
+    symbol_plot_del_rows = UserSymbolPlotTable.delete().where(
+        UserSymbolPlotTable.user_id == "root", UserSymbolPlotTable.symbol == symbol
+    ).execute()
 
-    query = SymbolPlotTable.select().where(
-        SymbolPlotTable.user_id == 2, SymbolPlotTable.symbol == symbol
-    )
-    if query:
-        symbol_plot = query.get()
-        symbol_plot.last_price = last_trade.price
-        symbol_plot.save()
-    else:
-        SymbolPlotTable(
-            user_id=2,
-            symbol=last_trade.symbol,
-            last_price=last_trade.price,
-        ).save()
+    kline_del_rows = KlineTable.delete().where(KlineTable.symbol==symbol).execute()
+    macd_del_rows = MacdTable.delete().where(MacdTable.symbol==symbol).execute()
+    kdj_del_rows = KdjTable.delete().where(KdjTable.symbol==symbol).execute()
+    rsi_del_rows = RsiTable.delete().where(RsiTable.symbol==symbol).execute()
+
+    redis_client = AllCache.get_client()
+    redis_key = "symbol:cfg"
+    redis_client.delete(redis_key)
+    redis_client.close()
+
+    print(f"删除数据："
+          f"\nsymbol_plot_del_rows:{symbol_plot_del_rows}"
+          f"\nkline_del_rows:{kline_del_rows}"
+          f"\nmacd_del_rows:{macd_del_rows}"
+          f"\nkdj_del_rows:{kdj_del_rows}"
+          f"\nrsi_del_rows:{rsi_del_rows}")
 
     print("***************end command_add_new_symbol****************")
 
 
-def command_save_macd(symbol, interval):
-    from msgqueue.tasks.dw import MacdDataSaveHandle
+@cli.command()
+@click.option('--email', required=True)
+@click.option('--code', required=True, help='邀请码(6位字符串)')
+def cmd_set_invite_code(email: str, code: str):
+    """
+    设置邀请码
+    
+    Args:
+        email: 邮箱
+        code: 邀请码(6位字符串)
+    """
+    print("***************start command_set_invite_code**************")
 
-    print("***************start command_save_macd**************")
-    if not symbol or not interval:
+    with RedisPoolContext() as r:
+        r.set(f"user:invite_code:{email}", code, ex=600)
+
+    print(f"设置邀请码成功，有效期10分钟")
+    print("*************** end ****************")
+
+
+@cli.command()
+@click.option('--symbol', required=True, help='交易对，例如：belusdt')
+@click.option('--valid', required=True, help='是否有效，0: 无效，1: 有效')
+def cmd_cancel_symbol_check_price(symbol: str, valid: bool):
+    """
+    取消交易对价格检查
+    
+    Args:
+        symbol: 交易对
+        valid: 是否有效(0/1)
+    """
+
+    print("*************** start **************")
+    
+    try:
+        symbol = symbol.lower().strip()
+        valid = False if int(valid) == 0 else True
+    except Exception as e:
+        print(f"错误：{e}")
         return
+    
+    update_str = ""
+    old_symbol = market.BnSymbolTable.select().where(
+        market.BnSymbolTable.symbol == symbol).first()
+    if old_symbol:
+        if old_symbol.is_valid != valid:
+            old_symbol.is_valid = valid
+            old_symbol.save()
+            update_str = "更新"
+        else:
+            update_str = "无需更新"
+    else:
+        market.BnSymbolTable(symbol=symbol, is_valid=valid).save()
+        update_str = "新增"
 
-    _handler = MacdDataSaveHandle(symbol, interval)
-    k_data = _handler.get_k_lines_by_openapi()
-    if not k_data:
-        return f"LOG: no k_data, {symbol}, {interval}"
-
-    for _data in k_data:
-        _handler.parsed_k_lines_data(_data)
-
-    print("***************end command_save_macd****************")
+    valid_count = market.BnSymbolTable.select().where(
+        market.BnSymbolTable.is_valid).count()
+    print(f"{update_str} {symbol} 成功，当前有效交易对数量: {valid_count}")
+    print("*************** end ****************")
 
 
-def command_init_macd():
-    from business.market import MacdInitData
-    from models.init_data import MACD_INIT_DATA_ETHUSDT as macd_init_data
+@cli.command()
+@click.option('--symbol', required=True, help='交易对，例如：btcusdt')
+@click.option('--start_time', default=None, help='开始时间，格式：YYYY-MM-DD_HH:mm，例如：2024-05-10_05:00')
+def cmd_backtest_strategy(symbol: str, start_time: str):
+    """
+    回测策略
+    
+    Args:
+        symbol: 交易对
+        start_time: 开始时间
+    """
+    async def run_backtest():
+        # 创建回测引擎
+        engine = BacktestEngine()
+        
+        # 设置回测时间范围
+        end_time_dt = datetime.now()
+        try:
+            if start_time:
+                start_time_dt = datetime.strptime(start_time, '%Y-%m-%d_%H:%M')
+            else:
+                # 如果没有指定开始时间，默认回测最近30天
+                start_time_dt = end_time_dt - timedelta(days=30)
+                
+            if start_time_dt >= end_time_dt:
+                click.echo("错误：开始时间必须早于结束时间")
+                return
+                
+        except ValueError as e:
+            click.echo(f"错误：时间格式不正确，请使用 YYYY-MM-DD_HH:mm 格式，例如：2024-05-10_05:00")
+            return
+        
+        data_loader = DataLoader()
+        interval = "1h"
+        kline_data = await data_loader.get_historical_data(symbol, interval, start_time_dt)
+        
+        if kline_data.empty:
+            click.echo(f"没有找到 {symbol} 在 {interval} 周期下的历史数据")
+            return
+            
+        # 添加数据到引擎
+        engine.add_data(kline_data)
+        
+        # 添加策略
+        engine.add_strategy(BacktestStrategy, symbol=symbol)
+            
+        # 设置初始资金和佣金
+        engine.set_cash(10000)
+        engine.set_commission(0.001)
+        
+        # 运行回测
+        engine.run()
+        
+        # 获取结果
+        results = engine.get_results()
+        
+        # 打印回测结果
+        click.echo("\n=== 回测结果 ===")
+        click.echo(f"交易对: {symbol}")
+        # click.echo(f"时间周期: {interval}")
+        click.echo(f"回测时间: {start_time_dt.strftime('%Y-%m-%d %H:%M')} 到 {end_time_dt.strftime('%Y-%m-%d %H:%M')}")
+        # click.echo(f"初始资金: {initial_cash:.2f}")
+        # click.echo(f"最终资金: {results['portfolio_value']:.2f}")
+        click.echo(f"总收益率: {results['returns']*100:.2f}%")
+        click.echo(f"最大回撤: {results['drawdown']['max_drawdown_percent']:.2f}%")
+        click.echo(f"交易次数: {len(results['trades'])}")
+        
+        # 计算胜率
+        if results['trades']:
+            winning_trades = sum(1 for trade in results['trades'] if trade['pnl'] > 0)
+            win_rate = winning_trades / len(results['trades']) * 100
+            click.echo(f"胜率: {win_rate:.2f}%")
+        
+        # 绘制图表
+        engine.plot()
 
-    print("***************start command_init_macd**************")
+    # 运行回测
+    asyncio.run(run_backtest())
 
-    _handler = MacdInitData(macd_init_data)
-    print(f"""
-    init_1h: {_handler.init_1h()}
-    init_4h: {_handler.init_4h()}
-    init_1d: {_handler.init_1d()}
-    """)
 
-    print("***************end command_init_macd****************")
+@cli.command()
+@click.option('--symbol', help='单个交易对，例如：btcusdt')
+@click.option('--symbols', help='多个交易对，用逗号分隔，例如：btcusdt,ethusdt')
+def cmd_test_price(symbol: str, symbols: str):
+    """
+    测试获取币安交易对价格
+    
+    Args:
+        symbol: 单个交易对
+        symbols: 多个交易对，用逗号分隔
+    """
+    async def run_test():
+        from business.binance_exchange import BinanceExchangeRequestHandle
+        
+        exchange = BinanceExchangeRequestHandle()
+        
+        if symbol:
+            result = await exchange.get_current_price_async(symbol=symbol)
+            click.echo(f"\n=== 单个交易对价格 ===")
+            click.echo(f"交易对: {symbol}")
+            click.echo(f"价格: {result}")
+        elif symbols:
+            symbol_list = [s.strip() for s in symbols.split(',')]
+            result = await exchange.get_current_price_async(symbol_list=symbol_list)
+            click.echo(f"\n=== 多个交易对价格 ===")
+            for price_info in result:
+                click.echo(f"交易对: {price_info['symbol']}")
+                click.echo(f"价格: {price_info['price']}")
+        else:
+            click.echo("错误：请提供 --symbol 或 --symbols 参数")
+            return
+
+    # 运行测试
+    asyncio.run(run_test())
 
 
 if __name__ == "__main__":
     print("RUN: script.")
+    cli()

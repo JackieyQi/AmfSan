@@ -30,6 +30,9 @@ INNER_GET_DELETE_KDJ_CROSS_URL = "{}/api/market/kdj/cross/gate?key=".format(
 
 PLOT_INTERVAL_LIST = ["5m", "15m", "1h", "4h", "1d"]
 
+# 5m:仅用于剥头皮或极短线逃顶/底
+STRATEGY_INTERVAL_LIST = ["1h", "4h", "1d"]
+
 PLOT_INTERVAL_CONFIG = {
     "5m": {"interval_sec": 5 * 60, "k_interval": 7 * 60},
     "15m": {"interval_sec": 15 * 60, "k_interval": 23 * 60},

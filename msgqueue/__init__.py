@@ -20,21 +20,23 @@ route_map = {
     "send_email_task": sms.send_email,
     #
     "save_kline_job": dw.save_kline_job,
-    "save_macd_job": dw.save_macd_job,
-    "save_kdj_job": dw.save_kdj_job,
-    "save_ema_job": dw.save_ema_job,
+    "save_indicators_job": dw.save_indicators_job,
+    "save_indicators_job_by_symbol": dw.save_indicators_job_by_symbol,
+    #
     "save_account_balance_job": dw.save_account_balance_job,
     "save_trade_history_job": dw.save_trade_history_job,
+    "update_price_job": dw.update_price,
+    "update_fng_job": dw.update_fng_job,
     #
     "check_balance_job": plot.check_balance,
     "check_price_job": plot.check_price,
-    "check_macd_cross_job": plot.check_macd_cross,
-    "check_macd_trend_job": plot.check_macd_trend,
-    "check_kdj_cross_job": plot.check_kdj_cross,
-    "check_ema_cross_job": plot.check_ema_cross,
-    "check_gpt_plot_job": plot.check_gpt_plot,
-    "check_single_gpt_plot_job": plot.check_single_gpt_plot,
+    "check_break_history_top_price_job": plot.check_break_history_top_price,
+    "check_strategy_job": plot.check_strategy,
+    "check_strategy_by_symbol": plot.check_strategy_by_symbol,
+    "break_4_hours_strategy_job": plot.break_4_hours_strategy,
     #
+    "update_all_symbols_job": plot.update_all_symbols,
+    "cleanup_inactive_symbols_job": plot.cleanup_inactive_symbols,
 }
 
 
@@ -55,6 +57,9 @@ async def deal_msg(msg):
     func = route_map[msg_bp]
     try:
         _ = await func(msg)
+        logger.debug(
+            "tasks deal_msg over, task:{}, start:{}, kwargs:{}".format(msg_bp, ts2fmt(), msg)
+        )
     except BaseException:
 
         error = traceback.format_exc()

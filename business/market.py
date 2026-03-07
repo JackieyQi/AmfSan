@@ -9,23 +9,26 @@ from cache.order import (LimitPriceNoticeValueCache,
                          LimitPriceNoticeValveCache, MarketPriceLimitCache, SymbolPriceChangeHistoryTableCache,
                          MarketPriceCache)
 from cache.plot import CheckMacdCrossGateCache, CheckMacdTrendGateCache,\
-    SymbolPlotTableCache, CheckKdjCrossGateCache, CheckKdjCvGateCache
-from models.market import KlineTable
-from models.order import SymbolPlotTable, SymbolPriceChangeHistoryTable, MacdTable, KdjTable, EmaTable
+    CheckKdjCrossGateCache, CheckKdjCvGateCache
+from models.market import KlineTable, MacdTable, KdjTable, EmaTable, RsiTable, BollTable, BnSymbolTable
+from models.order import SymbolPriceChangeHistoryTable
+from models.user import UserSymbolPlotTable
 from settings.constants import *
 from utils.common import str2decimal, to_ctime, decimal2str, Decimal
 from utils.exception import StandardResponseExc
 from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
+from exts import async_database
+from cache import AllCache
 
 
 class MarketPriceHandler(object):
-    def get_current_price(self, symbol: str = "btcusdt"):
+    def update_current_price(self, symbol: str = "btcusdt"):
         resp_json = BinanceExchangeRequestHandle().get_current_price(symbol)
         if resp_json:
             price_info = resp_json[0]
             ts = int(int(price_info["T"]) / 1000)
-            price_str = decimal2str(Decimal(price_info["p"]))
+            price_str = price_info["p"]
 
             MarketPriceCache.hset(symbol.lower(), price_str)
             return {
@@ -34,6 +37,20 @@ class MarketPriceHandler(object):
                 "dt": to_ctime(ts),
             }
         return {}
+        
+    def get_current_price(self, symbol: str = ""):
+        if not symbol:
+            cache_data = MarketPriceCache.hgetall()
+            for k, v in cache_data.items():
+                cache_data[k] = str2decimal(v)
+            return cache_data
+        else:
+            cache_price = MarketPriceCache.hget(symbol.lower())
+            if cache_price:
+                return {
+                    symbol.lower(): str2decimal(cache_price),
+                }
+            return {}
 
     def get_current_price_from_HUOBI(self, symbol: str = "btcusdt"):
         resp_json = http_get_request(HUOBI_TRADE_URL, {"symbol": symbol})
@@ -88,12 +105,13 @@ class MarketPriceHandler(object):
         symbol: str = "btcusdt",
         low_price: Decimal = None,
         high_price: Decimal = None,
+        new_set_time: int = 0,
     ):
-        current_price = self.get_current_price(symbol).get("price")
+        self.update_current_price(symbol)
+        current_price = self.get_current_price(symbol).get(symbol)
         if not current_price:
             raise StandardResponseExc()
 
-        current_price = str2decimal(current_price)
         if low_price and current_price < low_price:
             raise StandardResponseExc(
                 msg="Current price:{} lower low_price".format(current_price)
@@ -105,26 +123,26 @@ class MarketPriceHandler(object):
 
         limit_price = MarketPriceLimitCache.hget(symbol)
         if not limit_price:
-            limit_low_price, limit_high_price = "", ""
+            set_time, limit_low_price, limit_high_price = 0, "", ""
         else:
-            limit_low_price, limit_high_price = limit_price.split(":")
+            set_time, limit_low_price, limit_high_price = limit_price.split(":")
 
         result = MarketPriceLimitCache.hset(
             symbol,
-            "{}:{}".format(
-                low_price or limit_low_price, high_price or limit_high_price
+            "{}:{}:{}".format(
+                int(set_time) or new_set_time, low_price or limit_low_price, high_price or limit_high_price
             ),
         )
 
-        SymbolPriceChangeHistoryTableCache.rpush(
-            f"{symbol}:"
-            f"{str(current_price)}:"
-            f"{str(limit_low_price or Decimal('0'))}:"
-            f"{str(low_price or Decimal('0'))}:"
-            f"{str(limit_high_price or Decimal('0'))}:"
-            f"{str(high_price or Decimal('0'))}:"
-            f"{int(time.time())}"
-        )
+        # SymbolPriceChangeHistoryTableCache.rpush(
+        #     f"{symbol}:"
+        #     f"{str(current_price)}:"
+        #     f"{str(limit_low_price or Decimal('0'))}:"
+        #     f"{str(low_price or Decimal('0'))}:"
+        #     f"{str(limit_high_price or Decimal('0'))}:"
+        #     f"{str(high_price or Decimal('0'))}:"
+        #     f"{int(time.time())}"
+        # )
         return result
 
     def save_limit_price_change_history_to_db(
@@ -141,17 +159,18 @@ class MarketPriceHandler(object):
         # ).save()
 
     def get_limit_price(self, symbol: str = "btcusdt"):
-        current_price = self.get_current_price(symbol).get("price")
+        current_price = self.get_current_price(symbol).get(symbol)
         limit_price = MarketPriceLimitCache.hget(symbol)
         if not limit_price:
-            limit_low_price, limit_high_price = "", ""
+            set_time, limit_low_price, limit_high_price = 0, "", ""
         else:
-            limit_low_price, limit_high_price = limit_price.split(":")
+            set_time, limit_low_price, limit_high_price = limit_price.split(":")
         return {
             "symbol": symbol,
             "current_price": current_price,
             "limit_low_price": limit_low_price,
             "limit_high_price": limit_high_price,
+            "set_time": to_ctime(int(set_time)),
         }
 
     def get_all_limit_price(self):
@@ -161,75 +180,103 @@ class MarketPriceHandler(object):
 
         result = {}
         for k, v in all_limit_price.items():
-            limit_low_price, limit_high_price = v.split(":")
+            set_time, limit_low_price, limit_high_price = v.split(":")
 
             limit_low_price = Decimal(limit_low_price) if limit_low_price else Decimal("0")
             limit_high_price = Decimal(limit_high_price) if limit_high_price else Decimal("0")
-            result[k] = (limit_low_price, limit_high_price)
+            result[k] = (set_time, limit_low_price, limit_high_price)
         return result
-
-    def get_last_trade_price(self, symbol):
-        last_trade_price = SymbolPlotTableCache.hget(f"{symbol.lower()}:last_price") or "0"
-        return Decimal(last_trade_price) or Decimal("0")
-
-    def get_last_trade_price_by_db(self, symbol):
-        query = SymbolPlotTable.select(SymbolPlotTable.last_price).where(
-            SymbolPlotTable.symbol == symbol
-        )
-        if query:
-            price = query.get().last_price
-        else:
-            price = Decimal("0")
-        return price
 
 
 class SymbolHandle(object):
-    def __init__(self, symbol):
-        self.user_id = 2
+    def __init__(self, symbol="", user_id=""):
+        self.user_id = user_id
         self.symbol = symbol
 
-    def add_plot(self):
-        return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 1)
+    async def get_all(self):
+        if self.user_id == "root":
+            db_rows = await UserSymbolPlotTable.select().order_by(UserSymbolPlotTable.create_ts).aio_execute()
+        else:
+            db_rows = await UserSymbolPlotTable.select().where(
+                UserSymbolPlotTable.user_id == self.user_id
+            ).order_by(UserSymbolPlotTable.create_ts).aio_execute()
 
-    def add_plot_to_db(self):
-
-        query = SymbolPlotTable.select().where(
-            SymbolPlotTable.user_id == self.user_id,
-            SymbolPlotTable.symbol == self.symbol,
-        )
-        if query:
-            db_row = query.get()
-            if db_row.is_valid is False:
-                db_row.is_valid = True
-                db_row.save()
-            return
-
-        result = SymbolPlotTable(
-            user_id=self.user_id,
-            symbol=self.symbol,
-        ).save()
+        result = []
+        symbol_list = []
+        for row in db_rows:
+            if row.symbol in symbol_list:
+                continue
+            symbol_list.append(row.symbol)
+            
+            result.append({
+                "symbol": row.symbol,
+                "is_valid": row.is_valid,
+                "create_ts": row.create_ts,
+            })
         return result
+
+    def refresh_symbol_cache(self):
+        redis_client = AllCache.get_client()
+        redis_key = "symbol:cfg"
+        redis_client.delete(redis_key)
+        redis_client.close()
 
     def del_plot(self):
         self.del_macd_gate()
         self.del_kdj_gate()
 
-        return SymbolPlotTableCache.hset(f"{self.symbol.lower()}:is_valid", 0)
+    async def delete_symbol(self):
+        with AllCache.get_client().lock(f"lock_delete_symbol:{self.symbol}", timeout=60) as lock:
+            async with async_database.aio_atomic():
+                if self.user_id == "root":
+                    plot_row = await UserSymbolPlotTable.delete().where(
+                        UserSymbolPlotTable.symbol == self.symbol,
+                    ).aio_execute()
+                else:
+                    plot_row = await UserSymbolPlotTable.delete().where(
+                        UserSymbolPlotTable.user_id == self.user_id,
+                        UserSymbolPlotTable.symbol == self.symbol,
+                    ).aio_execute()
 
-    def del_plot_to_db(self):
+                if await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
+                        UserSymbolPlotTable.symbol == self.symbol).aio_exists():
+                    return {"plot_row": plot_row, }
 
-        query = SymbolPlotTable.select().where(
-            SymbolPlotTable.user_id == self.user_id,
-            SymbolPlotTable.symbol == self.symbol,
-        )
-        if not query:
-            return
+                kline_del_rows = await KlineTable.delete().where(KlineTable.symbol == self.symbol).aio_execute()
+                macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == self.symbol).aio_execute()
+                kdj_del_rows = await KdjTable.delete().where(KdjTable.symbol == self.symbol).aio_execute()
+                rsi_del_rows = await RsiTable.delete().where(RsiTable.symbol == self.symbol).aio_execute()
+                boll_del_rows = await BollTable.delete().where(BollTable.symbol == self.symbol).aio_execute()
 
-        symbol_plot = query.get()
-        symbol_plot.is_valid = False
-        symbol_plot.save()
+            return {
+                "plot_row": plot_row, "kline_del_rows": kline_del_rows, "macd_del_rows": macd_del_rows,
+                "kdj_del_rows": kdj_del_rows, "rsi_del_rows": rsi_del_rows, "boll_del_rows": boll_del_rows,
+            }
 
-        return 1
+    async def add_symbol(self):
+        if self.user_id != "root":
+            plot_count = await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
+                UserSymbolPlotTable.user_id == self.user_id,
+            ).aio_count()
+            if plot_count >= 3:
+                return None
+
+        with AllCache.get_client().lock(f"lock_add_symbol:{self.symbol}", timeout=10) as lock:
+            async with async_database.aio_atomic():
+                try:
+                    symbol_row = await UserSymbolPlotTable.select().where(
+                        UserSymbolPlotTable.user_id == self.user_id,
+                        UserSymbolPlotTable.symbol == self.symbol).aio_get()
+                    if not symbol_row.is_valid:
+                        symbol_row.is_valid = True
+                        await symbol_row.aio_save()
+                    return symbol_row
+
+                except UserSymbolPlotTable.DoesNotExist:
+                    return await UserSymbolPlotTable.aio_create(
+                        user_id=self.user_id,
+                        symbol=self.symbol,
+                    )
 
     def add_macd_gate(self, interval=""):
         if interval in PLOT_INTERVAL_LIST:
@@ -273,22 +320,42 @@ class SymbolHandle(object):
         return CheckKdjCrossGateCache.hdel(f"{self.symbol}:{interval}")
 
 
+class BnSymbolHandle(object):
+    def __init__(self):
+        self.user_id = "root"
+
+    async def get_all(self):
+        db_rows = await BnSymbolTable.select().where(
+            BnSymbolTable.is_valid).order_by(BnSymbolTable.create_ts.desc()).aio_execute()
+        result = []
+        for row in db_rows:
+            result.append({
+                "symbol": row.symbol,
+                "is_valid": row.is_valid,
+                "create_ts": row.create_ts,
+            })
+        return result
+    
+    async def add_symbol(self, symbol):
+        pass
+
+
 class MacdInitData(object):
     def __init__(self, macd_init_data):
         self.macd_init_data = macd_init_data
 
-    def start(self, interval):
+    async def start(self, interval):
         data = self.macd_init_data.get(interval)
         for i in data:
 
-            if MacdTable.select().where(
+            if await MacdTable.select().where(
                 MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.opening_ts == i["opening_ts"],
                 MacdTable.interval_val == i["interval"].lower(),
-            ):
+            ).aio_execute():
                 print("already")
             else:
-                r = MacdTable(
+                r = await MacdTable(
                     symbol=i["symbol"].lower(),
                     interval_val=i["interval"].lower(),
                     opening_ts=i["opening_ts"],
@@ -299,17 +366,17 @@ class MacdInitData(object):
                     dea=Decimal(i["dea"]),
                     macd=Decimal(i["macd"]) if "macd" in i else 0,
                     create_ts=int(time.time()),
-                ).save()
+                ).aio_save()
 
         db_last_macd = (
-            MacdTable.select()
+            await MacdTable.select()
             .where(
                 MacdTable.symbol == i["symbol"].lower(),
                 MacdTable.interval_val == i["interval"].lower(),
             )
             .order_by(MacdTable.create_ts.desc())
             .limit(1)
-            .get()
+            .aio_get()
         )
         return db_last_macd.id
 
@@ -318,7 +385,7 @@ class KdjInitData(object):
     def __init__(self, kdj_init_data):
         self.kdj_init_data = kdj_init_data
 
-    def start(self, interval):
+    async def start(self, interval):
         interval_sec = PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
 
         data = self.kdj_init_data.get(interval)
@@ -326,14 +393,14 @@ class KdjInitData(object):
             _cfg = i["cfg"]
             _period = _cfg["period"]
 
-            if KdjTable.select().where(
+            if await KdjTable.select().where(
                 KdjTable.symbol == i["symbol"].lower(),
                 KdjTable.open_ts == i["open_ts"],
                 KdjTable.interval_val == i["interval"].lower(),
-            ):
+            ).aio_execute():
                 print("already")
             else:
-                _ = KdjTable(
+                _ = await KdjTable(
                     symbol=i["symbol"].lower(),
                     interval_val=i["interval"].lower(),
                     open_ts=i["open_ts"],
@@ -342,17 +409,17 @@ class KdjInitData(object):
                     j_val=Decimal(i["j"]),
                     cfg=json.dumps(_cfg),
                     create_ts=int(time.time()),
-                ).save()
+                ).aio_save()
 
         db_row = (
-            KdjTable.select()
+            await KdjTable.select()
             .where(
                 KdjTable.symbol == i["symbol"].lower(),
                 KdjTable.interval_val == i["interval"].lower(),
             )
             .order_by(KdjTable.create_ts.desc())
             .limit(1)
-            .get()
+            .aio_get()
         )
         return db_row.id
 

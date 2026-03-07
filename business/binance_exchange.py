@@ -4,7 +4,9 @@
 import hashlib
 import hmac
 import time
-from urllib.parse import urlencode
+import json
+import aiohttp
+import urllib.parse
 
 from utils.hrequest import http_get_request, http_post_request
 
@@ -27,8 +29,25 @@ class BinanceExchangeRequestHandle(object):
             payload["limit"] = limit
         resp = http_get_request(self.base_url + "/api/v3/aggTrades", payload)
         return resp
-
-    def get_k_lines(self, symbol, interval, start_ts, limit=5):
+    
+    async def get_current_price_async(self, symbol=None, symbol_list=None):
+        if symbol:
+            query_string = f"symbol={symbol.upper()}"
+        elif symbol_list:
+            symbols_json = json.dumps(
+                [symbol.upper() for symbol in symbol_list],
+                separators=(',', ':'))
+            query_string = f"symbols={urllib.parse.quote(symbols_json)}"
+        else:
+            return
+            
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                self.base_url + "/api/v3/ticker/price?" + query_string
+            ) as response:
+                return await response.json()
+            
+    def get_k_lines(self, symbol, interval, start_ts, limit):
         payload = {
             "symbol": symbol.upper(),
             "interval": interval,

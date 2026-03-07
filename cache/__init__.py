@@ -1,44 +1,94 @@
 #! /usr/bin/env python
 # coding:utf8
 
-from exts import redis_client
+import redis
+from redis.lock import Lock
+from exts import RedisClient
 
 
-r_client = None
+class RedisPoolContext(object):
+    def __init__(self):
+        self.pool = RedisClient.get_connection_pool()
+
+    def __enter__(self):
+        self.redis = redis.Redis(connection_pool=self.pool)
+        return self.redis
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.redis:
+            self.redis.close()
+            
+    def lock(self, name, timeout=None, sleep=0.1, blocking=True, blocking_timeout=None, thread_local=True):
+        """
+        获取一个分布式锁
+        :param name: 锁的名称
+        :param timeout: 锁的超时时间
+        :param sleep: 重试间隔
+        :param blocking: 是否阻塞
+        :param blocking_timeout: 阻塞超时时间
+        :param thread_local: 是否线程本地
+        :return: 锁对象
+        """
+        return Lock(
+            self.redis,
+            name,
+            timeout=timeout,
+            sleep=sleep,
+            blocking=blocking,
+            blocking_timeout=blocking_timeout,
+            thread_local=thread_local
+        )
 
 
 class Base(object):
     key = "Base"
-    @staticmethod
-    def redis():
-        global r_client
-        if not r_client:
-            r_client = redis_client
-        return r_client
 
 
 class AllCache(Base):
+    _client = None
+
     @classmethod
     def get_client(cls):
-        return cls.redis()
+        if cls._client is None:
+            pool = RedisClient.get_connection_pool()
+            cls._client = redis.Redis(connection_pool=pool)
+        return cls._client
 
     @classmethod
     def get_all(cls):
-        return cls.redis().keys()
+        client = cls.get_client()
+        try:
+            return client.keys()
+        except redis.exceptions.ConnectionError as e:
+            print(f"Error: Redis connection error, {e}")
+            return None
+        finally:
+            client.close()
 
     @classmethod
     def get_type(cls, val):
-        return cls.redis().type(val)
+        client = cls.get_client()
+        try:
+            return client.type(val)
+        except redis.exceptions.ConnectionError as e:
+            print(f"Error: Redis connection error, {e}")
+            return None
+        finally:
+            client.close()
 
 
-class StringCache(Base):
+class StringCache(AllCache):
     @classmethod
     def get(cls):
-        return cls.redis().get(cls.key)
+        return cls.get_client().get(cls.key)
 
     @classmethod
     def set(cls, val, ex=180):
-        return cls.redis().set(cls.key, val, ex)
+        return cls.get_client().set(cls.key, val, ex)
+
+    @classmethod
+    def incr(cls):
+        return cls.get_client().incr(cls.key)
 
     @classmethod
     def incr(cls):
@@ -64,34 +114,74 @@ class ListCache(Base):
 
     @classmethod
     def delete(cls):
-        return cls.redis().delete(cls.key)
+        return cls.get_client().delete(cls.key)
 
 
-class HashCache(Base):
+class ListCache(AllCache):
     @classmethod
-    def hgetall(cls):
-        return cls.redis().hgetall(cls.key)
-
-    @classmethod
-    def hget(cls, key):
-        return cls.redis().hget(cls.key, key)
+    def rpush(cls, val):
+        return cls.get_client().rpush(cls.key, val)
 
     @classmethod
-    def hset(cls, key, val):
-        return cls.redis().hset(cls.key, key, val)
+    def rpop(cls):
+        return cls.get_client().rpop(cls.key)
 
     @classmethod
-    def hdel(cls, key):
-        return cls.redis().hdel(cls.key, key)
-
-    @classmethod
-    def hmget(cls, map_keys):
-        return cls.redis().hmget(cls.key, map_keys)
-
-    @classmethod
-    def hmset(cls, map_vals):
-        return cls.redis().hmset(cls.key, map_vals)
+    def llen(cls):
+        return cls.get_client().llen(cls.key)
 
     @classmethod
     def delete(cls):
-        return cls.redis().delete(cls.key)
+        return cls.get_client().delete(cls.key)
+
+
+class HashCache(AllCache):
+    @classmethod
+    def hgetall(cls):
+        return cls.get_client().hgetall(cls.key)
+
+    @classmethod
+    def hget(cls, key):
+        return cls.get_client().hget(cls.key, key)
+
+    @classmethod
+    def hset(cls, key, val):
+        return cls.get_client().hset(cls.key, key, val)
+
+    @classmethod
+    def hdel(cls, key):
+        return cls.get_client().hdel(cls.key, key)
+
+    @classmethod
+    def hmget(cls, map_keys):
+        return cls.get_client().hmget(cls.key, map_keys)
+
+    @classmethod
+    def hmset(cls, map_vals):
+        return cls.get_client().hmset(cls.key, map_vals)
+
+    @classmethod
+    def delete(cls):
+        return cls.get_client().delete(cls.key)
+
+
+def check_rate_limit(key, limit=100, expire=600):
+    """
+    通用的限流检查函数
+    :param key: Redis键名
+    :param limit: 限制次数
+    :param expire: 过期时间（秒）
+    :return: True表示达到限制，False表示未达到限制
+    """
+    redis_client = AllCache.get_client()
+    count = redis_client.get(key)
+    if count and int(count) >= limit:
+        redis_client.close()
+        return True
+    
+    if count is None:
+        redis_client.set(key, 1, ex=expire)
+    else:
+        redis_client.incr(key)
+    redis_client.close()
+    return False

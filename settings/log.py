@@ -114,9 +114,7 @@ LOG_SANIC_CONF = {
         },
         'error': {
             'level': 'INFO',
-            # 'class': 'logging.FileHandler',
-            'class': 'common.log.QueueHandler',
-
+            'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': path + "/logs/output.log",
             'when': 'D',
             "encoding": "utf8",
