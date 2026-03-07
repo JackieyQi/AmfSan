@@ -33,6 +33,7 @@ route_map = {
     "check_break_history_top_price_job": plot.check_break_history_top_price,
     "check_strategy_job": plot.check_strategy,
     "check_strategy_by_symbol": plot.check_strategy_by_symbol,
+    "break_4_hours_strategy_job": plot.break_4_hours_strategy,
     #
     "update_all_symbols_job": plot.update_all_symbols,
     "cleanup_inactive_symbols_job": plot.cleanup_inactive_symbols,
