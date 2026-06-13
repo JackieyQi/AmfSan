@@ -226,6 +226,7 @@ class SymbolHandle(object):
         self.del_kdj_gate()
 
     async def delete_symbol(self):
+        """Remove a symbol from the manual watchlist without deleting market history."""
         with AllCache.get_client().lock(f"lock_delete_symbol:{self.symbol}", timeout=60) as lock:
             async with async_database.aio_atomic():
                 if self.user_id == "root":
@@ -238,19 +239,15 @@ class SymbolHandle(object):
                         UserSymbolPlotTable.symbol == self.symbol,
                     ).aio_execute()
 
-                if await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
-                        UserSymbolPlotTable.symbol == self.symbol).aio_exists():
-                    return {"plot_row": plot_row, }
-
-                kline_del_rows = await KlineTable.delete().where(KlineTable.symbol == self.symbol).aio_execute()
-                macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == self.symbol).aio_execute()
-                kdj_del_rows = await KdjTable.delete().where(KdjTable.symbol == self.symbol).aio_execute()
-                rsi_del_rows = await RsiTable.delete().where(RsiTable.symbol == self.symbol).aio_execute()
-                boll_del_rows = await BollTable.delete().where(BollTable.symbol == self.symbol).aio_execute()
+                remaining_watchers = await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
+                    UserSymbolPlotTable.symbol == self.symbol
+                ).aio_count()
 
             return {
-                "plot_row": plot_row, "kline_del_rows": kline_del_rows, "macd_del_rows": macd_del_rows,
-                "kdj_del_rows": kdj_del_rows, "rsi_del_rows": rsi_del_rows, "boll_del_rows": boll_del_rows,
+                "plot_row": plot_row,
+                "remaining_watchers": remaining_watchers,
+                "preserve_market_data": True,
+                "message": "已移出监控列表，历史行情和指标数据已保留",
             }
 
     async def add_symbol(self):
@@ -338,6 +335,22 @@ class BnSymbolHandle(object):
     
     async def add_symbol(self, symbol):
         pass
+
+
+class CandidateTopPriceNoticeSetting(object):
+    key = "setting:candidate_top_price_notice_enabled"
+
+    @classmethod
+    def get_enabled(cls):
+        value = AllCache.get_client().get(cls.key)
+        if isinstance(value, bytes):
+            value = value.decode("utf-8")
+        return value == "1"
+
+    @classmethod
+    def set_enabled(cls, enabled):
+        AllCache.get_client().set(cls.key, "1" if enabled else "0")
+        return {"enabled": cls.get_enabled()}
 
 
 class MacdInitData(object):

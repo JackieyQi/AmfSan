@@ -4,7 +4,12 @@
 import time
 from decimal import Decimal
 
-from business.market import MarketPriceHandler, SymbolHandle, BnSymbolHandle
+from business.market import (
+    BnSymbolHandle,
+    CandidateTopPriceNoticeSetting,
+    MarketPriceHandler,
+    SymbolHandle,
+)
 from utils.authentication import HTTPMethodView, ProtectedView
 from utils.common import str2decimal, decimal2str
 from utils.exception import StandardResponseExc
@@ -247,5 +252,30 @@ class BnSymbolView(ProtectedView):
         if user.user_id != "root":
             raise StandardResponseExc(msg="Permission denied")
         return await BnSymbolHandle().get_all()
-    
-    
+
+
+class CandidateTopPriceNoticeSettingView(ProtectedView):
+    need_auth = {"get": True, "post": True}
+
+    @staticmethod
+    def _ensure_admin(user):
+        if user.user_id != "root":
+            raise StandardResponseExc(msg="Permission denied")
+
+    @staticmethod
+    def _parse_enabled(value):
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            raise StandardResponseExc(msg="Missing required fields")
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    async def get(self, request):
+        self._ensure_admin(request.ctx.user)
+        return {"enabled": CandidateTopPriceNoticeSetting.get_enabled()}
+
+    async def post(self, request):
+        self._ensure_admin(request.ctx.user)
+        data = request.json or {}
+        enabled = self._parse_enabled(data.get("enabled"))
+        return CandidateTopPriceNoticeSetting.set_enabled(enabled)

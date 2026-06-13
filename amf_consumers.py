@@ -96,6 +96,8 @@ class QueueConsumer(ABC):
                 # Try to get a message with non-blocking behavior
                 value = mq.get(block=False, timeout=1)
                 if value:
+                    # Best-effort/no automatic retry by design. Task failures
+                    # are logged/alerted and recovered by the next scheduler run.
                     value.ack()
             except mq.Empty:
                 # 队列为空，正常情况

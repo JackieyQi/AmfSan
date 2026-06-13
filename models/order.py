@@ -63,7 +63,7 @@ class SymbolPriceChangeHistoryTable(Base):
     high_price = DecimalField(
         db_column="high_price", default=0, max_digits=20, decimal_places=8
     )
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "symbol_price_change_history_table"
@@ -90,7 +90,7 @@ class OrderTradeHistoryTable(Base):
     is_maker = BooleanField(db_column="is_maker", help_text="卖出")
     extra_data = TextField()
 
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "order_trade_history_table"

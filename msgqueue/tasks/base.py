@@ -51,6 +51,12 @@ class BasePlotHandle(object):
 
 
 async def get_plot_symbols_info(redis_client):
+    """Return active watchlist symbols only.
+
+    The cache is hydrated from UserSymbolPlotTable, which is the manually
+    managed watchlist. Do not switch this source to BnSymbolTable; that table is
+    only the Binance candidate universe.
+    """
     symbols_info = {}
     redis_key = "symbol:cfg"
 

@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import aiohttp
 
-from business.market import MarketPriceHandler, SymbolHandle
+from business.market import CandidateTopPriceNoticeSetting, MarketPriceHandler
 from business.trade_signal_recorder import TradeSignalHandler
 from cache import AllCache
 from cache.plot import (CheckKdjCrossGateCache,
@@ -60,7 +60,6 @@ async def update_all_symbols(*args, **kwargs):
 
 async def cleanup_inactive_symbols(*args, **kwargs):
     await TopPriceTaskHandle().cleanup_inactive_symbols()
-    SymbolHandle().refresh_symbol_cache()
 
 
 async def check_balance(*args, **kwargs):
@@ -92,7 +91,10 @@ async def check_strategy_by_symbol(val):
 
 
 async def break_4_hours_strategy(*args, **kwargs):
-    await StrategyCheckHandle().break_4_hours_strategy()
+    logger.warning(
+        "break_4_hours_strategy_job ignored: legacy route has no active implementation"
+    )
+    return {"enabled": False, "reason": "legacy route has no active implementation"}
 
 
 
@@ -170,7 +172,7 @@ class TopPriceTaskHandle(BasePlotHandle):
         super().__init__()
 
     async def cleanup_inactive_symbols(self):
-        """ 清除没有产生 有效交易信号 的symbol """
+        """List stale symbols without mutating the manually managed watchlist."""
         target_ts = int(time.time()) - 40 * 3600
         has_in_symbol_list = []
         has_pending_symbol_list = []
@@ -195,23 +197,17 @@ class TopPriceTaskHandle(BasePlotHandle):
                 continue
             if i.symbol not in has_in_symbol_list:
                 need_update_del_symbol_list.append(i.symbol)
-        need_update_del_symbol_list = list(set(need_update_del_symbol_list))
+        need_update_del_symbol_list = sorted(set(need_update_del_symbol_list))
 
-        # print(f"需要更新的交易对：{need_update_del_symbol_list}")
-        logger.info(f"cleanup_inactive_symbols, need_update_del_symbol_list:{need_update_del_symbol_list}")
-        for symbol in need_update_del_symbol_list:
-            if symbol in ["btcusdt", "ethusdt", "solusdt", "dogeusdt", "xrpusdt"]:
-                continue
+        if not need_update_del_symbol_list:
+            logger.info("cleanup_inactive_symbols, no stale symbol candidates")
+            return []
 
-            await PlotBackTestTable.delete().where(PlotBackTestTable.symbol == symbol).aio_execute()
-
-            await UserSymbolPlotTable.delete().where(UserSymbolPlotTable.symbol == symbol).aio_execute()
-
-            kline_del_rows = await KlineTable.delete().where(KlineTable.symbol == symbol).aio_execute()
-            macd_del_rows = await MacdTable.delete().where(MacdTable.symbol == symbol).aio_execute()
-            kdj_del_rows = await KdjTable.delete().where(KdjTable.symbol == symbol).aio_execute()
-            rsi_del_rows = await RsiTable.delete().where(RsiTable.symbol == symbol).aio_execute()
-            boll_del_rows = await BollTable.delete().where(BollTable.symbol == symbol).aio_execute()
+        logger.info(
+            "cleanup_inactive_symbols, auto cleanup disabled for manual watchlist, candidates:%s",
+            need_update_del_symbol_list,
+        )
+        return need_update_del_symbol_list
 
     async def update_all_symbols(self):
         all_symbols_list = []
@@ -251,7 +247,11 @@ class TopPriceTaskHandle(BasePlotHandle):
                 bn_symbols_list.remove(symbol)
                 continue
             await self._check_break_history_top_price_from_db(symbol)
-        
+
+        if not CandidateTopPriceNoticeSetting.get_enabled():
+            logger.info("check_break_history_top_price, candidate top price notices disabled")
+            return
+
         for symbol in bn_symbols_list:
             await self._check_break_history_top_price_from_api(symbol)
 
@@ -289,14 +289,11 @@ class TopPriceTaskHandle(BasePlotHandle):
             logger.error(f"_check_break_history_top_price_from_api: {e} - {symbol}")
             return
 
-        symbol_handler = SymbolHandle(symbol=symbol, user_id="root")
-        await symbol_handler.add_symbol()
-        symbol_handler.refresh_symbol_cache()
-                
         email_title = f"{symbol} Top Price Notice"
         
         self.result[symbol] = f"""
         <br><br><b> {symbol}: </b><br> 🚀 new high price:{curr_high_price},
+        <br>候选提醒：不会自动加入监控池，如需监控请在 admin 手动添加。
         """ 
 
         email_msg_md5_str = f"check_break_history_top_price:{symbol}:{curr_ts}"
@@ -318,14 +315,11 @@ class TopPriceTaskHandle(BasePlotHandle):
         if curr_high_price <= history_high_price:
             return
         
-        symbol_handler = SymbolHandle(symbol=symbol, user_id="root")
-        await symbol_handler.add_symbol()
-        symbol_handler.refresh_symbol_cache()
-
         email_title = f"{symbol} Top Price Notice"
         
         self.result[symbol] = f"""
         <br><br><b> {symbol}: </b><br>🔥 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀 new high price:{curr_high_price},
+        <br>候选提醒：不会自动加入监控池，如需监控请在 admin 手动添加。
         """ 
 
         email_msg_md5_str = f"check_break_history_top_price:{symbol}:{query_list[0].open_ts}"

@@ -5,8 +5,10 @@ from .huobi_exchange import AccountInfoView as HuobiAccountInfoView
 from .market import (MarketInnerPriceView, MarketMacdCrossGateView,
                      MarketMacdTrendGateView, MarketPriceGateView,
                      MarketPriceView, MarketKdjCrossGateView,
-                     SubmitMarketLimitPriceView, MarketPlotManageView, BnSymbolView)
-from .plot import TradeSignalRecordsView, TradeSignalRecordDetailView, SymbolScoreView
+                     SubmitMarketLimitPriceView, MarketPlotManageView, BnSymbolView,
+                     CandidateTopPriceNoticeSettingView)
+from .plot import (SignalCatalogView, SymbolScoreView,
+                   TradeSignalRecordDetailView, TradeSignalRecordsView)
 from .test import ServerTimeView, TestView
 from .cache_sync import CacheSyncView
 from .user import UserLogoutView, UserRegisterView, UserRegisterVerification, UserLoginView
@@ -28,11 +30,13 @@ urls_bp = [
     ),
     (MarketPlotManageView.as_view(), "api/market/plot"),
     (BnSymbolView.as_view(), "api/market/bn/symbol"),
+    (CandidateTopPriceNoticeSettingView.as_view(), "api/market/bn/top-price-notice"),
 
     (CacheSyncView.as_view(), "api/cache/sync/"),
 
     (TradeSignalRecordsView.as_view(), "api/plot/backtest/record/list"),
     (TradeSignalRecordDetailView.as_view(), "api/plot/backtest/record/detail"),
+    (SignalCatalogView.as_view(), "api/plot/signal/catalog"),
     (SymbolScoreView.as_view(), "api/plot/symbol/score"),
 
     (HuobiAccountInfoView.as_view(), "nmb"),

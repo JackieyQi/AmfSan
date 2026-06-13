@@ -11,6 +11,7 @@ from utils.common import str2decimal, decimal2decimal, decimal2str, convert_seco
 from utils.exception import StandardResponseExc
 from cache import AllCache
 from .market import MarketPriceHandler
+from .signal_catalog import SIGNAL_RECORD_STATUS_TEXT
 
 
 class TradeSignalViewHandler(object):
@@ -55,7 +56,10 @@ class TradeSignalViewHandler(object):
 
     async def get_trade_records(self, page=1, page_size=10, symbol=None, status=None):
         """
-        分页查询交易记录
+        分页查询信号追踪记录。
+
+        These records describe strategy signal lifecycle tracking. They are not
+        exchange order records and do not imply automatic order placement.
 
         Args:
             page (int): 当前页码，默认为1
@@ -135,15 +139,7 @@ class TradeSignalViewHandler(object):
 
     def _get_status_text(self, status):
         """获取状态文本描述"""
-        status_map = {
-            0: "挂买单中",
-            1: "买入成功，等待卖出",
-            2: "买入失败",
-            3: "挂卖单中",
-            4: "卖出成功",
-            5: "挂卖单失败，以市价卖出"
-        }
-        return status_map.get(status, "未知状态")
+        return SIGNAL_RECORD_STATUS_TEXT.get(status, "未知状态")
 
     def _format_hold_time(self, hold_time):
         days, hours, minutes = convert_seconds(hold_time)
@@ -177,7 +173,7 @@ class TradeSignalHandler(object):
             #     bid_plot_msg=bid_plot_msg,
             # )
             
-            # TODO: 强制买入，当前价格为买入价格 -> 检查策略效果
+            # Record the entry signal with current price as the simulated entry price.
             await PlotBackTestTable.aio_create(
                 symbol=self.symbol,
                 bid_curr_price=curr_price,
@@ -223,7 +219,7 @@ class TradeSignalHandler(object):
                     # last_ticket.status = 3
                     # await last_ticket.aio_save()
 
-                    # TODO: 强制卖出，当前价格为卖出价格 -> 检查策略效果
+                    # Record the exit signal with the suggested/current simulated exit price.
                     last_ticket.ask_curr_price = curr_price
                     last_ticket.ask_price = ask_price
                     last_ticket.ask_ts = ask_ts
@@ -293,7 +289,7 @@ class TradeSignalHandler(object):
 
                         self.set_last_trade_time(curr_ts)
 
-                    # TODO: 挂卖单->延迟挂单时间
+                    # TODO: 出场信号待确认 -> 延迟确认时间
                     elif _d.ask_ts < (curr_ts - 7200):
                         _d.sell_price = curr_price
                         _d.sell_ts = curr_ts

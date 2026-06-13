@@ -14,7 +14,7 @@ class UserInfoTable(Base):
     email = CharField(db_column="email", max_length=32, unique=True)
     password = CharField(db_column="password")
     invite_code = CharField(db_column="invite_code", max_length=5)
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "user_info_table"
@@ -33,7 +33,7 @@ class UserSymbolPlotTable(Base):
     )
     is_valid = BooleanField(db_column="is_valid", default=True)
 
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "symbol_plot_table"
@@ -45,7 +45,7 @@ class UserSymbolPlotTable(Base):
 class EmailMsgHistoryTable(Base):
     msg_md5 = CharField(db_column="msg_md5", max_length=32, unique=True)
     msg_content = TextField(db_column="msg_content")
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "email_msg_history_table"

@@ -13,7 +13,7 @@ class BnSymbolTable(Base):
     id = AutoField()
     symbol = CharField(db_column="symbol", max_length=10, unique=True)
     is_valid = BooleanField(db_column="is_valid", default=True)
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "bn_symbol_table"
@@ -50,7 +50,7 @@ class KlineTable(Base):
     buy_asset_volume = DecimalField(
         db_column="buy_asset_volume", default=0, max_digits=20, decimal_places=8, help_text="主动买入成交额"
     )
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "kline_table"
@@ -72,7 +72,7 @@ class EmaTable(Base):
     ema30 = DecimalField(
         db_column="ema30", default=0, max_digits=20, decimal_places=8
     )
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "ema_table"
@@ -101,7 +101,7 @@ class MacdTable(Base):
     # TODO:高位小数有进行比例转换，autoscale
     # scale_exp = IntegerField(db_column="scale_exp", default=1)
 
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "macd_table"
@@ -131,7 +131,7 @@ class KdjTable(Base):
                   "计算周期9移动平均周期1为3移动平均周期2为3"
     )
 
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "kdj_table"
@@ -161,7 +161,7 @@ class RsiTable(Base):
     # TODO:column error.
     period = IntegerField(db_column="status", default=6, help_text="rsi周期")
 
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "rsi_table"
@@ -192,7 +192,7 @@ class BollTable(Base):
     )
     period = IntegerField(db_column="period", default=6, help_text="boll周期")
 
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "boll_table"

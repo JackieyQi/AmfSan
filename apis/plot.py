@@ -2,6 +2,7 @@
 # coding:utf8
 
 from utils.authentication import HTTPMethodView, ProtectedView
+from business.signal_catalog import get_signal_catalog
 from business.trade_signal_recorder import TradeSignalViewHandler
 from business.strategy import StrategyHandle
 from utils.exception import StandardResponseExc
@@ -35,6 +36,13 @@ class TradeSignalRecordDetailView(ProtectedView):
             raise StandardResponseExc(msg="Missing required fields")
 
         return await TradeSignalViewHandler(user.user_id).get_detail_record(symbol, record_id)
+
+
+class SignalCatalogView(ProtectedView):
+    need_auth = {"get": True, }
+
+    async def get(self, request):
+        return get_signal_catalog()
 
 
 class SymbolScoreView(HTTPMethodView):

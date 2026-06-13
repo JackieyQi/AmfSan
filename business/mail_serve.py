@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 def send_email(recipient, subject, text, from_name="AMF"):
     if check_rate_limit("email_send_limit", limit=100, expire=600):
+        recipient_count = len(recipient) if isinstance(recipient, list) else 1
+        logger.warning(
+            "Email send skipped by rate limit, subject:%s, recipient_count:%s",
+            subject,
+            recipient_count,
+        )
         return
 
     if isinstance(recipient, list):
@@ -59,4 +65,10 @@ def _send_email(recipient, subject, text, from_name):
         logger.info("Email send success")
         return True
     except BaseException as e:
-        logger.error(",".join((str(e), traceback.format_exc())))
+        logger.error(
+            "Email send failed, subject:%s, recipient_count:%s, error:%s,%s",
+            subject,
+            1,
+            str(e),
+            traceback.format_exc(),
+        )

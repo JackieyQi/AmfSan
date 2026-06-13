@@ -416,7 +416,7 @@ class StrategyCheckHandle(BasePlotHandle):
                         f"当前价: {decimal2str(curr_price)}。<br><br>"
             func_str = "get_buy_score_info"
 
-            # TODO: 这里应该是实盘记录，回测记录需要单独出来，供策略回测优化。
+            # This records signal tracking for review; it does not place exchange orders.
 
             await TradeSignalHandler(self.symbol).add_bid_ticket(
                 curr_price,

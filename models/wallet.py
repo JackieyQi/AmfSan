@@ -21,7 +21,7 @@ class TotalBalanceHistoryTable(Base):
     )
     exchange_platform = CharField(db_column="exchange_platform", default="binance")
     exchange_data = TextField(db_column="exchange_data")
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 
     class Meta:
         table_name = "total_balance_history_table"
@@ -40,7 +40,7 @@ class BalanceHistoryTable(Base):
     )
     bid_coin = CharField(null=False, db_column="bid_coin", max_length=10)
 
-    create_ts = IntegerField(db_column="create_ts", default=int(time.time()))
+    create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
     # create_ts = TimestampField(db_column="create_ts", resolution=3) =>BigInt
 
     class Meta:

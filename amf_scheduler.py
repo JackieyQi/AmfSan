@@ -95,7 +95,9 @@ class JobScheduler(object):
         schedule.every(30).seconds.do(lambda: self.push_to_plot("check_price_job"))
         schedule.every(17).minutes.do(lambda: self.push_to_plot("check_break_history_top_price_job"))
         schedule.every(3).minutes.do(lambda: self.push_to_amf("check_strategy_job", amf_queue))
-        schedule.every(7).minutes.do(lambda: self.push_to_amf("break_4_hours_strategy_job", amf_queue))
+        # break_4_hours_strategy_job is a legacy route without a live implementation.
+        # Keep it disabled until the strategy path is explicitly rebuilt.
+        # schedule.every(7).minutes.do(lambda: self.push_to_amf("break_4_hours_strategy_job", amf_queue))
 
         # user action
         # schedule.every().day.at("05:00").do(save_trade_history_job)

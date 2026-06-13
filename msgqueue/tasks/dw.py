@@ -139,17 +139,24 @@ async def update_fng_job(*args, **kwargs):
 
 async def update_price(*args, **kwargs):
     symbol_list = []
-    
+
     market_price_handler = MarketPriceHandler()
     for symbol, price in market_price_handler.get_all_limit_price().items():
         symbol_list.append(symbol)
-        
+
     query = await UserSymbolPlotTable.select(UserSymbolPlotTable.symbol).aio_execute()
     for row in query:
         symbol_list.append(row.symbol)
 
+    if not symbol_list:
+        return
+
     result = await BinanceExchangeRequestHandle().get_current_price_async(
         symbol_list=list(set(symbol_list)))
+    if not result or not isinstance(result, list):
+        logger.warning(f"get_current_price_async returned: {result}")
+        return
+
     for item in result:
         symbol = item["symbol"]
         price = item["price"]
@@ -158,41 +165,126 @@ async def update_price(*args, **kwargs):
 
 @locking("save_kline_job")
 async def save_kline_job(*args, **kwargs):
+    start_time = time.time()
     redis_client = AllCache.get_client()
+    symbols_info = {}
+    success_count = 0
+    failed_count = 0
+    saved_kline_count = 0
 
-    symbols_info = await get_plot_symbols_info(redis_client)
-    for symbol in symbols_info.keys():
-        for _interval in STRATEGY_INTERVAL_LIST:
-            await KlineDataSaveHandle(symbol, _interval).save_data()
-    redis_client.close()
+    try:
+        symbols_info = await get_plot_symbols_info(redis_client)
+        logger.info(
+            "save_kline_job start, symbols:%s, intervals:%s, source:UserSymbolPlotTable/cache",
+            len(symbols_info),
+            len(STRATEGY_INTERVAL_LIST),
+        )
+        for symbol in symbols_info.keys():
+            for _interval in STRATEGY_INTERVAL_LIST:
+                try:
+                    saved_count = await KlineDataSaveHandle(symbol, _interval).save_data()
+                    success_count += 1
+                    saved_kline_count += saved_count or 0
+                except Exception:
+                    failed_count += 1
+                    logger.exception(
+                        "save_kline_job failed, symbol:%s, interval:%s",
+                        symbol,
+                        _interval,
+                    )
+                    raise
+    finally:
+        logger.info(
+            "save_kline_job finish, symbols:%s, intervals:%s, success:%s, failed:%s, kline_rows:%s, elapsed:%.2fs",
+            len(symbols_info),
+            len(STRATEGY_INTERVAL_LIST),
+            success_count,
+            failed_count,
+            saved_kline_count,
+            time.time() - start_time,
+        )
+        redis_client.close()
 
 
 async def save_indicators_job(*args, **kwargs):
+    start_time = time.time()
     redis_client = AllCache.get_client()
+    symbols_info = {}
+    enqueued_count = 0
+    skipped_count = 0
+    failed_count = 0
 
-    symbols_info = await get_plot_symbols_info(redis_client)
-    for symbol, _ in symbols_info.items():
-        for _interval in STRATEGY_INTERVAL_LIST:
+    try:
+        symbols_info = await get_plot_symbols_info(redis_client)
+        logger.info(
+            "save_indicators_job start, symbols:%s, intervals:%s, source:UserSymbolPlotTable/cache",
+            len(symbols_info),
+            len(STRATEGY_INTERVAL_LIST),
+        )
+        for symbol, _ in symbols_info.items():
+            for _interval in STRATEGY_INTERVAL_LIST:
 
-            if redis_client.get(f"s_indicators:{symbol}:{_interval}"):
-                continue
-            redis_client.set(f"s_indicators:{symbol}:{_interval}", 1, 1024)
+                if redis_client.get(f"s_indicators:{symbol}:{_interval}"):
+                    skipped_count += 1
+                    continue
+                redis_client.set(f"s_indicators:{symbol}:{_interval}", 1, 1024)
 
-            await push_symbol_mq({
-                "bp": "save_indicators_job_by_symbol",
-                "symbol": symbol,
-                "interval": _interval
-            })
-    redis_client.close()
+                try:
+                    await push_symbol_mq({
+                        "bp": "save_indicators_job_by_symbol",
+                        "symbol": symbol,
+                        "interval": _interval
+                    })
+                    enqueued_count += 1
+                except Exception:
+                    failed_count += 1
+                    logger.exception(
+                        "save_indicators_job enqueue failed, symbol:%s, interval:%s",
+                        symbol,
+                        _interval,
+                    )
+                    raise
+    finally:
+        logger.info(
+            "save_indicators_job finish, symbols:%s, intervals:%s, enqueued:%s, skipped:%s, failed:%s, elapsed:%.2fs",
+            len(symbols_info),
+            len(STRATEGY_INTERVAL_LIST),
+            enqueued_count,
+            skipped_count,
+            failed_count,
+            time.time() - start_time,
+        )
+        redis_client.close()
 
 
 async def save_indicators_job_by_symbol(msg):
     symbol = msg.get("symbol")
     _interval = msg.get("interval")
-    await IndicatorsCalculateHandle(symbol, _interval).start_cal()
+    start_time = time.time()
+    logger.info(
+        "save_indicators_job_by_symbol start, symbol:%s, interval:%s",
+        symbol,
+        _interval,
+    )
+    try:
+        await IndicatorsCalculateHandle(symbol, _interval).start_cal()
+    except Exception:
+        logger.exception(
+            "save_indicators_job_by_symbol failed, symbol:%s, interval:%s, elapsed:%.2fs",
+            symbol,
+            _interval,
+            time.time() - start_time,
+        )
+        raise
 
     with RedisPoolContext() as r:
         r.delete(f"s_indicators:{symbol}:{_interval}")
+    logger.info(
+        "save_indicators_job_by_symbol finish, symbol:%s, interval:%s, elapsed:%.2fs",
+        symbol,
+        _interval,
+        time.time() - start_time,
+    )
 
 
 class KlineDataSaveHandle(object):
@@ -282,22 +374,40 @@ class KlineDataSaveHandle(object):
         # if resp_data:
         #     return resp_data["data"]
 
-        result = BinanceExchangeRequestHandle().get_k_lines(
-            self.symbol.upper(), self.interval,
-            request_params.get("start_ts"),
-            request_params.get("limit"),
-        )
+        try:
+            result = BinanceExchangeRequestHandle().get_k_lines(
+                self.symbol.upper(), self.interval,
+                request_params.get("start_ts"),
+                request_params.get("limit"),
+            )
+        except Exception:
+            logger.exception(
+                "KlineDataSaveHandle get_k_lines failed, symbol:%s, interval:%s, start_ts:%s, limit:%s",
+                self.symbol,
+                self.interval,
+                request_params.get("start_ts"),
+                request_params.get("limit"),
+            )
+            raise
+        if not result:
+            logger.warning(
+                "KlineDataSaveHandle get_k_lines empty, symbol:%s, interval:%s, start_ts:%s, limit:%s",
+                self.symbol,
+                self.interval,
+                request_params.get("start_ts"),
+                request_params.get("limit"),
+            )
         return result if result else None
 
     async def save_data(self):
         if not self.interval:
-            return
+            return 0
 
         init_start_ts = await self.get_init_indicators_time()
 
         k_data = await self.get_k_lines_by_innerapi(init_start_ts)
         if not k_data:
-            return
+            return 0
 
         async with async_database.aio_atomic():
             for data in k_data:
@@ -346,6 +456,7 @@ class KlineDataSaveHandle(object):
                         buy_volume=buy_volume,
                         buy_asset_volume=buy_asset_volume,
                     )
+        return len(k_data)
 
 
 class MacdDataSaveHandle(object):
