@@ -103,6 +103,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.*.example
 .venv
 env/
 venv/
@@ -130,5 +132,6 @@ dmypy.json
 
 # configuration
 settings/cfg_*.json
+deploy/n100/.env.amfsan
 
 .idea/

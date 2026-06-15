@@ -31,7 +31,7 @@ class BalanceHistoryTable(Base):
     # id = IntegerField(primary_key=True, auto_increment=True)
     user_id = CharField(null=False, db_column="user_id")
     coin = CharField(null=False, db_column="coin", max_length=10, index=True)
-    status_type = CharField(null=False, db_column="status_type", max_length="10")
+    status_type = CharField(null=False, db_column="status_type", max_length=10)
     amount = DecimalField(
         null=False, db_column="amount", default=0, max_digits=20, decimal_places=8
     )

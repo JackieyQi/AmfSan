@@ -1,23 +1,23 @@
-version: '3'
-
 services:
-  amf-mysql:
-    hostname: mysql
-    image: mysql
+  amf-postgres:
+    hostname: amf-postgres
+    image: postgres:14
     environment:
-      - MYSQL_ROOT_PASSWORD=mysqlpwd
+      POSTGRES_DB: ${AMFSAN_DB_NAME:-amfsan}
+      POSTGRES_USER: ${AMFSAN_DB_USER:-amfsan}
+      POSTGRES_PASSWORD: ${AMFSAN_DB_PASSWORD:?Set AMFSAN_DB_PASSWORD}
 
   amf-redis:
-    hostname: redis
+    hostname: amf-redis
     image: redis
     command: redis-server --appendonly yes
 
   amf-rabbitmq:
-    hostname: rabbitmq
+    hostname: amf-rabbitmq
     image: rabbitmq
     environment:
-      - RABBITMQ_DEFAULT_USER=amf
-      - RABBITMQ_DEFAULT_PASS=amfpwd
+      RABBITMQ_DEFAULT_USER: ${AMFSAN_RABBITMQ_USER:-amf}
+      RABBITMQ_DEFAULT_PASS: ${AMFSAN_RABBITMQ_PASSWORD:?Set AMFSAN_RABBITMQ_PASSWORD}
 
   amf-web:
     build:
@@ -28,17 +28,52 @@ services:
       - ..:/app
         #- /root/docker-amf/uploads:/app/uploads:rw
     ports:
-      - "8080:8080"
-    # external_links:
-      # - amf-mysql
+      - "${AMFSAN_HTTP_BIND:-0.0.0.0}:${AMFSAN_HTTP_PORT:-8080}:8080"
+    environment:
+      AMFSAN_HOST: ${AMFSAN_HOST:-0.0.0.0}
+      AMFSAN_PORT: ${AMFSAN_PORT:-8080}
+      AMFSAN_DEBUG: ${AMFSAN_DEBUG:-false}
+      AMFSAN_ACCESS_LOG: ${AMFSAN_ACCESS_LOG:-true}
+      AMFSAN_AUTO_RELOAD: ${AMFSAN_AUTO_RELOAD:-false}
+      AMFSAN_SECRET_KEY: ${AMFSAN_SECRET_KEY:?Set AMFSAN_SECRET_KEY}
+      AMFSAN_ADMINISTRATOR_EMAIL: ${AMFSAN_ADMINISTRATOR_EMAIL:-}
+      AMFSAN_HTTP_INNER_URL: ${AMFSAN_HTTP_INNER_URL:-http://127.0.0.1:8080}
+
+      AMFSAN_DB_ENGINE: ${AMFSAN_DB_ENGINE:-postgresql}
+      AMFSAN_DB_HOST: ${AMFSAN_DB_HOST:-amf-postgres}
+      AMFSAN_DB_PORT: ${AMFSAN_DB_PORT:-5432}
+      AMFSAN_DB_NAME: ${AMFSAN_DB_NAME:-amfsan}
+      AMFSAN_DB_USER: ${AMFSAN_DB_USER:-amfsan}
+      AMFSAN_DB_PASSWORD: ${AMFSAN_DB_PASSWORD:?Set AMFSAN_DB_PASSWORD}
+      AMFSAN_DB_CHARSET: ${AMFSAN_DB_CHARSET:-utf8mb4}
+      AMFSAN_DB_CONNECTIONS: ${AMFSAN_DB_CONNECTIONS:-10}
+      AMFSAN_DB_TIMEOUT: ${AMFSAN_DB_TIMEOUT:-30}
+
+      AMFSAN_REDIS_HOST: ${AMFSAN_REDIS_HOST:-amf-redis}
+      AMFSAN_REDIS_PORT: ${AMFSAN_REDIS_PORT:-6379}
+      AMFSAN_REDIS_DB: ${AMFSAN_REDIS_DB:-2}
+
+      AMFSAN_RABBITMQ_HOST: ${AMFSAN_RABBITMQ_HOST:-amf-rabbitmq}
+      AMFSAN_RABBITMQ_PORT: ${AMFSAN_RABBITMQ_PORT:-5672}
+      AMFSAN_RABBITMQ_USER: ${AMFSAN_RABBITMQ_USER:-amf}
+      AMFSAN_RABBITMQ_PASSWORD: ${AMFSAN_RABBITMQ_PASSWORD:?Set AMFSAN_RABBITMQ_PASSWORD}
+      AMFSAN_RABBITMQ_VHOST: ${AMFSAN_RABBITMQ_VHOST:-/}
+      AMFSAN_RABBITMQ_EXCHANGE: ${AMFSAN_RABBITMQ_EXCHANGE:-amf}
+
+      AMFSAN_EMAIL_SMTP: ${AMFSAN_EMAIL_SMTP:-}
+      AMFSAN_EMAIL_PORT: ${AMFSAN_EMAIL_PORT:-465}
+      AMFSAN_EMAIL_USER: ${AMFSAN_EMAIL_USER:-}
+      AMFSAN_EMAIL_PASSWORD: ${AMFSAN_EMAIL_PASSWORD:-}
+      AMFSAN_BINANCE_KEY: ${AMFSAN_BINANCE_KEY:-}
+      AMFSAN_BINANCE_SECRET: ${AMFSAN_BINANCE_SECRET:-}
     links:
       - amf-rabbitmq
       - amf-redis
-      - amf-mysql
+      - amf-postgres
     depends_on:
       - amf-rabbitmq
       - amf-redis
-      - amf-mysql
+      - amf-postgres
 
         #command: bash -c "pip install -r requirements.txt -i https://pypi.doubanio.com/simple/; /usr/bin/supervisord -n -n /app/docker/supervisord.conf"
     command: bash -c "pip install -r requirements.txt; /usr/bin/supervisord -n -c /app/docker/supervisord.conf"

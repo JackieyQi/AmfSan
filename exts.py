@@ -5,11 +5,10 @@ import redis
 import threading
 import logging.config
 import time
+import re
 from contextlib import asynccontextmanager, contextmanager
-from typing import Optional, AsyncGenerator, Generator
+from typing import Any, Optional, AsyncGenerator, Generator
 from kombu import Connection, Exchange, Queue
-from playhouse.pool import PooledMySQLDatabase
-from peewee_async import PooledMySQLDatabase as AsyncPooledMySQLDatabase
 
 from settings import log
 from settings.setting import cfgs
@@ -17,7 +16,49 @@ from settings.setting import cfgs
 logger = logging.getLogger(__name__)
 
 debug = cfgs["debug"]
-mycnf = cfgs["mysql"]
+
+
+_POSTGRES_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _normalize_database_engine(engine: str) -> str:
+    engine = (engine or "postgresql").lower()
+    if engine in ("postgres", "postgresql", "pg"):
+        return "postgresql"
+    if engine in ("mysql", "mariadb"):
+        return "mysql"
+    raise ValueError(f"Unsupported database engine: {engine}")
+
+
+def _get_database_config() -> dict:
+    database_cfg = cfgs.get("database", {})
+    engine = _normalize_database_engine(database_cfg.get("engine", "postgresql"))
+
+    merged_cfg = database_cfg.copy()
+    merged_cfg["engine"] = engine
+
+    if "db" not in merged_cfg and "database" in merged_cfg:
+        merged_cfg["db"] = merged_cfg["database"]
+    if "pwd" not in merged_cfg and "password" in merged_cfg:
+        merged_cfg["pwd"] = merged_cfg["password"]
+
+    return merged_cfg
+
+
+def get_database_engine() -> str:
+    return _get_database_config()["engine"]
+
+
+def get_database_schema() -> str:
+    return _get_database_config().get("schema") or "public"
+
+
+def _postgres_connection_options(schema: str) -> dict:
+    if not schema:
+        return {}
+    if not _POSTGRES_IDENTIFIER_RE.match(schema):
+        raise ValueError(f"Invalid PostgreSQL schema name: {schema}")
+    return {"options": f"-c search_path={schema},public"}
 
 
 class RedisClient:
@@ -50,59 +91,107 @@ class RedisClient:
 class DatabaseConnectionManager:
     """数据库连接管理器 - 统一管理同步和异步连接"""
     
-    _sync_database: Optional[PooledMySQLDatabase] = None
-    _async_database: Optional[AsyncPooledMySQLDatabase] = None
+    _sync_database: Optional[Any] = None
+    _async_database: Optional[Any] = None
     _lock = threading.Lock()
     _last_health_check = 0
     _health_check_interval = 300  # 5分钟检查一次
 
     @classmethod
-    def _create_sync_database(cls) -> PooledMySQLDatabase:
+    def _create_sync_database(cls) -> Any:
         """创建同步数据库连接"""
         try:
-            database = PooledMySQLDatabase(
-                mycnf["db"],
-                host=mycnf["host"],
-                port=mycnf["port"],
-                charset=mycnf["charset"],
-                user=mycnf["user"],
-                passwd=mycnf["pwd"],
-                max_connections=min(mycnf["connections"], 20),  # 限制同步连接数
-                stale_timeout=mycnf["timeout"],
-                timeout=30,
-                # 连接池优化参数
-                autoconnect=True,
-                autorollback=True,
-            )
+            cnf = _get_database_config()
+            engine = cnf["engine"]
+            max_connections = min(int(cnf.get("connections", 10)), 20)
+            timeout = int(cnf.get("timeout", 30))
+
+            if engine == "postgresql":
+                from playhouse.pool import PooledPostgresqlDatabase
+
+                postgres_options = _postgres_connection_options(cnf.get("schema", "public"))
+                database = PooledPostgresqlDatabase(
+                    cnf["db"],
+                    host=cnf["host"],
+                    port=int(cnf.get("port", 5432)),
+                    user=cnf["user"],
+                    password=cnf["pwd"],
+                    max_connections=max_connections,
+                    stale_timeout=timeout,
+                    timeout=30,
+                    autoconnect=True,
+                    autorollback=True,
+                    **postgres_options,
+                )
+            else:
+                logger.warning("MySQL database engine is legacy; PostgreSQL is the primary backend")
+                from playhouse.pool import PooledMySQLDatabase
+
+                database = PooledMySQLDatabase(
+                    cnf["db"],
+                    host=cnf["host"],
+                    port=int(cnf.get("port", 3306)),
+                    charset=cnf.get("charset", "utf8mb4"),
+                    user=cnf["user"],
+                    passwd=cnf["pwd"],
+                    max_connections=max_connections,  # 限制同步连接数
+                    stale_timeout=timeout,
+                    timeout=30,
+                    # 连接池优化参数
+                    autoconnect=True,
+                    autorollback=True,
+                )
             
             # 测试连接
             database.connect(reuse_if_open=True)
             database.execute_sql('SELECT 1')
-            logger.info("同步数据库连接建立成功")
+            logger.info(f"同步数据库连接建立成功, engine={engine}")
             return database
-            
+
         except Exception as e:
             logger.error(f"同步数据库连接失败: {e}")
             raise
 
     @classmethod
-    def _create_async_database(cls) -> AsyncPooledMySQLDatabase:
+    def _create_async_database(cls) -> Any:
         """创建异步数据库连接"""
         try:
-            database = AsyncPooledMySQLDatabase(
-                mycnf["db"],
-                host=mycnf["host"],
-                port=mycnf["port"],
-                charset=mycnf["charset"],
-                user=mycnf["user"],
-                password=mycnf["pwd"],
-                max_connections=mycnf["connections"],
-                connect_timeout=mycnf["timeout"],
-                # 异步连接池优化参数
-                autoconnect=True,
-                autorollback=True,
-            )
-            logger.info("异步数据库连接配置完成")
+            cnf = _get_database_config()
+            engine = cnf["engine"]
+
+            if engine == "postgresql":
+                from peewee_async import PooledPostgresqlDatabase
+
+                postgres_options = _postgres_connection_options(cnf.get("schema", "public"))
+                database = PooledPostgresqlDatabase(
+                    cnf["db"],
+                    host=cnf["host"],
+                    port=int(cnf.get("port", 5432)),
+                    user=cnf["user"],
+                    password=cnf["pwd"],
+                    max_connections=int(cnf.get("connections", 10)),
+                    autoconnect=True,
+                    autorollback=True,
+                    **postgres_options,
+                )
+            else:
+                logger.warning("MySQL database engine is legacy; PostgreSQL is the primary backend")
+                from peewee_async import PooledMySQLDatabase as AsyncPooledMySQLDatabase
+
+                database = AsyncPooledMySQLDatabase(
+                    cnf["db"],
+                    host=cnf["host"],
+                    port=int(cnf.get("port", 3306)),
+                    charset=cnf.get("charset", "utf8mb4"),
+                    user=cnf["user"],
+                    password=cnf["pwd"],
+                    max_connections=int(cnf.get("connections", 10)),
+                    connect_timeout=int(cnf.get("timeout", 30)),
+                    # 异步连接池优化参数
+                    autoconnect=True,
+                    autorollback=True,
+                )
+            logger.info(f"异步数据库连接配置完成, engine={engine}")
             return database
             
         except Exception as e:
@@ -110,7 +199,7 @@ class DatabaseConnectionManager:
             raise
 
     @classmethod
-    def get_sync_database(cls) -> PooledMySQLDatabase:
+    def get_sync_database(cls) -> Any:
         """获取同步数据库连接（线程安全）"""
         if cls._sync_database is None or cls._sync_database.is_closed():
             with cls._lock:
@@ -122,7 +211,7 @@ class DatabaseConnectionManager:
         return cls._sync_database
 
     @classmethod
-    def get_async_database(cls) -> AsyncPooledMySQLDatabase:
+    def get_async_database(cls) -> Any:
         """获取异步数据库连接"""
         if cls._async_database is None:
             with cls._lock:
@@ -146,7 +235,7 @@ class DatabaseConnectionManager:
 
     @classmethod
     @contextmanager
-    def sync_transaction(cls) -> Generator[PooledMySQLDatabase, None, None]:
+    def sync_transaction(cls) -> Generator[Any, None, None]:
         """同步数据库事务上下文管理器"""
         database = cls.get_sync_database()
         with database.atomic():
@@ -158,7 +247,7 @@ class DatabaseConnectionManager:
 
     @classmethod
     @asynccontextmanager
-    async def async_transaction(cls) -> AsyncGenerator[AsyncPooledMySQLDatabase, None]:
+    async def async_transaction(cls) -> AsyncGenerator[Any, None]:
         """异步数据库事务上下文管理器"""
         database = cls.get_async_database()
         async with database.aio_atomic():
@@ -196,8 +285,11 @@ class MysqlClient:
     """保持向后兼容的同步数据库客户端"""
     
     @classmethod
-    def get_database(cls) -> PooledMySQLDatabase:
+    def get_database(cls) -> Any:
         return DatabaseConnectionManager.get_sync_database()
+
+
+DatabaseClient = MysqlClient
 
 
 # 全局实例
