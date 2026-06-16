@@ -1,0 +1,92 @@
+name: amfsan-n100
+
+x-amfsan-app: &amfsan-app
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+  image: amfsan-n100-app:latest
+  restart: unless-stopped
+  volumes:
+    - ..:/app
+  environment: &amfsan-env
+    AMFSAN_HOST: ${AMFSAN_HOST:-0.0.0.0}
+    AMFSAN_PORT: ${AMFSAN_PORT:-8080}
+    AMFSAN_DEBUG: ${AMFSAN_DEBUG:-false}
+    AMFSAN_ACCESS_LOG: ${AMFSAN_ACCESS_LOG:-true}
+    AMFSAN_AUTO_RELOAD: ${AMFSAN_AUTO_RELOAD:-false}
+    AMFSAN_SECRET_KEY: ${AMFSAN_SECRET_KEY:?Set AMFSAN_SECRET_KEY}
+    AMFSAN_ADMINISTRATOR_EMAIL: ${AMFSAN_ADMINISTRATOR_EMAIL:-}
+    AMFSAN_HTTP_INNER_URL: ${AMFSAN_HTTP_INNER_URL:-http://amf-web:8080}
+
+    AMFSAN_DB_ENGINE: ${AMFSAN_DB_ENGINE:-postgresql}
+    AMFSAN_DB_HOST: ${AMFSAN_DB_HOST:-shared-postgres}
+    AMFSAN_DB_PORT: ${AMFSAN_DB_PORT:-5432}
+    AMFSAN_DB_NAME: ${AMFSAN_DB_NAME:-amfsan}
+    AMFSAN_DB_USER: ${AMFSAN_DB_USER:-amfsan}
+    AMFSAN_DB_PASSWORD: ${AMFSAN_DB_PASSWORD:?Set AMFSAN_DB_PASSWORD}
+    AMFSAN_DB_CHARSET: ${AMFSAN_DB_CHARSET:-utf8mb4}
+    AMFSAN_DB_CONNECTIONS: ${AMFSAN_DB_CONNECTIONS:-10}
+    AMFSAN_DB_TIMEOUT: ${AMFSAN_DB_TIMEOUT:-30}
+
+    AMFSAN_REDIS_HOST: ${AMFSAN_REDIS_HOST:-shared-redis}
+    AMFSAN_REDIS_PORT: ${AMFSAN_REDIS_PORT:-6379}
+    AMFSAN_REDIS_DB: ${AMFSAN_REDIS_DB:-2}
+
+    AMFSAN_RABBITMQ_HOST: ${AMFSAN_RABBITMQ_HOST:-shared-rabbitmq}
+    AMFSAN_RABBITMQ_PORT: ${AMFSAN_RABBITMQ_PORT:-5672}
+    AMFSAN_RABBITMQ_USER: ${AMFSAN_RABBITMQ_USER:-amf}
+    AMFSAN_RABBITMQ_PASSWORD: ${AMFSAN_RABBITMQ_PASSWORD:?Set AMFSAN_RABBITMQ_PASSWORD}
+    AMFSAN_RABBITMQ_VHOST: ${AMFSAN_RABBITMQ_VHOST:-/}
+    AMFSAN_RABBITMQ_EXCHANGE: ${AMFSAN_RABBITMQ_EXCHANGE:-amf}
+
+    AMFSAN_EMAIL_SMTP: ${AMFSAN_EMAIL_SMTP:-}
+    AMFSAN_EMAIL_PORT: ${AMFSAN_EMAIL_PORT:-465}
+    AMFSAN_EMAIL_USER: ${AMFSAN_EMAIL_USER:-}
+    AMFSAN_EMAIL_PASSWORD: ${AMFSAN_EMAIL_PASSWORD:-}
+    AMFSAN_BINANCE_KEY: ${AMFSAN_BINANCE_KEY:-}
+    AMFSAN_BINANCE_SECRET: ${AMFSAN_BINANCE_SECRET:-}
+  networks:
+    - shared-services
+  logging: &amfsan-logging
+    driver: json-file
+    options:
+      max-size: ${AMFSAN_LOG_MAX_SIZE:-10m}
+      max-file: ${AMFSAN_LOG_MAX_FILE:-3}
+
+services:
+  amf-web:
+    <<: *amfsan-app
+    container_name: amfsan-web
+    ports:
+      - "${AMFSAN_HTTP_BIND:-0.0.0.0}:${AMFSAN_HTTP_PORT:-8080}:8080"
+    command: bash -c "pip install -r requirements.txt; exec python run.py"
+
+  amf-consumer:
+    <<: *amfsan-app
+    container_name: amfsan-consumer
+    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py consumer"
+
+  amf-kline-consumer:
+    <<: *amfsan-app
+    container_name: amfsan-kline-consumer
+    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py kline_consumer"
+
+  amf-plot-consumer:
+    <<: *amfsan-app
+    container_name: amfsan-plot-consumer
+    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py plot_consumer"
+
+  amf-msg-consumer:
+    <<: *amfsan-app
+    container_name: amfsan-msg-consumer
+    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py msg_consumer"
+
+  amf-scheduler:
+    <<: *amfsan-app
+    container_name: amfsan-scheduler
+    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py scheduler"
+
+networks:
+  shared-services:
+    external: true
+    name: shared-services
