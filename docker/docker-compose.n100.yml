@@ -59,32 +59,32 @@ services:
     container_name: amfsan-web
     ports:
       - "${AMFSAN_HTTP_BIND:-0.0.0.0}:${AMFSAN_HTTP_PORT:-8080}:8080"
-    command: bash -c "pip install -r requirements.txt; exec python run.py"
+    command: python run.py
 
   amf-consumer:
     <<: *amfsan-app
     container_name: amfsan-consumer
-    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py consumer"
+    command: python run_tasks.py consumer
 
   amf-kline-consumer:
     <<: *amfsan-app
     container_name: amfsan-kline-consumer
-    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py kline_consumer"
+    command: python run_tasks.py kline_consumer
 
   amf-plot-consumer:
     <<: *amfsan-app
     container_name: amfsan-plot-consumer
-    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py plot_consumer"
+    command: python run_tasks.py plot_consumer
 
   amf-msg-consumer:
     <<: *amfsan-app
     container_name: amfsan-msg-consumer
-    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py msg_consumer"
+    command: python run_tasks.py msg_consumer
 
   amf-scheduler:
     <<: *amfsan-app
     container_name: amfsan-scheduler
-    command: bash -c "pip install -r requirements.txt; exec python run_tasks.py scheduler"
+    command: python run_tasks.py scheduler
 
 networks:
   shared-services:
