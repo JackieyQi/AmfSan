@@ -110,7 +110,9 @@ class MarketPriceHandler(object):
         self.update_current_price(symbol)
         current_price = self.get_current_price(symbol).get(symbol)
         if not current_price:
-            raise StandardResponseExc()
+            raise StandardResponseExc(
+                msg="Current price not available for {}".format(symbol)
+            )
 
         if low_price and current_price < low_price:
             raise StandardResponseExc(

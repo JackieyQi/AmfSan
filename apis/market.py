@@ -41,6 +41,16 @@ def _get_request_value(request, *names, default=None):
     return default
 
 
+def _parse_price_param(value, field_name):
+    value = _normalize_request_value(value)
+    if value in (None, ""):
+        return Decimal("0")
+    try:
+        return str2decimal(str(value).strip())
+    except Exception:
+        raise StandardResponseExc(msg=f"Invalid {field_name}: {value}")
+
+
 class MarketPriceView(ProtectedView):
     need_auth = {"post": True}
 
@@ -74,14 +84,19 @@ class MarketPriceView(ProtectedView):
         low_price = _get_request_value(request, "limit_low_price", "low_price", default=0)
         high_price = _get_request_value(request, "limit_high_price", "high_price", default=0)
         symbol = _get_request_value(request, "symbol", default="")
-        symbol = symbol.strip().lower()
+        symbol = str(symbol).strip().lower()
         if not low_price and not high_price:
-            raise StandardResponseExc()
+            raise StandardResponseExc(msg="Missing required price: limit_low_price or limit_high_price")
         if not symbol:
-            raise StandardResponseExc()
+            raise StandardResponseExc(msg="Missing required field: symbol")
+
+        low_price = _parse_price_param(low_price, "limit_low_price")
+        high_price = _parse_price_param(high_price, "limit_high_price")
+        if low_price and high_price and low_price >= high_price:
+            raise StandardResponseExc(msg="limit_low_price must be lower than limit_high_price")
 
         hset_limit_price_result = MarketPriceHandler().set_limit_price(
-            symbol, str2decimal(low_price), str2decimal(high_price)
+            symbol, low_price, high_price
         )
         if hset_limit_price_result == 1:
             set_limit_price_result = "success"
@@ -90,8 +105,7 @@ class MarketPriceView(ProtectedView):
             set_limit_price_result = "success"
             set_limit_price_code = 0
         else:
-            set_limit_price_result = "fail"
-            set_limit_price_code = None
+            raise StandardResponseExc(msg=f"Failed to save price alert for {symbol}")
 
         # _ = SymbolHandle(symbol).add_macd_gate()
         # _ = SymbolHandle(symbol).add_kdj_gate()
