@@ -15,9 +15,37 @@ from utils.common import str2decimal, decimal2str
 from utils.exception import StandardResponseExc
 
 
-class MarketPriceView(HTTPMethodView):
+def _normalize_request_value(value):
+    if isinstance(value, (list, tuple)):
+        return value[0] if value else None
+    return value
+
+
+def _get_request_value(request, *names, default=None):
+    try:
+        json_data = request.json
+    except BaseException:
+        json_data = {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    for name in names:
+        value = json_data.get(name)
+        if value is not None:
+            return _normalize_request_value(value)
+
+        value = request.form.get(name)
+        if value is not None:
+            return _normalize_request_value(value)
+
+    return default
+
+
+class MarketPriceView(ProtectedView):
+    need_auth = {"post": True}
+
     async def get(self, request):
-        symbol = request.form.get("symbol")
+        symbol = _get_request_value(request, "symbol")
 
         result = {}
         price_handler = MarketPriceHandler()
@@ -43,9 +71,10 @@ class MarketPriceView(HTTPMethodView):
         return result
 
     async def post(self, request):
-        low_price = request.form.get("low_price", 0)
-        high_price = request.form.get("high_price", 0)
-        symbol = request.form.get("symbol", "").strip().lower()
+        low_price = _get_request_value(request, "limit_low_price", "low_price", default=0)
+        high_price = _get_request_value(request, "limit_high_price", "high_price", default=0)
+        symbol = _get_request_value(request, "symbol", default="")
+        symbol = symbol.strip().lower()
         if not low_price and not high_price:
             raise StandardResponseExc()
         if not symbol:
@@ -66,7 +95,15 @@ class MarketPriceView(HTTPMethodView):
 
         # _ = SymbolHandle(symbol).add_macd_gate()
         # _ = SymbolHandle(symbol).add_kdj_gate()
+        price_data = MarketPriceHandler().get_limit_price(symbol)
         return {
+            "symbol": symbol,
+            "price": {
+                "current_price": decimal2str(price_data["current_price"]),
+                "limit_low_price": price_data["limit_low_price"],
+                "limit_high_price": price_data["limit_high_price"],
+                "set_time": price_data["set_time"],
+            },
             "set_limit_price_result": set_limit_price_result,
             "set_limit_price_code": set_limit_price_code,
             # "new_plot_result": new_plot_result,
