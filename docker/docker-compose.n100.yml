@@ -4,6 +4,8 @@ x-amfsan-app: &amfsan-app
   build:
     context: ..
     dockerfile: docker/Dockerfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     args:
       HTTP_PROXY: ${AMFSAN_DOCKER_HTTP_PROXY:-http://host.docker.internal:1087}
       HTTPS_PROXY: ${AMFSAN_DOCKER_HTTPS_PROXY:-http://host.docker.internal:1087}
