@@ -4,11 +4,31 @@ x-amfsan-app: &amfsan-app
   build:
     context: ..
     dockerfile: docker/Dockerfile
+    args:
+      HTTP_PROXY: ${AMFSAN_DOCKER_HTTP_PROXY:-http://host.docker.internal:1087}
+      HTTPS_PROXY: ${AMFSAN_DOCKER_HTTPS_PROXY:-http://host.docker.internal:1087}
+      ALL_PROXY: ${AMFSAN_DOCKER_ALL_PROXY:-socks5h://host.docker.internal:1080}
+      NO_PROXY: ${AMFSAN_DOCKER_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,shared-postgres,shared-redis,shared-rabbitmq,amf-web}
+      http_proxy: ${AMFSAN_DOCKER_HTTP_PROXY:-http://host.docker.internal:1087}
+      https_proxy: ${AMFSAN_DOCKER_HTTPS_PROXY:-http://host.docker.internal:1087}
+      all_proxy: ${AMFSAN_DOCKER_ALL_PROXY:-socks5h://host.docker.internal:1080}
+      no_proxy: ${AMFSAN_DOCKER_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,shared-postgres,shared-redis,shared-rabbitmq,amf-web}
   image: amfsan-n100-app:latest
   restart: unless-stopped
   volumes:
     - ..:/app
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   environment: &amfsan-env
+    HTTP_PROXY: ${AMFSAN_DOCKER_HTTP_PROXY:-http://host.docker.internal:1087}
+    HTTPS_PROXY: ${AMFSAN_DOCKER_HTTPS_PROXY:-http://host.docker.internal:1087}
+    ALL_PROXY: ${AMFSAN_DOCKER_ALL_PROXY:-socks5h://host.docker.internal:1080}
+    NO_PROXY: ${AMFSAN_DOCKER_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,shared-postgres,shared-redis,shared-rabbitmq,amf-web}
+    http_proxy: ${AMFSAN_DOCKER_HTTP_PROXY:-http://host.docker.internal:1087}
+    https_proxy: ${AMFSAN_DOCKER_HTTPS_PROXY:-http://host.docker.internal:1087}
+    all_proxy: ${AMFSAN_DOCKER_ALL_PROXY:-socks5h://host.docker.internal:1080}
+    no_proxy: ${AMFSAN_DOCKER_NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,shared-postgres,shared-redis,shared-rabbitmq,amf-web}
+
     AMFSAN_HOST: ${AMFSAN_HOST:-0.0.0.0}
     AMFSAN_PORT: ${AMFSAN_PORT:-8080}
     AMFSAN_DEBUG: ${AMFSAN_DEBUG:-false}
