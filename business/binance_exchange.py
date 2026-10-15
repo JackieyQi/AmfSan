@@ -41,7 +41,7 @@ class BinanceExchangeRequestHandle(object):
         else:
             return
             
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(trust_env=True) as session:
             async with session.get(
                 self.base_url + "/api/v3/ticker/price?" + query_string
             ) as response:

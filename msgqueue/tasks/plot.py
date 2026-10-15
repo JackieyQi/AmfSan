@@ -211,7 +211,7 @@ class TopPriceTaskHandle(BasePlotHandle):
 
     async def update_all_symbols(self):
         all_symbols_list = []
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(trust_env=True) as session:
             async with session.get(self.price_url) as response:
                 data = await response.json()
                 for item in data:
@@ -267,7 +267,7 @@ class TopPriceTaskHandle(BasePlotHandle):
         self._last_request_time = time.time()
         
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(trust_env=True) as session:
                 limit = 36
                 async with session.get(
                         self.kline_url,
