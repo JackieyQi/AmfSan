@@ -331,216 +331,41 @@ class StrategyCheckHandle(BasePlotHandle):
             return False
 
     async def check(self, limit_count=7):
+        from business.monitor import enqueue_monitor_notice
+        monitors = list(await UserSymbolPlotTable.select().where(
+            UserSymbolPlotTable.symbol == self.symbol,
+            UserSymbolPlotTable.is_valid == True,
+        ).aio_execute())
+        if not monitors:
+            return
         await self.initialize_indicators()
-
-        if not self.kline_list_1h or not self.macd_list_1d:
+        # Only the current 1h/4h/1d path is used. New/incomplete or stale data must not alert.
+        for interval, candles, macd, kdj, rsi, boll in (
+            ("1h", self.kline_list_1h, self.macd_list_1h, self.kdj_list_1h, self.rsi_list_1h, self.bb_list_1h),
+            ("4h", self.kline_list_4h, self.macd_list_4h, self.kdj_list_4h, self.rsi_list_4h, self.bb_list_4h),
+        ):
+            if any(len(values) < 10 for values in (candles, macd, kdj, rsi, boll)):
+                logger.info("monitor waiting for indicators, symbol:%s, interval:%s", self.symbol, interval)
+                return
+            expected_ts = self.check_time // PLOT_INTERVAL_CONFIG[interval]["interval_sec"] * PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
+            if any(ts < expected_ts for ts in (candles[0].open_ts, macd[0].opening_ts,
+                    kdj[0].open_ts, rsi[0].open_ts, boll[0].open_ts)):
+                logger.info("monitor waiting for current candle, symbol:%s, interval:%s", self.symbol, interval)
+                return
+        if not self.macd_list_1d or self.macd_list_1d[0].opening_ts < self.check_time // 86400 * 86400:
             return
-        open_ts = self.kline_list_1h[0].open_ts
-        curr_price = self.kline_list_1h[0].close_price
-
-        interval_sec = PLOT_INTERVAL_CONFIG["4h"]["interval_sec"]
-        if self.macd_list_4h[0].opening_ts < (self.check_time - interval_sec * limit_count):
-            if check_rate_limit("no_latest_macd_data", limit=3, expire=600):
-                return
-
-            self.result[
-                self.symbol
-            ] = f"""
-                    <br><a>Error: no lastest macd data, {self.symbol}:4h</a>
-                    <br><a>opening_ts:{ts2bjfmt(self.macd_list_4h[0].opening_ts)}</a>
-                    <br><a>now_ts:{ts2bjfmt(self.check_time)}</a>
-                    """
-
-            return await self.send_msg(self.email_title, f"check_macd_list:{self.symbol}:{open_ts}")
-
-        if not await self.has_limit_price_check((0, 1, 3)):
-            logger.debug(f"strategy buy check start, symbol:{self.symbol}")
-
-            strategy_text = ""
-            score_info = {}
-            recommend_bid_price = None
-
-            strategy_handler = StrategyHandle(
-                self.kline_list_4h, self.kline_list_1h, self.kline_list_15m,
-                self.bb_list_4h, self.bb_list_1h, self.bb_list_15m,
-                self.macd_list_1d, self.macd_list_4h, self.macd_list_1h, self.macd_list_15m,
-                self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h, self.kdj_list_15m,
-                self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m
-            )
-            try:
-                history_orders = await PlotBackTestTable.select().where(
-                    PlotBackTestTable.symbol == self.symbol,
-                ).order_by(PlotBackTestTable.id.desc()).limit(2).aio_execute()
-                last_model_msg = history_orders[0].ask_plot_msg if history_orders[0].ask_plot_msg else \
-                    history_orders[0].bid_plot_msg
-                if len(history_orders) > 1:
-                    last_model_msg_2 = history_orders[1].ask_plot_msg if history_orders[1].ask_plot_msg else \
-                        history_orders[1].bid_plot_msg
-                else:
-                    last_model_msg_2 = ""
-            except Exception as e:
-                last_model_msg = ""
-                last_model_msg_2 = ""
-
-            is_buy = False
-            if model_info := strategy_handler.check_in_by_model(last_model_msg, last_model_msg_2):
-                recommend_bid_price = model_info.get("recommend_bid_price")
-                strategy_text += model_info["model_name"]
-                is_buy = model_info.get("is_buy")
-
-            # elif score_info := await self.get_buy_by_multi_factor_score(curr_price):
-            #     for k, v in score_info.items():
-            #         strategy_text += f"{k}:{v}分;"
-
-            else:
-                return
-
-            recommend_price_data = self.get_recommend_price(curr_price)
-            recommend_bid_price = recommend_bid_price or recommend_price_data["recommend_bid_price"]
-            recommend_sl_price = recommend_price_data["sl_price"]
-            recommend_tp_price = recommend_price_data["tp_price"]
-
-            self.set_limit_price_url = f"{INNER_GET_SUBMIT_LIMIT_PRICE_URL}?" \
-                                    f"symbol={self.symbol}" \
-                                    f"&low_price={recommend_sl_price}" \
-                                    f"&high_price={recommend_tp_price}&buy_price="
-
-            if is_buy:
-                redis_client = AllCache.get_client()
-                redis_client.set(f"sl_tp:{self.symbol}", f"{recommend_sl_price}:{recommend_tp_price}")
-
-            direction = f"<br> 🟢 短线买入信号: <b>{self.symbol.upper()}</b>" \
-                        f"\n<br> 总分: {sum(score_info.values())}。" \
-                        f"\n<br> 策略详情： {strategy_text}。" \
-                        f"\n<br><br> 📈 建议买入价: {decimal2str(recommend_bid_price)}，" \
-                        f"当前价: {decimal2str(curr_price)}。<br><br>"
-            func_str = "get_buy_score_info"
-
-            # This records signal tracking for review; it does not place exchange orders.
-
-            await TradeSignalHandler(self.symbol).add_bid_ticket(
-                curr_price,
-                recommend_bid_price,
-                self.check_time,
-                5,
-                strategy_text,
-                is_buy=is_buy
-            )
-            if not is_buy:
-                return
-
-        elif await self.has_limit_price_check((1,)):
-            logger.debug(f"strategy sell check start, symbol:{self.symbol}")
-            
-            recommend_ask_price = None
-
-            strategy_handler = StrategyHandle(
-                self.kline_list_4h, self.kline_list_1h, self.kline_list_15m,
-                self.bb_list_4h, self.bb_list_1h, self.bb_list_15m,
-                self.macd_list_1d, self.macd_list_4h, self.macd_list_1h, self.macd_list_15m,
-                self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h, self.kdj_list_15m,
-                self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m
-            )
-            try:
-                curr_order = await PlotBackTestTable.select().where(
-                    PlotBackTestTable.symbol == self.symbol,
-                ).order_by(PlotBackTestTable.id.desc()).limit(1).aio_get()
-                curr_model_msg = curr_order.ask_plot_msg if curr_order.ask_plot_msg else curr_order.bid_plot_msg
-            except PlotBackTestTable.DoesNotExist:
-                curr_model_msg = ""
-
-            is_sell = False
-            need_notify = False
-            part_direction = ""
-            if model_info := strategy_handler.check_out_by_model(curr_model_msg):
-                recommend_ask_price = model_info.get("recommend_ask_price")
-                ask_plot_type = 5
-                func_str = model_info["model_name"]
-                part_direction = func_str
-                is_sell = model_info.get("is_sell")
-                if is_sell:
-                    need_notify = True
-                
-            # elif part_direction_info := strategy_handler._get_sell_direction_active_taking_profit(curr_price):
-            #     ask_plot_type = 6
-            #     func_str = "_get_sell_direction_active_taking_profit"
-
-            #     part_direction = part_direction_info.get("direction")
-            #     recommend_ask_price = part_direction_info.get("recommend_ask_price")
-            # elif part_direction := strategy_handler._get_sell_direction_stop_loss(curr_price):
-            #     ask_plot_type = 7
-            #     func_str = "_get_sell_direction_stop_loss"
-            # elif part_direction := strategy_handler._get_exit_score():
-            #     ask_plot_type = 8
-            #     func_str = "_get_exit_score"
-            else:
-                redis_client = AllCache.get_client()
-                cache_data = redis_client.get(f"sl_tp:{self.symbol}")
-                if not cache_data:
-                    return
-
-                func_str = "tp_sl"
-                limit_price = MarketPriceLimitCache.hget(self.symbol)
-                if not limit_price:
-                    return
-                set_time, limit_low_price, limit_high_price = limit_price.split(":")
-
-                sl_price, tp_price = map(Decimal, (limit_low_price, limit_high_price))
-
-                if curr_price >= tp_price:
-                    part_direction += "当前价格触及止盈价，止盈离场。"
-                    recommend_ask_price = curr_price
-                    ask_plot_type = 8
-                    need_notify = True
-                elif curr_price <= min(sl_price, self.bb_list_1h[0].bblower):
-                    part_direction += "当前价格触及止损价，止损离场。"
-                    recommend_ask_price = sl_price
-                    ask_plot_type = 9
-                    need_notify = True
-                else:
-                    return
-
-            if not recommend_ask_price:
-                depth_prices_data = self.get_depth_prices(curr_price)
-                recommend_ask_price = depth_prices_data["recommend_ask_price"]
-
-            direction = f"<br> 🔴 短线卖出信号: <b>{self.symbol.upper()}</b> " \
-                        f"<br> {part_direction}" \
-                        f"<br><br> 📉 建议卖出价：{decimal2str(recommend_ask_price)}，" \
-                        f"当前价: {decimal2str(curr_price)}。" \
-
-            if ask_plot_type in [5, 9]:
-                await TradeSignalHandler(self.symbol).update_ask_ticket(
-                    curr_price,
-                    recommend_ask_price,
-                    self.check_time,
-                    ask_plot_type,
-                    part_direction,
-                    is_sell=is_sell
-                )
-            
-            if not need_notify:
-                return
-
-        else:
-            return
-
-        email_msg_md5_str = f"plotGpt:{func_str}:{self.symbol}:{open_ts}"
-
-        self.result[self.symbol] = template_strategy_notice(
-            direction, open_ts, decimal2str(curr_price),
-            self.check_time, self.close_monitor_url, self.set_limit_price_url)
-
-        logger.info(
-            f"StrategyCheckHandle.get_buy_score_info finish, start end_msg, symbol:{self.symbol}, ts:{self.check_time}")
-        receiver_list = await self.get_receiver_list()
-        await self.send_msg(self.email_title, email_msg_md5_str, receiver_list=receiver_list)
-
-    async def get_receiver_list(self):
-        query = await UserSymbolPlotTable.select(UserSymbolPlotTable.user_id).where(
-            UserSymbolPlotTable.symbol == self.symbol).aio_execute()
-        user_ids = [i.user_id for i in query]
-
-        query = await UserInfoTable.select(UserInfoTable.email).where(UserInfoTable.uuid.in_(user_ids)).aio_execute()
-        user_emails = [i.email for i in query]
-        return user_emails
+        handler = StrategyHandle(
+            self.kline_list_4h, self.kline_list_1h, self.kline_list_15m,
+            self.bb_list_4h, self.bb_list_1h, self.bb_list_15m,
+            self.macd_list_1d, self.macd_list_4h, self.macd_list_1h, self.macd_list_15m,
+            self.kdj_list_1d, self.kdj_list_4h, self.kdj_list_1h, self.kdj_list_15m,
+            self.rsi_list_4h, self.rsi_list_1h, self.rsi_list_15m,
+        )
+        signals = {}
+        for row in monitors:
+            if row.monitor_direction not in signals:
+                signals[row.monitor_direction] = handler.check_monitor_direction(row.monitor_direction)
+            if signals[row.monitor_direction]:
+                await enqueue_monitor_notice(row, signals[row.monitor_direction],
+                                             self.kline_list_1h[0].close_price,
+                                             self.kline_list_1h[0].open_ts)

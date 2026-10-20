@@ -115,6 +115,24 @@ class StrategyHandle:
         self.rsi_1h_factors = RsiFactor(self.rsi_list_1h)
         self.rsi_15m_factors = RsiFactor(self.rsi_list_15m)
 
+    def check_monitor_direction(self, direction):
+        """Explicit direction: ordinary entry or standalone exit, without trade history."""
+        self.prepare_data()
+        # Factors use preceding candles; wait for aligned data instead of indexing partial history.
+        if len(self.kline_list_4h) < 10 or len(self.kline_list_1h) < 10 or not self.macd_list_1d:
+            return None
+        model = ModelTopRise(
+            kline_1d_factors=self.kline_1d_factors,
+            kline_4h_factors=self.kline_4h_factors,
+            kline_1h_factors=self.kline_1h_factors,
+            macd_4h_factors=self.macd_4h_factors,
+            macd_1h_factors=self.macd_1h_factors,
+            kdj_4h_factors=self.kdj_4h_factors,
+            rsi_4h_factors=self.rsi_4h_factors,
+        )
+        matched = model.is_in() if direction == "buy" else model.is_out()
+        return model.name if matched else None
+
     def check_in_by_model(self, last_model_msg, last_model_msg_2):
         # 准备数据
         self.prepare_data()

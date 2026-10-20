@@ -2,6 +2,7 @@
 # coding:utf8
 
 import time
+import uuid
 
 from peewee import (BooleanField, CharField, DecimalField, IntegerField,
                     TextField, AutoField)
@@ -32,6 +33,12 @@ class UserSymbolPlotTable(Base):
         help_text="上次交易价格",
     )
     is_valid = BooleanField(db_column="is_valid", default=True)
+    monitor_direction = CharField(max_length=4)
+    take_profit_price = DecimalField(max_digits=20, decimal_places=8, null=True)
+    stop_loss_price = DecimalField(max_digits=20, decimal_places=8, null=True)
+    config_version = CharField(max_length=32, default=lambda: uuid.uuid4().hex)
+    last_signal_ts = IntegerField(default=0)
+    last_signal_reason = CharField(max_length=64, default="")
 
     create_ts = IntegerField(db_column="create_ts", default=lambda: int(time.time()))
 

@@ -3,6 +3,8 @@
 
 import time
 import json
+import re
+import uuid
 from decimal import Decimal
 
 from cache.order import (LimitPriceNoticeValueCache,
@@ -19,6 +21,7 @@ from utils.exception import StandardResponseExc
 from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
 from exts import async_database
+from business.monitor import monitor_lock
 from cache import AllCache
 
 
@@ -195,87 +198,115 @@ class SymbolHandle(object):
         self.user_id = user_id
         self.symbol = symbol
 
-    async def get_all(self):
-        if self.user_id == "root":
-            db_rows = await UserSymbolPlotTable.select().order_by(UserSymbolPlotTable.create_ts).aio_execute()
-        else:
-            db_rows = await UserSymbolPlotTable.select().where(
-                UserSymbolPlotTable.user_id == self.user_id
-            ).order_by(UserSymbolPlotTable.create_ts).aio_execute()
+    @staticmethod
+    def serialize(row):
+        return {
+            "id": row.id, "user_id": row.user_id, "symbol": row.symbol,
+            "is_valid": row.is_valid, "create_ts": row.create_ts,
+            "monitor_direction": row.monitor_direction,
+            "take_profit_price": str(row.take_profit_price) if row.take_profit_price is not None else None,
+            "stop_loss_price": str(row.stop_loss_price) if row.stop_loss_price is not None else None,
+            "last_signal_ts": row.last_signal_ts,
+            "last_signal_reason": row.last_signal_reason,
+        }
 
-        result = []
-        symbol_list = []
-        for row in db_rows:
-            if row.symbol in symbol_list:
-                continue
-            symbol_list.append(row.symbol)
-            
-            result.append({
-                "symbol": row.symbol,
-                "is_valid": row.is_valid,
-                "create_ts": row.create_ts,
-            })
-        return result
+    async def get_all(self):
+        query = UserSymbolPlotTable.select()
+        if self.user_id != "root":
+            query = query.where(UserSymbolPlotTable.user_id == self.user_id)
+        rows = await query.order_by(UserSymbolPlotTable.create_ts, UserSymbolPlotTable.id).aio_execute()
+        return [self.serialize(row) for row in rows]
 
     def refresh_symbol_cache(self):
-        redis_client = AllCache.get_client()
-        redis_key = "symbol:cfg"
-        redis_client.delete(redis_key)
-        redis_client.close()
+        AllCache.get_client().delete("symbol:cfg")
 
     def del_plot(self):
         self.del_macd_gate()
         self.del_kdj_gate()
 
-    async def delete_symbol(self):
-        """Remove a symbol from the manual watchlist without deleting market history."""
-        with AllCache.get_client().lock(f"lock_delete_symbol:{self.symbol}", timeout=60) as lock:
-            async with async_database.aio_atomic():
-                if self.user_id == "root":
-                    plot_row = await UserSymbolPlotTable.delete().where(
-                        UserSymbolPlotTable.symbol == self.symbol,
-                    ).aio_execute()
-                else:
-                    plot_row = await UserSymbolPlotTable.delete().where(
-                        UserSymbolPlotTable.user_id == self.user_id,
-                        UserSymbolPlotTable.symbol == self.symbol,
-                    ).aio_execute()
-
-                remaining_watchers = await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
-                    UserSymbolPlotTable.symbol == self.symbol
-                ).aio_count()
-
-            return {
-                "plot_row": plot_row,
-                "remaining_watchers": remaining_watchers,
-                "preserve_market_data": True,
-                "message": "已移出监控列表，历史行情和指标数据已保留",
-            }
-
-    async def add_symbol(self):
+    async def get_owned_monitor(self, monitor_id):
+        query = UserSymbolPlotTable.select().where(UserSymbolPlotTable.id == monitor_id)
         if self.user_id != "root":
-            plot_count = await UserSymbolPlotTable.select(UserSymbolPlotTable.id).where(
+            query = query.where(UserSymbolPlotTable.user_id == self.user_id)
+        try:
+            return await query.aio_get()
+        except UserSymbolPlotTable.DoesNotExist:
+            raise StandardResponseExc(msg="监控配置不存在或无权操作")
+
+    @staticmethod
+    def validate_config(data):
+        direction = data.get("monitor_direction")
+        if direction not in ("buy", "sell"):
+            raise StandardResponseExc(msg="请选择买入或卖出监控")
+        prices = {}
+        for field in ("take_profit_price", "stop_loss_price"):
+            value = data.get(field)
+            if value in (None, ""):
+                prices[field] = None
+                continue
+            try:
+                price = Decimal(str(value))
+                if not price.is_finite() or price <= 0 or price >= Decimal("1000000000000"):
+                    raise ValueError()
+                if price != price.quantize(Decimal("0.00000001")):
+                    raise ValueError()
+            except Exception:
+                raise StandardResponseExc(msg="价格必须为正数，最多 12 位整数、8 位小数")
+            prices[field] = price
+        if direction == "buy" and any(value is not None for value in prices.values()):
+            raise StandardResponseExc(msg="买入监控不设置止盈止损价")
+        if (prices["take_profit_price"] is not None and prices["stop_loss_price"] is not None
+                and prices["stop_loss_price"] >= prices["take_profit_price"]):
+            raise StandardResponseExc(msg="止损价必须低于止盈价")
+        return {"monitor_direction": direction, **prices}
+
+    async def add_symbol(self, data):
+        if not re.fullmatch(r"[a-z0-9]{2,10}", self.symbol):
+            raise StandardResponseExc(msg="币种应为 2–10 位英文字母或数字")
+        config = self.validate_config(data)
+        async with monitor_lock(f"lock_monitor_user:{self.user_id}"):
+            if await UserSymbolPlotTable.select().where(
                 UserSymbolPlotTable.user_id == self.user_id,
-            ).aio_count()
-            if plot_count >= 3:
-                return None
+                UserSymbolPlotTable.symbol == self.symbol,
+            ).aio_exists():
+                raise StandardResponseExc(msg="该币种已添加，请编辑现有监控")
+            if self.user_id != "root":
+                count = await UserSymbolPlotTable.select().where(
+                    UserSymbolPlotTable.user_id == self.user_id).aio_count()
+                if count >= 3:
+                    raise StandardResponseExc(msg="最多添加 3 个监控币种")
+            row = await UserSymbolPlotTable.aio_create(user_id=self.user_id, symbol=self.symbol, **config)
+        self.refresh_symbol_cache()
+        return self.serialize(row)
 
-        with AllCache.get_client().lock(f"lock_add_symbol:{self.symbol}", timeout=10) as lock:
-            async with async_database.aio_atomic():
-                try:
-                    symbol_row = await UserSymbolPlotTable.select().where(
-                        UserSymbolPlotTable.user_id == self.user_id,
-                        UserSymbolPlotTable.symbol == self.symbol).aio_get()
-                    if not symbol_row.is_valid:
-                        symbol_row.is_valid = True
-                        await symbol_row.aio_save()
-                    return symbol_row
+    async def update_monitor(self, monitor_id, data):
+        async with monitor_lock(f"lock_monitor:{monitor_id}"):
+            row = await self.get_owned_monitor(monitor_id)
+            merged = self.serialize(row)
+            merged.update({key: data[key] for key in (
+                "monitor_direction", "take_profit_price", "stop_loss_price") if key in data})
+            if merged["monitor_direction"] == "buy":
+                merged.update(take_profit_price=None, stop_loss_price=None)
+            config = self.validate_config(merged)
+            if "is_valid" in data:
+                if not isinstance(data["is_valid"], bool):
+                    raise StandardResponseExc(msg="is_valid 必须是布尔值")
+                config["is_valid"] = data["is_valid"]
+            changed = any(getattr(row, key) != value for key, value in config.items())
+            if changed:
+                config["config_version"] = uuid.uuid4().hex
+                for key, value in config.items():
+                    setattr(row, key, value)
+                await row.aio_save()
+        self.refresh_symbol_cache()
+        return self.serialize(row)
 
-                except UserSymbolPlotTable.DoesNotExist:
-                    return await UserSymbolPlotTable.aio_create(
-                        user_id=self.user_id,
-                        symbol=self.symbol,
-                    )
+    async def delete_symbol(self, monitor_id):
+        async with monitor_lock(f"lock_monitor:{monitor_id}"):
+            row = await self.get_owned_monitor(monitor_id)
+            await UserSymbolPlotTable.delete().where(UserSymbolPlotTable.id == row.id).aio_execute()
+        self.refresh_symbol_cache()
+        return {"message": "已移除监控，历史行情、指标和信号记录已保留"}
 
     def add_macd_gate(self, interval=""):
         if interval in PLOT_INTERVAL_LIST:

@@ -41,14 +41,9 @@ logger = logging.getLogger(__name__)
 
 
 async def check_price(*args, **kwargs):
-    market_price_handler = MarketPriceHandler()
+    from business.monitor import check_monitor_prices
+    await check_monitor_prices()
 
-    for symbol, price in market_price_handler.get_all_limit_price().items():
-        await PlotPriceHandle(symbol, price).check_limit_price()
-
-    all_curr_prices = market_price_handler.get_current_price()
-    await TradeSignalHandler().update_real_ticket(all_curr_prices)
-    
 
 async def check_break_history_top_price(*args, **kwargs):
     await TopPriceTaskHandle().check_break_history_top_price()
@@ -73,8 +68,6 @@ async def check_strategy(*args, **kwargs):
 
     symbols_info = await get_plot_symbols_info(redis_client)
     for symbol in symbols_info.keys():
-        if symbol.lower() == "btcusdt":
-            continue
         await push_plot_mq({
             "bp": "check_strategy_by_symbol",
             "symbol": symbol,

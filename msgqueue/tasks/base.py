@@ -51,35 +51,7 @@ class BasePlotHandle(object):
 
 
 async def get_plot_symbols_info(redis_client):
-    """Return active watchlist symbols only.
-
-    The cache is hydrated from UserSymbolPlotTable, which is the manually
-    managed watchlist. Do not switch this source to BnSymbolTable; that table is
-    only the Binance candidate universe.
-    """
-    symbols_info = {}
-    redis_key = "symbol:cfg"
-
-    cache_data = redis_client.hgetall(redis_key)
-    if not cache_data:
-        query = await UserSymbolPlotTable.select().aio_execute()
-        for row in query:
-            symbols_info[row.symbol.lower()] = {"valid": int(row.is_valid)}
-
-        query = await MacdTable.select(MacdTable.symbol, MacdTable.interval_val).distinct().aio_execute()
-        for row in query:
-            if row.symbol.lower() in symbols_info:
-                symbols_info[row.symbol.lower()][f"macd:{row.interval_val}"] = 1
-
-        query = await KdjTable.select(KdjTable.symbol, KdjTable.interval_val).distinct().aio_execute()
-        for row in query:
-            if row.symbol.lower() in symbols_info:
-                symbols_info[row.symbol.lower()][f"kdj:{row.interval_val}"] = 1
-
-        for k, v in symbols_info.items():
-            redis_client.hset(redis_key, k, json.dumps(v))
-
-    else:
-        for k, v in cache_data.items():
-            symbols_info[k] = json.loads(v)
-    return symbols_info
+    """Use enabled manual monitors as the authoritative shared acquisition pool."""
+    rows = await UserSymbolPlotTable.select(UserSymbolPlotTable.symbol).where(
+        UserSymbolPlotTable.is_valid == True).distinct().aio_execute()
+    return {row.symbol.lower(): {"valid": 1} for row in rows}

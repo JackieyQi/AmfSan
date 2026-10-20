@@ -29,10 +29,10 @@ def send_email(recipient, subject, text, from_name="AMF"):
 
     if isinstance(recipient, list):
         # msg["To"] = ";".join(recipient)
-        for _recipient in recipient:
-            _send_email(_recipient, subject, text, from_name)
+        results = [_send_email(item, subject, text, from_name) for item in recipient]
+        return bool(results) and all(results)
     else:
-        _send_email(recipient, subject, text, from_name)
+        return _send_email(recipient, subject, text, from_name)
 
 
 def _send_email(recipient, subject, text, from_name):
@@ -51,7 +51,7 @@ def _send_email(recipient, subject, text, from_name):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS)
     msg["From"] = "{} <{}>".format(Header(from_name, "utf-8"), account["user"])
     try:
-        with smtplib.SMTP_SSL(account["smtp"], account["port"]) as server:
+        with smtplib.SMTP_SSL(account["smtp"], account["port"], timeout=15) as server:
             server.login(account["user"], account["pwd"])
             server.sendmail(account["user"], recipient, msg.as_string())
 

@@ -140,11 +140,8 @@ async def update_fng_job(*args, **kwargs):
 async def update_price(*args, **kwargs):
     symbol_list = []
 
-    market_price_handler = MarketPriceHandler()
-    for symbol, price in market_price_handler.get_all_limit_price().items():
-        symbol_list.append(symbol)
-
-    query = await UserSymbolPlotTable.select(UserSymbolPlotTable.symbol).aio_execute()
+    query = await UserSymbolPlotTable.select(UserSymbolPlotTable.symbol).where(
+        UserSymbolPlotTable.is_valid == True).aio_execute()
     for row in query:
         symbol_list.append(row.symbol)
 
@@ -180,6 +177,10 @@ async def save_kline_job(*args, **kwargs):
             len(STRATEGY_INTERVAL_LIST),
         )
         for symbol in symbols_info.keys():
+            if not await UserSymbolPlotTable.select().where(
+                UserSymbolPlotTable.symbol == symbol, UserSymbolPlotTable.is_valid == True
+            ).aio_exists():
+                continue
             for _interval in STRATEGY_INTERVAL_LIST:
                 try:
                     saved_count = await KlineDataSaveHandle(symbol, _interval).save_data()
@@ -267,7 +268,10 @@ async def save_indicators_job_by_symbol(msg):
         _interval,
     )
     try:
-        await IndicatorsCalculateHandle(symbol, _interval).start_cal()
+        if await UserSymbolPlotTable.select().where(
+            UserSymbolPlotTable.symbol == symbol, UserSymbolPlotTable.is_valid == True
+        ).aio_exists():
+            await IndicatorsCalculateHandle(symbol, _interval).start_cal()
     except Exception:
         logger.exception(
             "save_indicators_job_by_symbol failed, symbol:%s, interval:%s, elapsed:%.2fs",

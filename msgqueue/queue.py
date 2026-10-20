@@ -11,13 +11,15 @@ from exts import queue_conn_manager, amf_msg_queue, amf_plot_queue, kombu_conn_m
 logger = logging.getLogger("MQ")
 
 
-async def push_msg(value):
+async def push_msg(value, strict=False):
     try:
         connection = queue_conn_manager.get_connection()
         with connection.SimpleQueue(amf_msg_queue) as q:
             q.put(json.dumps(value), timeout=5)
     except BaseException as e:
         logger.error("{}".format(traceback.format_exc()))
+        if strict:
+            raise
     return True
 
 

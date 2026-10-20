@@ -81,47 +81,7 @@ class MarketPriceView(ProtectedView):
         return result
 
     async def post(self, request):
-        low_price = _get_request_value(request, "limit_low_price", "low_price", default=0)
-        high_price = _get_request_value(request, "limit_high_price", "high_price", default=0)
-        symbol = _get_request_value(request, "symbol", default="")
-        symbol = str(symbol).strip().lower()
-        if not low_price and not high_price:
-            raise StandardResponseExc(msg="Missing required price: limit_low_price or limit_high_price")
-        if not symbol:
-            raise StandardResponseExc(msg="Missing required field: symbol")
-
-        low_price = _parse_price_param(low_price, "limit_low_price")
-        high_price = _parse_price_param(high_price, "limit_high_price")
-        if low_price and high_price and low_price >= high_price:
-            raise StandardResponseExc(msg="limit_low_price must be lower than limit_high_price")
-
-        hset_limit_price_result = MarketPriceHandler().set_limit_price(
-            symbol, low_price, high_price
-        )
-        if hset_limit_price_result == 1:
-            set_limit_price_result = "success"
-            set_limit_price_code = 1
-        elif hset_limit_price_result == 0:
-            set_limit_price_result = "success"
-            set_limit_price_code = 0
-        else:
-            raise StandardResponseExc(msg=f"Failed to save price alert for {symbol}")
-
-        # _ = SymbolHandle(symbol).add_macd_gate()
-        # _ = SymbolHandle(symbol).add_kdj_gate()
-        price_data = MarketPriceHandler().get_limit_price(symbol)
-        return {
-            "symbol": symbol,
-            "price": {
-                "current_price": decimal2str(price_data["current_price"]),
-                "limit_low_price": price_data["limit_low_price"],
-                "limit_high_price": price_data["limit_high_price"],
-                "set_time": price_data["set_time"],
-            },
-            "set_limit_price_result": set_limit_price_result,
-            "set_limit_price_code": set_limit_price_code,
-            # "new_plot_result": new_plot_result,
-        }
+        raise StandardResponseExc(msg="价格预警已合并到卖出监控，请在监控列表设置止盈止损")
 
 
 class MarketPriceGateView(HTTPMethodView):
@@ -143,61 +103,7 @@ class MarketPriceGateView(HTTPMethodView):
 
 class SubmitMarketLimitPriceView(HTTPMethodView):
     async def get(self, request):
-        symbol = request.form.get("symbol", "").strip().lower()
-        if not symbol:
-            return "Invalid params:symbol"
-        low_price = request.form.get("low_price", 0)
-        high_price = request.form.get("high_price", 0)
-        buy_price = request.form.get("buy_price", 0)
-        if not low_price and not high_price:
-            raise StandardResponseExc()
-
-        set_time = int(time.time())
-        hset_limit_price_result = MarketPriceHandler().set_limit_price(
-            symbol, str2decimal(low_price), str2decimal(high_price), set_time
-        )
-        if hset_limit_price_result == 1:
-            set_limit_price_result = "success"
-            set_limit_price_code = 1
-        elif hset_limit_price_result == 0:
-            set_limit_price_result = "success"
-            set_limit_price_code = 0
-        else:
-            set_limit_price_result = "fail"
-            set_limit_price_code = None
-
-        from exts import async_database
-        from models.order import PlotBackTestTable
-
-        async with async_database.aio_atomic():
-            try:
-                last_ticket = await PlotBackTestTable.select().where(
-                    PlotBackTestTable.symbol == symbol
-                ).order_by(PlotBackTestTable.bid_ts.desc()).aio_get()
-
-                last_ticket.buy_price = str2decimal(buy_price)
-                last_ticket.buy_ts = int(time.time())
-                last_ticket.ask_curr_price = 0
-                last_ticket.ask_price = 0
-                last_ticket.ask_ts = 0
-                last_ticket.ask_plot_type = 0
-                last_ticket.ask_plot_msg = ""
-                last_ticket.sell_price = 0
-                last_ticket.sell_ts = 0
-                last_ticket.hold_time = 0
-                last_ticket.profit_percent = 0
-                last_ticket.status = 1
-                await last_ticket.aio_save()
-            except PlotBackTestTable.DoesNotExist:
-                pass
-
-        # _ = SymbolHandle(symbol).add_macd_gate()
-        # _ = SymbolHandle(symbol).add_kdj_gate()
-        return {
-            "set_limit_price_result": set_limit_price_result,
-            "set_limit_price_code": set_limit_price_code,
-            # "new_plot_result": new_plot_result,
-        }
+        raise StandardResponseExc(msg="旧价格预警链接已停用，请在监控列表设置卖出监控")
 
 
 class MarketMacdCrossGateView(HTTPMethodView):
@@ -244,55 +150,42 @@ class MarketKdjCrossGateView(HTTPMethodView):
 
 class MarketInnerPriceView(HTTPMethodView):
     async def get(self, request, side_str, symbol, new_price):
-        if not symbol or not new_price:
-            raise StandardResponseExc()
-        if side_str == "low":
-            return MarketPriceHandler().set_limit_price(
-                symbol, str2decimal(new_price), Decimal("0")
-            )
-        elif side_str == "high":
-            return MarketPriceHandler().set_limit_price(
-                symbol, Decimal("0"), str2decimal(new_price)
-            )
-        else:
-            raise StandardResponseExc(msg="Error side_str:{}".format(side_str))
+        raise StandardResponseExc(msg="旧价格预警链接已停用，请在监控列表编辑止盈止损")
 
 
 class MarketPlotManageView(ProtectedView):
-    need_auth = {"get": True, "post": True, "delete": True}
+    need_auth = {"get": True, "post": True, "put": True, "delete": True}
+
+    @staticmethod
+    def monitor_id(data):
+        value = data.get("id")
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise StandardResponseExc(msg="需要有效的监控 ID")
+        return value
 
     async def get(self, request):
-        user = request.ctx.user
-        return await SymbolHandle(user_id=user.user_id).get_all()
+        return await SymbolHandle(user_id=request.ctx.user.user_id).get_all()
 
     async def post(self, request):
-        user = request.ctx.user
-        symbol = request.json.get("symbol")
-        if not all([symbol, ]):
-            raise StandardResponseExc(msg="Missing required fields")
-        symbol = symbol.strip().lower()
+        data = request.json or {}
+        if not isinstance(data, dict):
+            raise StandardResponseExc(msg="请求内容必须为 JSON 对象")
+        symbol = data.get("symbol")
+        if not isinstance(symbol, str):
+            raise StandardResponseExc(msg="需要有效的币种")
+        return await SymbolHandle(symbol.strip().lower(), request.ctx.user.user_id).add_symbol(data)
 
-        symbol_handler = SymbolHandle(symbol, user_id=user.user_id)
-        user_symbol_info = await symbol_handler.add_symbol()
-        if not user_symbol_info:
-            raise StandardResponseExc(msg="Plot limit!")
-
-        symbol_handler.refresh_symbol_cache()
-
-        return {"message": "success"}
+    async def put(self, request):
+        data = request.json or {}
+        if not isinstance(data, dict):
+            raise StandardResponseExc(msg="请求内容必须为 JSON 对象")
+        return await SymbolHandle(user_id=request.ctx.user.user_id).update_monitor(self.monitor_id(data), data)
 
     async def delete(self, request):
-        user = request.ctx.user
-        symbol = request.json.get("symbol")
-        if not all([symbol, ]):
-            raise StandardResponseExc(msg="Missing required fields")
-        symbol = symbol.strip().lower()
-
-        symbol_handler = SymbolHandle(symbol, user_id=user.user_id)
-        symbol_handler.del_plot()
-        result_info = await symbol_handler.delete_symbol()
-        symbol_handler.refresh_symbol_cache()
-        return result_info
+        data = request.json or {}
+        if not isinstance(data, dict):
+            raise StandardResponseExc(msg="请求内容必须为 JSON 对象")
+        return await SymbolHandle(user_id=request.ctx.user.user_id).delete_symbol(self.monitor_id(data))
 
 
 class BnSymbolView(ProtectedView):
