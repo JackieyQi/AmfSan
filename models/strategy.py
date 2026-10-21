@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from utils.common import decimal2decimal
 
 from .factor import CandlestickFactor, MacdFactor, KdjFactor, RsiFactor
+from .strategy_rules import TOP_RISE, evaluate_rule
 
 """
 结构场景 + 条件链判断
@@ -140,48 +141,8 @@ class ModelTopRise(ModelBase):
         self.recommend_ask_price = self.curr_price
 
     def is_in(self):
-        if self.has_bearish_4h():
-            return False
+        return evaluate_rule(TOP_RISE["entry"], self)
 
-        # 大时间周期: ema多头排列 eg:[当前日线ema12大于ema26]
-        if self.kline_1d_factors.is_ema_bullish_stack(window_size=1):
-        
-            # 当前时间周期: {window_size} 根k线的阳线比例 >= 70% eg:[4小时的前4根k线的阳线比例 >= 70%]
-            window_size = 4
-            count_1h_bullish_k = [self.kline_4h_factors.is_bullish_k(index=i) for i in range(1, 1+window_size)]
-            is_bullish_k = sum(count_1h_bullish_k) >= window_size * 0.7
-
-            # 当前时间周期: 至少连续 {window_size} 根K线收盘价 > EMA12 eg:[4小时的前3根K线收盘价 > EMA12]
-            window_size = 3
-            is_bullish_ema12 = self.kline_4h_factors.is_ema12_continue_lt_close(index=1, window_size=window_size)
-
-            # 当前时间周期: 连续 {window_size} 根以上K线收于布林带上轨上方或贴近上轨
-            window_size = 3
-            tolerance = Decimal("0.03")
-            count_4h_close_gt_bbupper = [self.kline_4h_factors.is_near_upper(
-                index=i, tolerance=tolerance) for i in range(1, 1+window_size)]
-            is_boll_gt_signal = sum(count_4h_close_gt_bbupper) >= window_size-1
-            
-            # 当前时间周期: 连续 {window_size} 次布林带开口扩大 eg: [4小时的前3次布林带开口逐渐扩大]
-            window_size = 3
-            is_boll_widen_signal = self.kline_4h_factors.is_boll_widen(index=1, window_size=window_size)
-            is_bullish_boll = all([is_boll_gt_signal, is_boll_widen_signal])
-            
-            if sum([is_bullish_k, is_bullish_ema12, is_bullish_boll]) >= 3:
-                # 小周期: 具体入场点
-
-                # 小周期: 连续3根阳线 eg: [1小时的连续3根阳线(包含当前未成型的k线)]
-                count_1h_bullish_k = [self.kline_1h_factors.is_bullish_k(index=i) for i in range(3)]
-                is_bullish_k = sum(count_1h_bullish_k) >= 3
-
-                # 小周期: 至少连续3根K线收于布林带上轨上方或贴近上轨 eg: [1小时的连续3根K线收于布林带上轨上方或贴近上轨(包含当前未成型的k线)]
-                is_bullish_boll = self.kline_1h_factors.is_along_upper_band(n=3)
-                
-                if sum([is_bullish_k, is_bullish_boll]) >= 1:
-                    return True
-                
-        return False
-    
     def is_in_twice(self):
         """
         短期盘整后, 二次进入
@@ -226,38 +187,7 @@ class ModelTopRise(ModelBase):
         return False
     
     def is_out(self):
-        # 当前时间周期: MACD柱体连续缩短
-        is_macd_bullish = self.macd_4h_factors.is_continue_down(index=0)
-        # 当前时间周期: KDJ 死叉 + J值钝化
-        is_kdj_death_cross = any([self.kdj_4h_factors.is_death_cross(index=i) for i in range(2)])
-        is_kdj_j_downtrend = self.kdj_4h_factors.is_j_continue_down(index=0, window_size=2) and \
-            self.kdj_4h_factors.kdj_list[0].j_val < Decimal("70")
-        is_kdj_bullish = all([is_kdj_death_cross, is_kdj_j_downtrend])
-        # 当前时间周期: RSI快速跌破70或60
-        is_rsi_bullish = any([self.rsi_4h_factors.is_fast_down(index=i) for i in range(2)]) and \
-            self.rsi_4h_factors.rsi_list[0].rsi < 70
-        
-        # 主趋势减弱
-        if sum([is_macd_bullish, is_kdj_bullish, is_rsi_bullish]) >= 2:
-            
-            # 当前时间周期: k线出现看跌吞没
-            is_bearish_engulfing_k = any([self.kline_4h_factors.is_bearish_engulfing_k(index=i) for i in range(2)])
-            # 当前时间周期: 当前K线最高价远离布林带上轨+RSI > 85
-            is_away = any([self.kline_4h_factors.is_high_price_away_from_bbupper(index=i) for i in range(2)])
-            is_rsi_gt_85 = any([self.rsi_4h_factors.rsi_list[i].rsi > 85 for i in range(2)])
-            # 当前时间周期: kdj出场死叉
-            is_kdj = any([self.kdj_4h_factors.is_death_cross(index=i) for i in range(2)])
-            
-            # 价格行为触发
-            if is_bearish_engulfing_k or (is_away and is_rsi_gt_85) or is_kdj:
-                
-                # 小周期
-                # 1小时EMA12死叉EMA26
-                # RSI在1小时级别下穿60 + MACD跌破0
-                # 高位横盘3根以上K线后跌破布林中轨
-                # TODO:
-                return True
-        return False
+        return evaluate_rule(TOP_RISE["exit"], self)
 
 
 class ModelOscillation(ModelBase):
