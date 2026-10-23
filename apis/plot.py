@@ -45,6 +45,18 @@ class SignalCatalogView(ProtectedView):
         return get_signal_catalog()
 
 
+class CustomStrategiesView(ProtectedView):
+    need_auth = {"get": True, "post": True}
+
+    async def get(self, request):
+        from business.custom_strategy import list_strategies
+        return {"strategies": await list_strategies(request.ctx.user.user_id)}
+
+    async def post(self, request):
+        from business.custom_strategy import save_strategy
+        return await save_strategy(request.ctx.user.user_id, request.json)
+
+
 class SymbolScoreView(HTTPMethodView):
     async def get(self, request):
         """

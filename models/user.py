@@ -56,3 +56,15 @@ class EmailMsgHistoryTable(Base):
 
     class Meta:
         table_name = "email_msg_history_table"
+
+
+class UserStrategyTable(Base):
+    id = CharField(primary_key=True, max_length=32, default=lambda: uuid.uuid4().hex)
+    user_id = CharField(max_length=32, index=True)
+    definition = TextField()
+    version = IntegerField(default=1)
+    create_ts = IntegerField(default=lambda: int(time.time()))
+    update_ts = IntegerField(default=lambda: int(time.time()))
+
+    class Meta:
+        table_name = "user_strategy_table"

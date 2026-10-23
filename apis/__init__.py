@@ -7,7 +7,7 @@ from .market import (MarketInnerPriceView, MarketMacdCrossGateView,
                      MarketPriceView, MarketKdjCrossGateView,
                      SubmitMarketLimitPriceView, MarketPlotManageView, BnSymbolView,
                      CandidateTopPriceNoticeSettingView)
-from .plot import (SignalCatalogView, SymbolScoreView,
+from .plot import (SignalCatalogView, SymbolScoreView, CustomStrategiesView,
                    TradeSignalRecordDetailView, TradeSignalRecordsView)
 from .test import ServerTimeView, TestView
 from .cache_sync import CacheSyncView
@@ -36,6 +36,7 @@ urls_bp = [
 
     (TradeSignalRecordsView.as_view(), "api/plot/backtest/record/list"),
     (TradeSignalRecordDetailView.as_view(), "api/plot/backtest/record/detail"),
+    (CustomStrategiesView.as_view(), "api/plot/strategies"),
     (SignalCatalogView.as_view(), "api/plot/signal/catalog"),
     (SymbolScoreView.as_view(), "api/plot/symbol/score"),
 
