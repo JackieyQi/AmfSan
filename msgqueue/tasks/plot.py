@@ -210,6 +210,12 @@ class TopPriceTaskHandle(BasePlotHandle):
                 for item in data:
                     symbol = item["symbol"]
                     if symbol.endswith("USDT"):
+                        if len(symbol) > BnSymbolTable.symbol.max_length:
+                            logger.warning(
+                                "update_all_symbols, skip symbol exceeding max_length: symbol=%s, length=%s, max_length=%s",
+                                symbol, len(symbol), BnSymbolTable.symbol.max_length,
+                            )
+                            continue
                         all_symbols_list.append(symbol.lower())
                         
         old_symbols_list = [i.symbol for i in await BnSymbolTable.select().aio_execute()]
