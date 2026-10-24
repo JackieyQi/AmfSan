@@ -135,5 +135,75 @@ def evaluate_rule(rule, model):
     raise ValueError("Unsupported rule operator")
 
 
+# Presentation metadata only. Execution continues to use CONDITIONS above.
+# Counts below follow factor.py's actual window semantics, not method names.
+CONDITION_PRESENTATION = {
+    "price_guard": (["K 线", "布林带"], "4h", "收盘价不超过上轨容差", []),
+    "daily_trend": (["EMA"], "1d", "EMA12 > EMA26", [{"label": "均线周期", "value": "12 / 26"}]),
+    "bullish_ratio": (["K 线"], "4h", "阳线（收盘价 > 开盘价）", []),
+    "above_ema": (["K 线", "EMA"], "4h", "收盘价 > EMA12", [{"label": "均线周期", "value": 12}]),
+    "near_upper": (["K 线", "布林带"], "4h", "收盘价 ≥ 中轨，且归一化上轨距离 ≤ 容差", []),
+    "widen": (["布林带"], "4h", "带宽按时间顺序严格扩大", []),
+    "hour_bullish": (["K 线"], "1h", "阳线（收盘价 > 开盘价）", []),
+    "hour_upper": (["K 线", "布林带"], "1h", "收盘价 ≥ 中轨，且归一化上轨距离 ≤ 容差", []),
+    "macd_down": (["MACD"], "4h", "MACD 柱值按时间顺序严格递减", []),
+    "kdj_cross": (["KDJ"], "4h", "前一根 K > D，本根 K < D", []),
+    "j_down": (["KDJ"], "4h", "J 值按时间顺序严格递减", []),
+    "j_low": (["KDJ"], "4h", "J 值小于阈值", []),
+    "rsi_speed": (["RSI"], "4h", "绝对变化量 > 此前变化均值 × 倍数", []),
+    "rsi_low": (["RSI"], "4h", "RSI 小于阈值", []),
+    "engulfing": (["K 线"], "4h", "看跌吞没形态", []),
+    "high_away": (["K 线", "布林带"], "4h", "最高价 > 上轨 ×（1 + 容差）", []),
+    "rsi_high": (["RSI"], "4h", "RSI 大于阈值", []),
+}
+
+
+def describe_condition(key, definition):
+    factors, interval, operation, indicator_parameters = CONDITION_PRESENTATION[key]
+    params = definition["params"]
+    indices = definition["indices"]
+    start = params.get("index", 0)
+    changes = None
+    if indices is not None:
+        samples = list(indices)
+        minimum = definition["minimum"]
+    elif key == "hour_upper":
+        samples = list(range(params["n"]))
+        minimum = params["n"] // 2 + 1
+    else:
+        count = params["window_size"]
+        if key == "widen":
+            count += 2
+        elif key == "j_down":
+            count += 1
+        samples = list(range(start, start + count))
+        minimum = count
+        if key in ("widen", "j_down", "macd_down"):
+            changes = count - 1
+    parameters = []
+    if "tolerance" in params:
+        unit = "上轨与中轨间距的比例" if key in ("near_upper", "hour_upper") else "上轨价格的比例"
+        parameters.append({"label": "容差", "value": params["tolerance"], "unit": unit})
+    if definition["value"] is not None:
+        parameters.append({"label": "阈值", "value": definition["value"]})
+    if key == "rsi_speed":
+        parameters.extend([{"label": "变化倍数", "value": params["threshold"]},
+                           {"label": "基准变化次数", "value": 4}])
+    requirement = "全部满足" if minimum == len(samples) else "至少满足 %s / %s 项" % (minimum, len(samples))
+    if definition["negate"]:
+        requirement = "全部不触发价格过热（对任一过热的结果取反）"
+    if changes is not None:
+        requirement = "连续 %s 次变化全部满足" % changes
+    return dict(factors=factors, interval=interval, operation=operation,
+                indicator_parameters=indicator_parameters, parameters=parameters,
+                sampling={"indices": samples, "count": len(samples),
+                          "includes_current": 0 in samples, "scope": definition["candle_scope"]},
+                requirement=requirement, change_count=changes)
+
+
 def get_strategy_definitions():
-    return deepcopy({"conditions": CONDITIONS, "models": [TOP_RISE]})
+    catalog = deepcopy({"conditions": CONDITIONS, "models": [TOP_RISE]})
+    for key, definition in catalog["conditions"].items():
+        if key in CONDITION_PRESENTATION:
+            definition["structure"] = describe_condition(key, definition)
+    return catalog

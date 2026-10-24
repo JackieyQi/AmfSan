@@ -22,6 +22,7 @@ from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
 from exts import async_database
 from business.monitor import monitor_lock
+from models.strategy_rules import TOP_RISE
 from cache import AllCache
 
 
@@ -204,6 +205,9 @@ class SymbolHandle(object):
             "id": row.id, "user_id": row.user_id, "symbol": row.symbol,
             "is_valid": row.is_valid, "create_ts": row.create_ts,
             "monitor_direction": row.monitor_direction,
+            # Direction monitors currently execute ModelTopRise for every symbol.
+            "strategy_model": {"key": TOP_RISE["key"], "name": TOP_RISE["name"],
+                               "version": TOP_RISE["version"]},
             "take_profit_price": str(row.take_profit_price) if row.take_profit_price is not None else None,
             "stop_loss_price": str(row.stop_loss_price) if row.stop_loss_price is not None else None,
             "last_signal_ts": row.last_signal_ts,
