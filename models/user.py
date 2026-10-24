@@ -34,6 +34,7 @@ class UserSymbolPlotTable(Base):
     )
     is_valid = BooleanField(db_column="is_valid", default=True)
     monitor_direction = CharField(max_length=4)
+    strategy_model_key = CharField(max_length=64, null=True)
     take_profit_price = DecimalField(max_digits=20, decimal_places=8, null=True)
     stop_loss_price = DecimalField(max_digits=20, decimal_places=8, null=True)
     config_version = CharField(max_length=32, default=lambda: uuid.uuid4().hex)

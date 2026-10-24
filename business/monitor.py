@@ -11,10 +11,12 @@ from business.binance_exchange import BinanceExchangeRequestHandle
 from cache import AllCache
 from models.user import EmailMsgHistoryTable, UserSymbolPlotTable, UserInfoTable
 from settings.setting import cfgs
+from models.strategy_rules import MONITOR_MODELS, monitor_rule
 
 logger = logging.getLogger(__name__)
 REASONS = {
     "model_top_rise": "布林贴顶上涨模型",
+    "model_daily_ema_hourly_macd": "日线 EMA 多头与小时 MACD 金叉",
     "take_profit": "触及止盈价",
     "stop_loss": "触及止损价",
 }
@@ -54,6 +56,8 @@ async def check_monitor_prices():
     rows = list(await UserSymbolPlotTable.select().where(
         UserSymbolPlotTable.is_valid == True,
         UserSymbolPlotTable.monitor_direction == "sell",
+        UserSymbolPlotTable.strategy_model_key.in_(
+            [key for key in MONITOR_MODELS if monitor_rule(key, "sell") is not None]),
         (UserSymbolPlotTable.take_profit_price.is_null(False)
          | UserSymbolPlotTable.stop_loss_price.is_null(False)),
     ).aio_execute())
@@ -113,7 +117,14 @@ async def deliver_monitor_notice(value):
             logger.warning("monitor recipient empty, monitor_id:%s", row.id)
             return
         direction = "买入机会" if row.monitor_direction == "buy" else "卖出机会"
-        reason = REASONS[value["reason"]]
+        if monitor_rule(row.strategy_model_key, row.monitor_direction) is None:
+            return
+        if value["reason"] == row.strategy_model_key:
+            reason = MONITOR_MODELS[row.strategy_model_key]["name"]
+        elif row.monitor_direction == "sell" and value["reason"] in ("take_profit", "stop_loss"):
+            reason = REASONS[value["reason"]]
+        else:
+            return
         content = (f"<p>{escape(row.symbol.upper())}：{direction}</p>"
                    f"<p>触发原因：{reason}；当前价格：{escape(value['price'])}</p>"
                    "<p>提醒后继续按当前方向监控。可在监控列表切换方向、暂停或移除。</p>")

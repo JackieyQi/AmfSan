@@ -339,20 +339,11 @@ class StrategyCheckHandle(BasePlotHandle):
         if not monitors:
             return
         await self.initialize_indicators()
-        # Only the current 1h/4h/1d path is used. New/incomplete or stale data must not alert.
-        for interval, candles, macd, kdj, rsi, boll in (
-            ("1h", self.kline_list_1h, self.macd_list_1h, self.kdj_list_1h, self.rsi_list_1h, self.bb_list_1h),
-            ("4h", self.kline_list_4h, self.macd_list_4h, self.kdj_list_4h, self.rsi_list_4h, self.bb_list_4h),
-        ):
-            if any(len(values) < 10 for values in (candles, macd, kdj, rsi, boll)):
-                logger.info("monitor waiting for indicators, symbol:%s, interval:%s", self.symbol, interval)
-                return
-            expected_ts = self.check_time // PLOT_INTERVAL_CONFIG[interval]["interval_sec"] * PLOT_INTERVAL_CONFIG[interval]["interval_sec"]
-            if any(ts < expected_ts for ts in (candles[0].open_ts, macd[0].opening_ts,
-                    kdj[0].open_ts, rsi[0].open_ts, boll[0].open_ts)):
-                logger.info("monitor waiting for current candle, symbol:%s, interval:%s", self.symbol, interval)
-                return
-        if not self.macd_list_1d or self.macd_list_1d[0].opening_ts < self.check_time // 86400 * 86400:
+        # Rule evaluation locates exact closed indicator timestamps independently.
+        if not self.kline_list_1h:
+            return
+        expected_ts = self.check_time // 3600 * 3600
+        if self.kline_list_1h[0].open_ts != expected_ts:
             return
         handler = StrategyHandle(
             self.kline_list_4h, self.kline_list_1h, self.kline_list_15m,
@@ -363,9 +354,10 @@ class StrategyCheckHandle(BasePlotHandle):
         )
         signals = {}
         for row in monitors:
-            if row.monitor_direction not in signals:
-                signals[row.monitor_direction] = handler.check_monitor_direction(row.monitor_direction)
-            if signals[row.monitor_direction]:
-                await enqueue_monitor_notice(row, signals[row.monitor_direction],
+            key = (row.strategy_model_key, row.monitor_direction)
+            if key not in signals:
+                signals[key] = handler.check_monitor_direction(row.monitor_direction, row.strategy_model_key, self.check_time)
+            if signals[key]:
+                await enqueue_monitor_notice(row, signals[key],
                                              self.kline_list_1h[0].close_price,
                                              self.kline_list_1h[0].open_ts)

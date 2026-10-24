@@ -123,7 +123,7 @@ TOP_RISE = {
     "key": "model_top_rise",
     "name": "布林贴顶加速上涨模型",
     "version": "1",
-    "status": "当前监控使用",
+    "status": "未开放选择",
     "summary": "日线趋势过滤，4h 强势结构确认，1h 入场触发。买入和卖出分别使用以下规则。",
     "entry": group("all", "price_guard", "daily_trend", "bullish_ratio", "above_ema",
                    "near_upper", "widen", group("any", "hour_bullish", "hour_upper")),
@@ -138,11 +138,26 @@ DAILY_EMA_HOURLY_MACD = {
     "key": "model_daily_ema_hourly_macd",
     "name": "日线 EMA 多头与小时 MACD 金叉",
     "version": "1",
-    "status": "已定义 · 未启用 · 只读",
+    "status": "可用于买入监控",
     "summary": "已收盘日线 EMA12 > EMA26，同时最新已收盘小时出现 MACD 金叉，仅定义买入。",
     "entry": group("all", "daily_trend_closed", "hour_macd_golden_closed"),
     "exit": None,
 }
+
+
+# Explicit rollout allowlist; defining a rule alone does not activate a model.
+MONITOR_MODELS = {DAILY_EMA_HOURLY_MACD["key"]: DAILY_EMA_HOURLY_MACD}
+
+
+def monitor_rule(model_key, direction):
+    model = MONITOR_MODELS.get(model_key)
+    field = {"buy": "entry", "sell": "exit"}.get(direction)
+    return model.get(field) if model and field else None
+
+
+def monitor_directions(model_key):
+    return [direction for direction in ("buy", "sell")
+            if monitor_rule(model_key, direction) is not None]
 
 
 def closed_factor(definition, factor, now):
@@ -278,6 +293,8 @@ def describe_condition(key, definition):
 
 def get_strategy_definitions():
     catalog = deepcopy({"conditions": CONDITIONS, "models": [TOP_RISE, DAILY_EMA_HOURLY_MACD]})
+    for model in catalog["models"]:
+        model["monitor_directions"] = monitor_directions(model["key"])
     for key, definition in catalog["conditions"].items():
         if definition["presentation"]["operation"] is not None:
             definition["structure"] = describe_condition(key, definition)

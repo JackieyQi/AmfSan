@@ -22,7 +22,7 @@ from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
 from exts import async_database
 from business.monitor import monitor_lock
-from models.strategy_rules import TOP_RISE
+from models.strategy_rules import MONITOR_MODELS, monitor_rule
 from cache import AllCache
 
 
@@ -205,9 +205,9 @@ class SymbolHandle(object):
             "id": row.id, "user_id": row.user_id, "symbol": row.symbol,
             "is_valid": row.is_valid, "create_ts": row.create_ts,
             "monitor_direction": row.monitor_direction,
-            # Direction monitors currently execute ModelTopRise for every symbol.
-            "strategy_model": {"key": TOP_RISE["key"], "name": TOP_RISE["name"],
-                               "version": TOP_RISE["version"]},
+            "strategy_model_key": row.strategy_model_key,
+            "strategy_model": ({key: MONITOR_MODELS[row.strategy_model_key][key] for key in ("key", "name", "version")}
+                               if row.strategy_model_key in MONITOR_MODELS else None),
             "take_profit_price": str(row.take_profit_price) if row.take_profit_price is not None else None,
             "stop_loss_price": str(row.stop_loss_price) if row.stop_loss_price is not None else None,
             "last_signal_ts": row.last_signal_ts,
@@ -239,9 +239,14 @@ class SymbolHandle(object):
 
     @staticmethod
     def validate_config(data):
+        model_key = data.get("strategy_model_key")
+        if model_key not in MONITOR_MODELS:
+            raise StandardResponseExc(msg="请选择已开放的策略模型")
         direction = data.get("monitor_direction")
         if direction not in ("buy", "sell"):
             raise StandardResponseExc(msg="请选择买入或卖出监控")
+        if monitor_rule(model_key, direction) is None:
+            raise StandardResponseExc(msg="所选模型不支持当前监控方向，不能切换")
         prices = {}
         for field in ("take_profit_price", "stop_loss_price"):
             value = data.get(field)
@@ -262,7 +267,7 @@ class SymbolHandle(object):
         if (prices["take_profit_price"] is not None and prices["stop_loss_price"] is not None
                 and prices["stop_loss_price"] >= prices["take_profit_price"]):
             raise StandardResponseExc(msg="止损价必须低于止盈价")
-        return {"monitor_direction": direction, **prices}
+        return {"monitor_direction": direction, "strategy_model_key": model_key, **prices}
 
     async def add_symbol(self, data):
         if not re.fullmatch(r"[a-z0-9]{2,10}", self.symbol):
@@ -288,7 +293,7 @@ class SymbolHandle(object):
             row = await self.get_owned_monitor(monitor_id)
             merged = self.serialize(row)
             merged.update({key: data[key] for key in (
-                "monitor_direction", "take_profit_price", "stop_loss_price") if key in data})
+                "monitor_direction", "strategy_model_key", "take_profit_price", "stop_loss_price") if key in data})
             if merged["monitor_direction"] == "buy":
                 merged.update(take_profit_price=None, stop_loss_price=None)
             config = self.validate_config(merged)
