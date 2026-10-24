@@ -1,7 +1,43 @@
 #! /usr/bin/env python
 # coding:utf8
 """Read-only catalog exported from executable strategy definitions."""
+from copy import deepcopy
+
 from models.strategy_rules import get_strategy_definitions
+
+
+BASIC_FACTORS = [
+    {
+        "key": "kline",
+        "name": "K 线",
+        "description": "观察价格形态，例如阳线比例、连续阳线和看跌吞没。"
+    },
+    {
+        "key": "ema",
+        "name": "EMA",
+        "description": "观察趋势，例如 EMA12 与 EMA26 排列、价格站上均线。"
+    },
+    {
+        "key": "boll",
+        "name": "布林带",
+        "description": "观察价格位置与波动，例如贴近上轨、带宽扩大。"
+    },
+    {
+        "key": "macd",
+        "name": "MACD",
+        "description": "观察动能变化，例如柱值正负、连续减小。"
+    },
+    {
+        "key": "kdj",
+        "name": "KDJ",
+        "description": "观察交叉与 J 值变化，例如死叉、J 值下行。"
+    },
+    {
+        "key": "rsi",
+        "name": "RSI",
+        "description": "观察相对强弱，例如高位、低于阈值或变化加速。"
+    }
+]
 
 
 SIGNAL_RECORD_STATUS_TEXT = {
@@ -35,7 +71,8 @@ def get_signal_catalog():
             "entry": None, "exit": None,
         })
     catalog.update({
-        "schema_version": "2026-10-21",
+        "schema_version": "2026-10-24",
+        "factors": deepcopy(BASIC_FACTORS),
         "record_status_text": SIGNAL_RECORD_STATUS_TEXT,
         "notes": [
             "当前监控固定使用布林贴顶加速上涨模型，按用户选择的方向判断并通知。",

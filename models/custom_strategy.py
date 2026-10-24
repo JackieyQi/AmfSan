@@ -1,5 +1,6 @@
 """Small, validated strategy configurations; no arbitrary executable expressions."""
 from decimal import Decimal, InvalidOperation
+from models.strategy_rules import CONDITIONS, evaluate_condition
 
 INTERVALS = {"1h": 3600, "4h": 14400, "1d": 86400}
 
@@ -27,6 +28,11 @@ def validate_strategy(data):
             raise ValueError("每个方向需要 1–20 个条件")
         normalized = []
         for item in conditions:
+            if isinstance(item, str):
+                if item not in CONDITIONS:
+                    raise ValueError("未知条件标识")
+                normalized.append(item)
+                continue
             if not isinstance(item, dict) or set(item) != {"indicator", "interval", "relation", "candle"}:
                 raise ValueError("条件字段不正确；MACD 阈值固定为 0")
             if item["indicator"] != "macd" or item["interval"] not in INTERVALS:
@@ -42,9 +48,10 @@ def validate_strategy(data):
     return result
 
 
-def evaluate_custom_strategy(definition, direction, candles_by_interval, now):
+def evaluate_custom_strategy(definition, direction, candles_by_interval, now, model=None):
     """Future binding entrypoint. Rows belong to one symbol and contain opening_ts/macd.
 
+    Library references use model factors; legacy rows use candles_by_interval.
     None means unavailable data; never coerce it to zero or a matching signal.
     The current monitoring scheduler deliberately does not call this function.
     """
@@ -56,6 +63,11 @@ def evaluate_custom_strategy(definition, direction, candles_by_interval, now):
         return False
     results = []
     for condition in rule["conditions"]:
+        if isinstance(condition, str):
+            if model is None:
+                raise ValueError("条件库规则需要传入已初始化因子的 model")
+            results.append(evaluate_condition(condition, model, now))
+            continue
         seconds = INTERVALS[condition["interval"]]
         expected = int(now) // seconds * seconds
         if condition["candle"] == "closed":
@@ -71,4 +83,6 @@ def evaluate_custom_strategy(definition, direction, candles_by_interval, now):
         if not value.is_finite():
             return None
         results.append(value > 0 if condition["relation"] == "above_zero" else value < 0)
-    return all(results) if rule["op"] == "all" else any(results)
+    if rule["op"] == "all":
+        return False if False in results else None if None in results else True
+    return True if True in results else None if None in results else False

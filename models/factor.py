@@ -450,11 +450,12 @@ class MacdFactor:
         mean_macd = np.mean([abs(i.macd) for i in self.macd_list[index:index+10]])
         return abs(self.macd_list[index].macd) < mean_macd * threshold
 
-    def is_golden_cross(self, index=0):
+    def is_golden_cross(self, index=0, strict=False):
         """
         macd滞后性强，短线交易中不考虑死叉
         """
-        return self.macd_list[index].macd >= 0 and self.macd_list[index+1].macd < 0
+        current = self.macd_list[index].macd
+        return (current > 0 if strict else current >= 0) and self.macd_list[index+1].macd < 0
 
     def is_death_cross(self, index=0):
         """
