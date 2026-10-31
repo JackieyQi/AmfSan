@@ -60,6 +60,7 @@ pydantic-settings==2.8.0
 pydantic_core==2.27.2
 PyJWT==2.10.1
 PyMySQL==1.1.1
+PySocks==1.7.1
 psycopg2-binary==2.9.9
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
