@@ -65,6 +65,7 @@ async def check_monitor_prices():
         (UserSymbolPlotTable.take_profit_price.is_null(False)
          | UserSymbolPlotTable.stop_loss_price.is_null(False)),
     ).aio_execute())
+    rows = [row for row in rows if snapshot.get("symbols", {}).get(row.symbol, {}).get("quote_asset") == "USDT"]
     if not rows:
         return
     # Fetch a fresh shared snapshot; old cached prices must not trigger a new alert.
@@ -82,7 +83,7 @@ async def check_monitor_prices():
     candle_ts = int(time.time()) // 3600 * 3600
     for row in rows:
         holding = position(read_snapshot(), row.symbol)
-        if holding is None or Decimal(holding["total"]) <= 0:
+        if holding is None or not holding["eligible"]:
             continue
         price = prices.get(row.symbol)
         if price is None or not price.is_finite() or price <= 0:
@@ -139,7 +140,7 @@ async def deliver_monitor_notice(value):
             if row.user_id != "root" or row.strategy_model_key != SPOT_MODEL:
                 return
             holding = position(read_snapshot(), row.symbol)
-            if holding is None or Decimal(holding["total"]) <= 0:
+            if holding is None or not holding["eligible"]:
                 return
         elif monitor_rule(row.strategy_model_key, row.monitor_direction) is None:
             return
@@ -155,6 +156,7 @@ async def deliver_monitor_notice(value):
         if holding:
             content += (f"<p>现货持有：{escape(holding['total'])} {escape(holding['base_asset'])}；"
                         f"可用：{escape(holding['free'])}；冻结：{escape(holding['locked'])}；"
+                        f"估值：{escape(holding['value_usdt'])} USDT；"
                         f"价格单位：{escape(holding['quote_asset'])}</p>")
         if send_email(recipient, f"{row.symbol.upper()} {direction}提醒", content):
             await EmailMsgHistoryTable.aio_create(msg_md5=digest, msg_content=content)

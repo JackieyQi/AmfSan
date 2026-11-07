@@ -2,6 +2,7 @@
 # coding:utf8
 
 import os
+from decimal import Decimal, InvalidOperation
 import threading
 from typing import Dict, Any, Optional
 
@@ -77,6 +78,7 @@ class ConfigManager:
             "bian": {
                 "key": self._env("AMFSAN_BINANCE_KEY", ""),
                 "secret": self._env("AMFSAN_BINANCE_SECRET", ""),
+                "min_holding_usdt": self._positive_decimal(self._env("AMFSAN_SPOT_MIN_HOLDING_USDT", "10")),
             },
         }
         self._validate_database_config()
@@ -87,6 +89,16 @@ class ConfigManager:
         if value is None or value == "":
             return default
         return caster(value)
+
+    @staticmethod
+    def _positive_decimal(value):
+        try:
+            amount = Decimal(value)
+            if not amount.is_finite() or amount <= 0:
+                raise ValueError()
+        except (InvalidOperation, ValueError):
+            raise RuntimeError("AMFSAN_SPOT_MIN_HOLDING_USDT must be a positive finite number")
+        return str(amount)
 
     @staticmethod
     def _required(env_name: str) -> str:

@@ -67,6 +67,7 @@ x-amfsan-app: &amfsan-app
     AMFSAN_EMAIL_PASSWORD: ${AMFSAN_EMAIL_PASSWORD:-}
     AMFSAN_BINANCE_KEY: ${AMFSAN_BINANCE_KEY:-}
     AMFSAN_BINANCE_SECRET: ${AMFSAN_BINANCE_SECRET:-}
+    AMFSAN_SPOT_MIN_HOLDING_USDT: ${AMFSAN_SPOT_MIN_HOLDING_USDT:-10}
   networks:
     - shared-services
   logging: &amfsan-logging

@@ -232,5 +232,5 @@ class BinanceSpotHoldingsView(ProtectedView):
         if request.ctx.user.user_id != "root":
             raise StandardResponseExc(msg="币安现货持仓仅限 root 查看")
         from business.spot_holdings import sync_spot_holdings, public_snapshot
-        await sync_spot_holdings()
-        return public_snapshot()
+        snapshot = await sync_spot_holdings()
+        return public_snapshot(snapshot)

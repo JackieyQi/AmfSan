@@ -4,7 +4,7 @@ import json
 import logging
 import time
 import uuid
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from business.binance_exchange import BinanceExchangeRequestHandle
 from cache import AllCache
@@ -24,24 +24,66 @@ def account_fingerprint():
     return hashlib.sha256((config.get("key", "") + ":" + config.get("secret", "")).encode()).hexdigest()
 
 
+def missing_credentials():
+    config = cfgs.get("bian", {})
+    return [env for key, env in (("key", "AMFSAN_BINANCE_KEY"),
+                                ("secret", "AMFSAN_BINANCE_SECRET"))
+            if not config.get(key)]
+
+
 def read_snapshot():
+    missing = missing_credentials()
+    if missing:
+        return {"status": "unconfigured", "missing_credentials": missing,
+                "updated_ts": 0, "balances": {}, "symbols": {}}
     raw = AllCache.get_client().get(SNAPSHOT_KEY)
     snapshot = json.loads(raw) if raw else {}
-    if snapshot.get("account") != account_fingerprint():
-        return {"status": "unconfigured", "updated_ts": 0, "balances": {}, "symbols": {}}
+    if not snapshot or snapshot.get("account") != account_fingerprint():
+        return {"status": "config_mismatch" if snapshot else "pending",
+                "updated_ts": 0, "balances": {}, "symbols": {}}
     if snapshot.get("status") == "ok" and not 0 <= time.time() - snapshot.get("updated_ts", 0) <= MAX_AGE:
         snapshot["status"] = "stale"
     return snapshot
+
+
+def min_holding_usdt():
+    return Decimal(cfgs.get("bian", {}).get("min_holding_usdt", "10"))
+
+
+def usdt_prices(symbols, tickers):
+    """Only use the direct price of a supported USDT-quoted spot pair."""
+    if not isinstance(tickers, list):
+        raise ValueError("Invalid ticker response")
+    prices = {}
+    for item in tickers:
+        try:
+            symbol = item["symbol"].lower()
+            if symbols.get(symbol, {}).get("quote_asset") != "USDT":
+                continue
+            price = Decimal(item["price"])
+            if price.is_finite() and price > 0:
+                prices[symbol] = str(price)
+        except (KeyError, TypeError, InvalidOperation):
+            continue
+    return prices
 
 
 def position(snapshot, symbol):
     if snapshot.get("status") != "ok":
         return None
     pair = snapshot.get("symbols", {}).get(symbol)
-    if not pair:
+    if not pair or pair.get("quote_asset") != "USDT":
         return None
     amounts = snapshot["balances"].get(pair["base_asset"], {"free": "0", "locked": "0"})
-    return {**pair, **amounts, "total": str(Decimal(amounts["free"]) + Decimal(amounts["locked"]))}
+    total = Decimal(amounts["free"]) + Decimal(amounts["locked"])
+    rate = snapshot.get("usdt_prices", {}).get(symbol)
+    fresh_price = 0 <= time.time() - snapshot.get("valuation_ts", 0) <= MAX_AGE
+    value = total * Decimal(rate) if rate is not None and fresh_price else None
+    eligible = total > 0 and value is not None and value >= min_holding_usdt()
+    return {**pair, **amounts, "total": str(total),
+            "value_usdt": str(value) if value is not None else None,
+            "eligible": eligible,
+            "valuation_status": "unavailable" if value is None else "eligible" if eligible else "below_minimum"}
 
 
 def require_position(user_id, symbol):
@@ -52,9 +94,13 @@ def require_position(user_id, symbol):
         raise StandardResponseExc(msg="现货持仓同步失败或已过期，请检查服务端只读密钥并刷新持仓")
     holding = position(snapshot, symbol)
     if holding is None:
-        raise StandardResponseExc(msg="请选择支持交易的币安现货交易对")
+        raise StandardResponseExc(msg="请选择支持交易的币安 USDT 现货交易对")
     if Decimal(holding["total"]) <= 0:
         raise StandardResponseExc(msg="该交易对的基础币种没有现货持仓")
+    if holding["value_usdt"] is None:
+        raise StandardResponseExc(msg="无法获取新鲜的 USDT 估值，请稍后刷新持仓")
+    if not holding["eligible"]:
+        raise StandardResponseExc(msg=f"持仓估值低于 {min_holding_usdt()} USDT 监控门槛")
     return holding
 
 
@@ -80,8 +126,8 @@ async def pause_closed_monitors(snapshot):
     ).aio_execute()
     for original in rows:
         pair = snapshot["symbols"].get(original.symbol)
-        if not pair:
-            continue  # Unknown/delisted pair is not evidence of zero balance.
+        if not pair or pair.get("quote_asset") != "USDT":
+            continue  # Unsupported/delisted pair is not evidence of zero balance.
         balance = snapshot["balances"].get(pair["base_asset"], {"free": "0", "locked": "0"})
         if Decimal(balance["free"]) + Decimal(balance["locked"]) != 0:
             continue
@@ -96,6 +142,9 @@ async def pause_closed_monitors(snapshot):
 
 
 async def sync_spot_holdings():
+    # An old/unconfigured worker must not overwrite another worker's valid snapshot.
+    if missing_credentials():
+        return read_snapshot()
     from business.monitor import monitor_lock
     async with monitor_lock("lock_monitor_spot_sync:root"):
         previous = read_snapshot()
@@ -115,13 +164,23 @@ async def sync_spot_holdings():
                 symbols = {item["symbol"].lower(): {
                     "base_asset": item["baseAsset"], "quote_asset": item["quoteAsset"],
                 } for item in data["symbols"] if item["status"] == "TRADING"
-                    and item.get("isSpotTradingAllowed") is True
+                    and item.get("isSpotTradingAllowed") is True and item["quoteAsset"] == "USDT"
                     and len(item["symbol"]) <= 10 and item["symbol"].isascii() and item["symbol"].isalnum()}
                 if not symbols:
                     raise ValueError("Missing spot symbols")
                 AllCache.get_client().set(SYMBOLS_KEY, json.dumps(symbols), ex=3600)
+            # Filter old cached exchange metadata as well as fresh responses.
+            symbols = {symbol: pair for symbol, pair in symbols.items() if pair.get("quote_asset") == "USDT"}
             balances = parse_balances(await client.get_spot_account_async())
-            snapshot.update(status="ok", updated_ts=int(time.time()), balances=balances, symbols=symbols)
+            snapshot.update(status="ok", updated_ts=int(time.time()), balances=balances, symbols=symbols,
+                            usdt_prices={}, valuation_ts=0)
+            snapshot.pop("usdt_rates", None)
+            try:
+                snapshot["usdt_prices"] = usdt_prices(symbols, await client.get_spot_prices_async())
+                snapshot["valuation_ts"] = int(time.time())
+            except Exception:
+                # Balance success still permits confirmed closure; never reuse old prices.
+                logger.warning("Binance spot valuation failed; sell evaluation suspended")
             # Persist closure before making the new snapshot available to API edits.
             await pause_closed_monitors(snapshot)
         except Exception:
@@ -131,13 +190,17 @@ async def sync_spot_holdings():
         return snapshot
 
 
-def public_snapshot():
-    snapshot = read_snapshot()
+def public_snapshot(snapshot=None):
+    snapshot = dict(read_snapshot() if snapshot is None else snapshot)
+    if snapshot.get("status") == "ok" and not 0 <= time.time() - snapshot.get("updated_ts", 0) <= MAX_AGE:
+        snapshot["status"] = "stale"
     holdings = []
     if snapshot.get("status") == "ok":
         for symbol in sorted(snapshot.get("symbols", {})):
             holding = position(snapshot, symbol)
-            if Decimal(holding["total"]) > 0:
+            if holding is not None and Decimal(holding["total"]) > 0:
                 holdings.append({"symbol": symbol, **holding})
-    return {"status": snapshot.get("status", "unconfigured"),
+    return {"status": snapshot.get("status", "pending"),
+            "missing_credentials": snapshot.get("missing_credentials", []),
+            "min_holding_usdt": str(min_holding_usdt()),
             "updated_ts": snapshot.get("updated_ts", 0), "holdings": holdings}

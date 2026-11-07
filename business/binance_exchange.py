@@ -31,6 +31,9 @@ class BinanceExchangeRequestHandle(object):
     async def get_spot_symbols_async(self):
         return await self._spot_get("/api/v3/exchangeInfo?permissions=SPOT")
 
+    async def get_spot_prices_async(self):
+        return await self._spot_get("/api/v3/ticker/price")
+
     async def _spot_get(self, path, headers=None):
         # Never log signed URLs, response bodies or headers containing credentials.
         async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=10)) as session:
