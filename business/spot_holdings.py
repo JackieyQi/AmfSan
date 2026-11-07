@@ -198,7 +198,7 @@ def public_snapshot(snapshot=None):
     if snapshot.get("status") == "ok":
         for symbol in sorted(snapshot.get("symbols", {})):
             holding = position(snapshot, symbol)
-            if holding is not None and Decimal(holding["total"]) > 0:
+            if holding is not None and holding["eligible"]:
                 holdings.append({"symbol": symbol, **holding})
     return {"status": snapshot.get("status", "pending"),
             "missing_credentials": snapshot.get("missing_credentials", []),

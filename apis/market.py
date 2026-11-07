@@ -234,3 +234,11 @@ class BinanceSpotHoldingsView(ProtectedView):
         from business.spot_holdings import sync_spot_holdings, public_snapshot
         snapshot = await sync_spot_holdings()
         return public_snapshot(snapshot)
+
+
+class MonitorOptionsView(ProtectedView):
+    need_auth = {"get": True}
+
+    async def get(self, request):
+        from business.monitor_state import monitor_capabilities
+        return monitor_capabilities(request.ctx.user.user_id)

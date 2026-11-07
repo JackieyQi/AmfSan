@@ -24,7 +24,8 @@ from business.binance_exchange import BinanceExchangeRequestHandle
 from exts import async_database
 from business.monitor import monitor_lock
 from models.strategy_rules import MONITOR_MODELS, monitor_rule
-from business.spot_holdings import SPOT_MODEL, sync_spot_holdings, require_position
+from business.spot_holdings import SPOT_MODEL, sync_spot_holdings, require_position, read_snapshot
+from business.monitor_state import monitor_state
 from cache import AllCache
 
 
@@ -216,12 +217,25 @@ class SymbolHandle(object):
             "last_signal_reason": row.last_signal_reason,
         }
 
+    def present(self, row, snapshot=None):
+        data = self.serialize(row)
+        try:
+            self.validate_config(data)
+            config_error = None
+        except StandardResponseExc as exc:
+            config_error = str(exc)
+        if snapshot is None:
+            snapshot = read_snapshot() if row.user_id == "root" and row.monitor_direction == "sell" else {}
+        return {**data, **monitor_state(row, self.user_id, snapshot, config_error)}
+
     async def get_all(self):
         query = UserSymbolPlotTable.select()
         if self.user_id != "root":
             query = query.where(UserSymbolPlotTable.user_id == self.user_id)
         rows = await query.order_by(UserSymbolPlotTable.create_ts, UserSymbolPlotTable.id).aio_execute()
-        return [self.serialize(row) for row in rows]
+        rows = list(rows)
+        snapshot = read_snapshot() if any(row.user_id == "root" and row.monitor_direction == "sell" for row in rows) else {}
+        return [self.present(row, snapshot) for row in rows]
 
     def refresh_symbol_cache(self):
         AllCache.get_client().delete("symbol:cfg")
@@ -299,7 +313,7 @@ class SymbolHandle(object):
                     raise StandardResponseExc(msg="最多添加 3 个监控币种")
             row = await UserSymbolPlotTable.aio_create(user_id=self.user_id, symbol=self.symbol, **config)
         self.refresh_symbol_cache()
-        return self.serialize(row)
+        return self.present(row)
 
     async def update_monitor(self, monitor_id, data):
         original = await self.get_owned_monitor(monitor_id)
@@ -317,6 +331,10 @@ class SymbolHandle(object):
                 await stack.enter_async_context(monitor_lock("lock_monitor_spot_sync:root"))
             await stack.enter_async_context(monitor_lock(f"lock_monitor:{monitor_id}"))
             row = await self.get_owned_monitor(monitor_id)
+            if data.get("is_valid") is True and set(data).issubset({"id", "is_valid"}):
+                action = self.present(row)["actions"]["resume"]
+                if not action["allowed"]:
+                    raise StandardResponseExc(msg=action["reason"])
             merged = self.serialize(row)
             merged.update({key: data[key] for key in (
                 "monitor_direction", "strategy_model_key", "take_profit_price", "stop_loss_price") if key in data})
@@ -336,7 +354,7 @@ class SymbolHandle(object):
                     setattr(row, key, value)
                 await row.aio_save()
         self.refresh_symbol_cache()
-        return self.serialize(row)
+        return self.present(row)
 
     async def delete_symbol(self, monitor_id):
         async with monitor_lock(f"lock_monitor:{monitor_id}"):
