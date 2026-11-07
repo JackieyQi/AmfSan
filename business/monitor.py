@@ -12,6 +12,7 @@ from cache import AllCache
 from models.user import EmailMsgHistoryTable, UserSymbolPlotTable, UserInfoTable
 from settings.setting import cfgs
 from models.strategy_rules import MONITOR_MODELS, monitor_rule
+from business.spot_holdings import SPOT_MODEL, sync_spot_holdings, read_snapshot, position
 
 logger = logging.getLogger(__name__)
 REASONS = {
@@ -53,25 +54,36 @@ async def enqueue_monitor_notice(row, reason, price, candle_ts):
 
 
 async def check_monitor_prices():
+    snapshot = await sync_spot_holdings()
+    if snapshot.get("status") != "ok":
+        return
     rows = list(await UserSymbolPlotTable.select().where(
         UserSymbolPlotTable.is_valid == True,
         UserSymbolPlotTable.monitor_direction == "sell",
-        UserSymbolPlotTable.strategy_model_key.in_(
-            [key for key in MONITOR_MODELS if monitor_rule(key, "sell") is not None]),
+        UserSymbolPlotTable.user_id == "root",
+        UserSymbolPlotTable.strategy_model_key == SPOT_MODEL,
         (UserSymbolPlotTable.take_profit_price.is_null(False)
          | UserSymbolPlotTable.stop_loss_price.is_null(False)),
     ).aio_execute())
     if not rows:
         return
     # Fetch a fresh shared snapshot; old cached prices must not trigger a new alert.
-    result = await BinanceExchangeRequestHandle().get_current_price_async(
-        symbol_list=sorted({row.symbol for row in rows}))
+    try:
+        result = await asyncio.wait_for(
+            BinanceExchangeRequestHandle().get_current_price_async(
+                symbol_list=sorted({row.symbol for row in rows})), timeout=10)
+    except Exception:
+        logger.warning("monitor price lookup failed")
+        return
     if not isinstance(result, list):
         logger.warning("monitor price lookup failed")
         return
     prices = {item["symbol"].lower(): Decimal(item["price"]) for item in result}
     candle_ts = int(time.time()) // 3600 * 3600
     for row in rows:
+        holding = position(read_snapshot(), row.symbol)
+        if holding is None or Decimal(holding["total"]) <= 0:
+            continue
         price = prices.get(row.symbol)
         if price is None or not price.is_finite() or price <= 0:
             continue
@@ -90,8 +102,13 @@ async def deliver_monitor_notice(value):
     if now - value["created_ts"] > 180 or value["candle_ts"] != now // 3600 * 3600:
         return
     monitor_id = value["monitor_id"]
+    if value["direction"] == "sell":
+        await sync_spot_holdings()
     # API updates/deletions use this same lock. A paused/deleted/edited queued notice is discarded.
     async with monitor_lock(f"lock_monitor:{monitor_id}"):
+        now = int(time.time())
+        if now - value["created_ts"] > 180 or value["candle_ts"] != now // 3600 * 3600:
+            return
         try:
             row = await UserSymbolPlotTable.select().where(
                 UserSymbolPlotTable.id == monitor_id,
@@ -117,9 +134,16 @@ async def deliver_monitor_notice(value):
             logger.warning("monitor recipient empty, monitor_id:%s", row.id)
             return
         direction = "买入机会" if row.monitor_direction == "buy" else "卖出机会"
-        if monitor_rule(row.strategy_model_key, row.monitor_direction) is None:
+        holding = None
+        if row.monitor_direction == "sell":
+            if row.user_id != "root" or row.strategy_model_key != SPOT_MODEL:
+                return
+            holding = position(read_snapshot(), row.symbol)
+            if holding is None or Decimal(holding["total"]) <= 0:
+                return
+        elif monitor_rule(row.strategy_model_key, row.monitor_direction) is None:
             return
-        if value["reason"] == row.strategy_model_key:
+        if row.monitor_direction == "buy" and value["reason"] == row.strategy_model_key:
             reason = MONITOR_MODELS[row.strategy_model_key]["name"]
         elif row.monitor_direction == "sell" and value["reason"] in ("take_profit", "stop_loss"):
             reason = REASONS[value["reason"]]
@@ -128,6 +152,10 @@ async def deliver_monitor_notice(value):
         content = (f"<p>{escape(row.symbol.upper())}：{direction}</p>"
                    f"<p>触发原因：{reason}；当前价格：{escape(value['price'])}</p>"
                    "<p>提醒后继续按当前方向监控。可在监控列表切换方向、暂停或移除。</p>")
+        if holding:
+            content += (f"<p>现货持有：{escape(holding['total'])} {escape(holding['base_asset'])}；"
+                        f"可用：{escape(holding['free'])}；冻结：{escape(holding['locked'])}；"
+                        f"价格单位：{escape(holding['quote_asset'])}</p>")
         if send_email(recipient, f"{row.symbol.upper()} {direction}提醒", content):
             await EmailMsgHistoryTable.aio_create(msg_md5=digest, msg_content=content)
             row.last_signal_ts = int(time.time())

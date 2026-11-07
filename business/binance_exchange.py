@@ -21,6 +21,24 @@ class BinanceExchangeRequestHandle(object):
         m = hmac.new(self.secret.encode("utf-8"), data.encode("utf-8"), hashlib.sha256)
         return m.hexdigest()
 
+    async def get_spot_account_async(self):
+        params = {"timestamp": int(time.time() * 1000), "recvWindow": 5000}
+        query = urllib.parse.urlencode(params)
+        query += "&signature=" + self._get_sign(query)
+        return await self._spot_get("/api/v3/account?" + query,
+                                    {"X-MBX-APIKEY": self.key})
+
+    async def get_spot_symbols_async(self):
+        return await self._spot_get("/api/v3/exchangeInfo?permissions=SPOT")
+
+    async def _spot_get(self, path, headers=None):
+        # Never log signed URLs, response bodies or headers containing credentials.
+        async with aiohttp.ClientSession(trust_env=True, timeout=aiohttp.ClientTimeout(total=10)) as session:
+            async with session.get(self.base_url + path, headers=headers) as response:
+                if response.status != 200:
+                    raise ValueError("Binance spot query failed")
+                return await response.json()
+
     def get_current_price(self, symbol, limit=5):
         payload = {
             "symbol": symbol.upper(),

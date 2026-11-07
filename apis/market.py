@@ -223,3 +223,14 @@ class CandidateTopPriceNoticeSettingView(ProtectedView):
         data = request.json or {}
         enabled = self._parse_enabled(data.get("enabled"))
         return CandidateTopPriceNoticeSetting.set_enabled(enabled)
+
+
+class BinanceSpotHoldingsView(ProtectedView):
+    need_auth = {"get": True}
+
+    async def get(self, request):
+        if request.ctx.user.user_id != "root":
+            raise StandardResponseExc(msg="币安现货持仓仅限 root 查看")
+        from business.spot_holdings import sync_spot_holdings, public_snapshot
+        await sync_spot_holdings()
+        return public_snapshot()

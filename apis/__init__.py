@@ -6,7 +6,7 @@ from .market import (MarketInnerPriceView, MarketMacdCrossGateView,
                      MarketMacdTrendGateView, MarketPriceGateView,
                      MarketPriceView, MarketKdjCrossGateView,
                      SubmitMarketLimitPriceView, MarketPlotManageView, BnSymbolView,
-                     CandidateTopPriceNoticeSettingView)
+                     CandidateTopPriceNoticeSettingView, BinanceSpotHoldingsView)
 from .plot import (SignalCatalogView, SymbolScoreView, CustomStrategiesView,
                    TradeSignalRecordDetailView, TradeSignalRecordsView)
 from .test import ServerTimeView, TestView
@@ -28,6 +28,7 @@ urls_bp = [
         MarketInnerPriceView.as_view(),
         "api/market/innerprice/<side_str>/<symbol>/<new_price>/",
     ),
+    (BinanceSpotHoldingsView.as_view(), "api/market/binance/spot-holdings"),
     (MarketPlotManageView.as_view(), "api/market/plot"),
     (BnSymbolView.as_view(), "api/market/bn/symbol"),
     (CandidateTopPriceNoticeSettingView.as_view(), "api/market/bn/top-price-notice"),
