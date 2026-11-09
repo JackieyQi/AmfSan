@@ -23,8 +23,8 @@ from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
 from exts import async_database
 from business.monitor import monitor_lock
-from models.strategy_rules import MONITOR_MODELS
-from business.spot_holdings import SPOT_MODEL, DEFAULT_SPOT_MODEL, sync_spot_holdings, require_position, read_snapshot
+from models.strategy_rules import MONITOR_MODELS, monitor_rule
+from business.spot_holdings import SPOT_MODEL, DEFAULT_SPOT_MODEL, sync_spot_holdings, require_position, read_snapshot, buy_blocked
 from business.monitor_state import monitor_state
 from cache import AllCache
 
@@ -261,9 +261,9 @@ class SymbolHandle(object):
         direction = data.get("monitor_direction")
         if direction not in ("buy", "sell"):
             raise StandardResponseExc(msg="请选择买入或卖出监控")
-        if direction == "buy":
-            raise StandardResponseExc(msg="买入监控暂未开放")
-        if model_key not in (SPOT_MODEL, DEFAULT_SPOT_MODEL):
+        if direction == "buy" and monitor_rule(model_key, "buy") is None:
+            raise StandardResponseExc(msg="请选择支持买入的已开放策略模型")
+        if direction == "sell" and model_key not in (SPOT_MODEL, DEFAULT_SPOT_MODEL):
             raise StandardResponseExc(msg="请选择现货止盈止损或1小时 MACD 死叉模型")
         prices = {}
         for field in ("take_profit_price", "stop_loss_price"):
@@ -284,6 +284,8 @@ class SymbolHandle(object):
             raise StandardResponseExc(msg="现货卖出监控至少设置一个止盈或止损价")
         if model_key == DEFAULT_SPOT_MODEL and any(value is not None for value in prices.values()):
             raise StandardResponseExc(msg="设置价格请切换为现货止盈止损模型")
+        if direction == "buy" and any(value is not None for value in prices.values()):
+            raise StandardResponseExc(msg="买入监控不设置止盈止损价")
         if (prices["take_profit_price"] is not None and prices["stop_loss_price"] is not None
                 and prices["stop_loss_price"] >= prices["take_profit_price"]):
             raise StandardResponseExc(msg="止损价必须低于止盈价")
@@ -293,16 +295,19 @@ class SymbolHandle(object):
         if not re.fullmatch(r"[a-z0-9]{2,10}", self.symbol):
             raise StandardResponseExc(msg="币种应为 2–10 位英文字母或数字")
         config = self.validate_config(data)
+        if self.user_id == "root":
+            await sync_spot_holdings()
         if config["monitor_direction"] == "sell":
             if self.user_id != "root":
                 raise StandardResponseExc(msg="币安现货卖出监控仅限 root 使用")
-            await sync_spot_holdings()
         async with AsyncExitStack() as stack:
-            if config["monitor_direction"] == "sell":
+            if self.user_id == "root":
                 await stack.enter_async_context(monitor_lock("lock_monitor_spot_sync:root"))
             await stack.enter_async_context(monitor_lock(f"lock_monitor_user:{self.user_id}"))
             if config["monitor_direction"] == "sell":
                 require_position(self.user_id, self.symbol)
+            if config["monitor_direction"] == "buy" and buy_blocked(self.user_id, self.symbol):
+                raise StandardResponseExc(msg="该币种持仓已达到全局下限，请使用卖出监控")
             if await UserSymbolPlotTable.select().where(
                 UserSymbolPlotTable.user_id == self.user_id,
                 UserSymbolPlotTable.symbol == self.symbol,
@@ -322,15 +327,18 @@ class SymbolHandle(object):
         sell = data.get("monitor_direction", original.monitor_direction) == "sell"
         # Pausing must remain possible even if credentials/data are unavailable.
         pause_only = data == {"id": monitor_id, "is_valid": False} or data == {"is_valid": False}
+        if original.user_id == "root" and not pause_only:
+            await sync_spot_holdings()
         if sell and not pause_only:
             if self.user_id != "root" or original.user_id != "root":
                 raise StandardResponseExc(msg="币安现货卖出监控仅限 root 使用")
-            await sync_spot_holdings()
         async with AsyncExitStack() as stack:
-            if sell and not pause_only:
+            if original.user_id == "root" and not pause_only:
                 await stack.enter_async_context(monitor_lock("lock_monitor_spot_sync:root"))
             await stack.enter_async_context(monitor_lock(f"lock_monitor:{monitor_id}"))
             row = await self.get_owned_monitor(monitor_id)
+            if data.get("monitor_direction", row.monitor_direction) != row.monitor_direction:
+                raise StandardResponseExc(msg="请先移除原监控再添加其他方向，实际持仓将自动创建卖出监控")
             if data.get("is_valid") is True and set(data).issubset({"id", "is_valid"}):
                 action = self.present(row)["actions"]["resume"]
                 if not action["allowed"]:
@@ -343,6 +351,10 @@ class SymbolHandle(object):
             config = {"is_valid": False} if pause_only else self.validate_config(merged)
             if not pause_only and config["monitor_direction"] == "sell":
                 require_position(row.user_id, row.symbol)
+            if (not pause_only and merged["monitor_direction"] == "buy"
+                    and buy_blocked(row.user_id, row.symbol)
+                    and data.get("is_valid", row.is_valid)):
+                raise StandardResponseExc(msg="该币种持仓已达到全局下限，买入监控需保持暂停")
             if "is_valid" in data:
                 if not isinstance(data["is_valid"], bool):
                     raise StandardResponseExc(msg="is_valid 必须是布尔值")

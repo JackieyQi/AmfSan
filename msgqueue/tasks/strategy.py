@@ -332,15 +332,10 @@ class StrategyCheckHandle(BasePlotHandle):
 
     async def check(self, limit_count=7):
         from business.monitor import enqueue_monitor_notice
-        from business.spot_holdings import DEFAULT_SPOT_MODEL, sync_spot_holdings, read_snapshot, position
-        snapshot = await sync_spot_holdings()
-        if snapshot.get("status") != "ok":
-            return
+        from business.spot_holdings import sync_spot_holdings, read_snapshot, position, buy_blocked
+        await sync_spot_holdings()
         monitors = list(await UserSymbolPlotTable.select().where(
             UserSymbolPlotTable.symbol == self.symbol,
-            UserSymbolPlotTable.monitor_direction == "sell",
-            UserSymbolPlotTable.user_id == "root",
-            UserSymbolPlotTable.strategy_model_key == DEFAULT_SPOT_MODEL,
             UserSymbolPlotTable.is_valid == True,
         ).aio_execute())
         if not monitors:
@@ -359,8 +354,11 @@ class StrategyCheckHandle(BasePlotHandle):
         )
         signals = {}
         for row in monitors:
-            holding = position(read_snapshot(), row.symbol)
-            if holding is None or not holding["eligible"]:
+            if row.monitor_direction == "sell":
+                holding = position(read_snapshot(), row.symbol)
+                if row.user_id != "root" or holding is None or not holding["eligible"]:
+                    continue
+            elif buy_blocked(row.user_id, row.symbol):
                 continue
             key = (row.strategy_model_key, row.monitor_direction)
             if key not in signals:
@@ -370,6 +368,10 @@ class StrategyCheckHandle(BasePlotHandle):
                 closed = [k for k in self.kline_list_1h if k.open_ts == closed_ts]
                 if len(closed) != 1:
                     continue
-                await enqueue_monitor_notice(row, signals[key],
-                                             closed[0].close_price,
-                                             expected_ts)
+                signal_price = closed[0].close_price
+                if row.monitor_direction == "buy":
+                    current = [k for k in self.kline_list_1h if k.open_ts == expected_ts]
+                    if len(current) != 1:
+                        continue
+                    signal_price = current[0].close_price
+                await enqueue_monitor_notice(row, signals[key], signal_price, expected_ts)

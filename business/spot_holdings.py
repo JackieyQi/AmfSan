@@ -88,6 +88,14 @@ def position(snapshot, symbol):
             "valuation_status": "unavailable" if value is None else "eligible" if eligible else "below_minimum"}
 
 
+def buy_blocked(user_id, symbol, snapshot=None):
+    """Only this Binance account's eligible holding blocks its buy monitor."""
+    if user_id != "root":
+        return False
+    holding = position(read_snapshot() if snapshot is None else snapshot, symbol)
+    return holding is not None and holding["eligible"]
+
+
 def require_position(user_id, symbol):
     if user_id != "root":
         raise StandardResponseExc(msg="币安现货卖出监控仅限 root 使用")
@@ -141,17 +149,23 @@ async def reconcile_spot_monitors(snapshot):
                     strategy_model_key=DEFAULT_SPOT_MODEL, is_valid=True)
                 AllCache.get_client().delete("symbol:cfg")
                 continue
-            async with monitor_lock(f"lock_monitor:{rows[0].id}"):
+            original = rows[0]
+            async with monitor_lock(f"lock_monitor:{original.id}"):
                 row = await UserSymbolPlotTable.select().where(
-                    UserSymbolPlotTable.id == rows[0].id).aio_get()
+                    UserSymbolPlotTable.id == original.id).aio_get()
                 if row.monitor_direction == "sell":
-                    continue  # Preserve selected model, thresholds and manual pause.
-                await UserSymbolPlotTable.update(
-                    monitor_direction="sell", strategy_model_key=DEFAULT_SPOT_MODEL,
-                    take_profit_price=None, stop_loss_price=None,
-                    config_version=uuid.uuid4().hex,
-                    last_signal_ts=0, last_signal_reason="",
-                ).where(UserSymbolPlotTable.id == row.id).aio_execute()
+                    continue  # Preserve existing sell model and manual pause.
+                from exts import async_database
+                # Replace only the monitor configuration; retain all market/signal history.
+                # Atomic replacement preserves the buy record if sell creation fails.
+                async with async_database.aio_atomic():
+                    await UserSymbolPlotTable.delete().where(
+                        UserSymbolPlotTable.id == row.id,
+                        UserSymbolPlotTable.monitor_direction == "buy",
+                    ).aio_execute()
+                    await UserSymbolPlotTable.aio_create(
+                        user_id="root", symbol=symbol, monitor_direction="sell",
+                        strategy_model_key=DEFAULT_SPOT_MODEL, is_valid=True)
                 AllCache.get_client().delete("symbol:cfg")
 
 

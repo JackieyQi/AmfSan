@@ -12,7 +12,7 @@ from cache import AllCache
 from models.user import EmailMsgHistoryTable, UserSymbolPlotTable, UserInfoTable
 from settings.setting import cfgs
 from models.strategy_rules import MONITOR_MODELS, monitor_rule
-from business.spot_holdings import SPOT_MODEL, DEFAULT_SPOT_MODEL, sync_spot_holdings, read_snapshot, position
+from business.spot_holdings import SPOT_MODEL, DEFAULT_SPOT_MODEL, sync_spot_holdings, read_snapshot, position, buy_blocked
 
 logger = logging.getLogger(__name__)
 REASONS = {
@@ -40,7 +40,7 @@ async def monitor_lock(name):
 
 
 async def enqueue_monitor_notice(row, reason, price, candle_ts):
-    if row.monitor_direction != "sell":
+    if row.monitor_direction == "buy" and buy_blocked(row.user_id, row.symbol):
         return
     from msgqueue.queue import push_msg
     key = f"monitor:{row.id}:{row.user_id}:{row.symbol}:{row.monitor_direction}:{row.config_version}:{reason}:{candle_ts}"
@@ -101,14 +101,11 @@ async def check_monitor_prices():
 
 async def deliver_monitor_notice(value):
     from business.mail_serve import send_email
-    if value["direction"] != "sell":
-        return  # Discard already queued buy notices too.
     now = int(time.time())
     if now - value["created_ts"] > 180 or value["candle_ts"] != now // 3600 * 3600:
         return
     monitor_id = value["monitor_id"]
-    if value["direction"] == "sell":
-        await sync_spot_holdings()
+    await sync_spot_holdings()
     # API updates/deletions use this same lock. A paused/deleted/edited queued notice is discarded.
     async with monitor_lock(f"lock_monitor:{monitor_id}"):
         now = int(time.time())
@@ -146,9 +143,12 @@ async def deliver_monitor_notice(value):
             holding = position(read_snapshot(), row.symbol)
             if holding is None or not holding["eligible"]:
                 return
-        elif monitor_rule(row.strategy_model_key, row.monitor_direction) is None:
+        elif (monitor_rule(row.strategy_model_key, row.monitor_direction) is None
+              or buy_blocked(row.user_id, row.symbol)):
             return
-        if (row.strategy_model_key == DEFAULT_SPOT_MODEL and value["reason"] == row.strategy_model_key
+        if row.monitor_direction == "buy" and value["reason"] == row.strategy_model_key:
+            reason = MONITOR_MODELS[row.strategy_model_key]["name"]
+        elif (row.strategy_model_key == DEFAULT_SPOT_MODEL and value["reason"] == row.strategy_model_key
                 and monitor_rule(row.strategy_model_key, "sell") is not None):
             reason = MONITOR_MODELS[row.strategy_model_key]["name"]
         elif row.strategy_model_key == SPOT_MODEL and value["reason"] in ("take_profit", "stop_loss"):

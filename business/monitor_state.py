@@ -1,11 +1,11 @@
 """Read-only monitor state and action availability for API consumers."""
 from decimal import Decimal
 
-from business.spot_holdings import SPOT_MODEL, DEFAULT_SPOT_MODEL, position, min_holding_usdt
+from business.spot_holdings import SPOT_MODEL, DEFAULT_SPOT_MODEL, position, min_holding_usdt, buy_blocked
 
 STATE_TEXT = {
     "monitoring": "监控中", "paused": "已暂停", "needs_configuration": "待配置",
-    "buy_disabled": "买入监控已停用",
+    "holding_blocks_buy": "持仓已达下限，买入已暂停",
     "unsupported_account": "该账户不支持现货卖出监控", "unconfigured": "未配置币安密钥",
     "pending": "等待持仓同步", "config_mismatch": "后端密钥配置不一致",
     "error": "持仓同步失败", "stale": "持仓数据已过期",
@@ -17,7 +17,7 @@ STATE_TEXT = {
 def monitor_capabilities(viewer, owner=None):
     owner = viewer if owner is None else owner
     return {"can_view_spot": viewer == "root",
-            "allowed_directions": ["sell"] if viewer == owner == "root" else []}
+            "allowed_directions": ["buy", "sell"] if viewer == owner == "root" else ["buy"]}
 
 
 def monitor_state(row, viewer, snapshot, config_error=None):
@@ -25,7 +25,10 @@ def monitor_state(row, viewer, snapshot, config_error=None):
     holding = position(snapshot, row.symbol) if row.user_id == "root" else None
     state, reason = "monitoring", ""
     if row.monitor_direction == "buy":
-        state, reason = "buy_disabled", "买入监控暂未开放；实际持仓同步后将转为默认卖出模型"
+        if buy_blocked(row.user_id, row.symbol, snapshot):
+            state, reason = "holding_blocks_buy", "该币种持仓已达到全局下限，买入提醒停止，持仓同步将删除买入配置并创建卖出监控"
+        elif config_error:
+            state, reason = "needs_configuration", config_error
     elif row.user_id != "root":
         state, reason = "unsupported_account", "币安现货卖出监控仅限 root 使用"
     else:
@@ -55,9 +58,7 @@ def monitor_state(row, viewer, snapshot, config_error=None):
                 "reason": "无权操作该监控" if not manage else "" if allowed else blocked_reason}
 
     # Removal is safe only when a fresh, supported balance confirms zero.
-    can_delete = row.user_id != "root" or (holding is not None and Decimal(holding["total"]) == 0)
-    if row.user_id == "root" and row.monitor_direction == "buy":
-        can_delete = snapshot.get("status") == "ok" and (holding is None or Decimal(holding["total"]) == 0)
+    can_delete = row.monitor_direction == "buy" or row.user_id != "root" or (holding is not None and Decimal(holding["total"]) == 0)
     status = state if row.is_valid else "paused"
     return {
         "status": status, "status_text": STATE_TEXT[status],
@@ -65,9 +66,9 @@ def monitor_state(row, viewer, snapshot, config_error=None):
         "holding": holding,
         "allowed_directions": monitor_capabilities(viewer, row.user_id)["allowed_directions"] if manage else [],
         "actions": {
-            "edit": action(row.user_id == "root" and row.monitor_direction == "sell", "买入监控暂未开放"),
+            "edit": action(row.monitor_direction == "buy" or row.user_id == "root", "无权编辑该监控"),
             "delete": action(can_delete, "持仓存在或状态未确认，请使用暂停"),
-            "pause": action(row.is_valid and row.monitor_direction == "sell", "监控已暂停或停用"),
+            "pause": action(row.is_valid, "监控已暂停或停用"),
             "resume": action(not row.is_valid and state == "monitoring",
                              "监控已启用" if row.is_valid else reason),
         },
