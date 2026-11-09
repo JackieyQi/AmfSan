@@ -12,7 +12,7 @@ from cache import AllCache
 from models.user import EmailMsgHistoryTable, UserSymbolPlotTable, UserInfoTable
 from settings.setting import cfgs
 from models.strategy_rules import MONITOR_MODELS, monitor_rule
-from business.spot_holdings import SPOT_MODEL, sync_spot_holdings, read_snapshot, position
+from business.spot_holdings import SPOT_MODEL, DEFAULT_SPOT_MODEL, sync_spot_holdings, read_snapshot, position
 
 logger = logging.getLogger(__name__)
 REASONS = {
@@ -40,6 +40,8 @@ async def monitor_lock(name):
 
 
 async def enqueue_monitor_notice(row, reason, price, candle_ts):
+    if row.monitor_direction != "sell":
+        return
     from msgqueue.queue import push_msg
     key = f"monitor:{row.id}:{row.user_id}:{row.symbol}:{row.monitor_direction}:{row.config_version}:{reason}:{candle_ts}"
     digest = hashlib.md5(key.encode()).hexdigest()
@@ -99,6 +101,8 @@ async def check_monitor_prices():
 
 async def deliver_monitor_notice(value):
     from business.mail_serve import send_email
+    if value["direction"] != "sell":
+        return  # Discard already queued buy notices too.
     now = int(time.time())
     if now - value["created_ts"] > 180 or value["candle_ts"] != now // 3600 * 3600:
         return
@@ -137,22 +141,24 @@ async def deliver_monitor_notice(value):
         direction = "买入机会" if row.monitor_direction == "buy" else "卖出机会"
         holding = None
         if row.monitor_direction == "sell":
-            if row.user_id != "root" or row.strategy_model_key != SPOT_MODEL:
+            if row.user_id != "root" or row.strategy_model_key not in (SPOT_MODEL, DEFAULT_SPOT_MODEL):
                 return
             holding = position(read_snapshot(), row.symbol)
             if holding is None or not holding["eligible"]:
                 return
         elif monitor_rule(row.strategy_model_key, row.monitor_direction) is None:
             return
-        if row.monitor_direction == "buy" and value["reason"] == row.strategy_model_key:
+        if (row.strategy_model_key == DEFAULT_SPOT_MODEL and value["reason"] == row.strategy_model_key
+                and monitor_rule(row.strategy_model_key, "sell") is not None):
             reason = MONITOR_MODELS[row.strategy_model_key]["name"]
-        elif row.monitor_direction == "sell" and value["reason"] in ("take_profit", "stop_loss"):
+        elif row.strategy_model_key == SPOT_MODEL and value["reason"] in ("take_profit", "stop_loss"):
             reason = REASONS[value["reason"]]
         else:
             return
+        price_label = "信号 K 线收盘价" if row.strategy_model_key == DEFAULT_SPOT_MODEL else "当前价格"
         content = (f"<p>{escape(row.symbol.upper())}：{direction}</p>"
-                   f"<p>触发原因：{reason}；当前价格：{escape(value['price'])}</p>"
-                   "<p>提醒后继续按当前方向监控。可在监控列表切换方向、暂停或移除。</p>")
+                   f"<p>触发原因：{reason}；{price_label}：{escape(value['price'])}</p>"
+                   "<p>提醒后继续按当前方向监控。可在监控列表切换模型或暂停。</p>")
         if holding:
             content += (f"<p>现货持有：{escape(holding['total'])} {escape(holding['base_asset'])}；"
                         f"可用：{escape(holding['free'])}；冻结：{escape(holding['locked'])}；"

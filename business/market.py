@@ -23,8 +23,8 @@ from utils.hrequest import http_get_request
 from business.binance_exchange import BinanceExchangeRequestHandle
 from exts import async_database
 from business.monitor import monitor_lock
-from models.strategy_rules import MONITOR_MODELS, monitor_rule
-from business.spot_holdings import SPOT_MODEL, sync_spot_holdings, require_position, read_snapshot
+from models.strategy_rules import MONITOR_MODELS
+from business.spot_holdings import SPOT_MODEL, DEFAULT_SPOT_MODEL, sync_spot_holdings, require_position, read_snapshot
 from business.monitor_state import monitor_state
 from cache import AllCache
 
@@ -225,16 +225,18 @@ class SymbolHandle(object):
         except StandardResponseExc as exc:
             config_error = str(exc)
         if snapshot is None:
-            snapshot = read_snapshot() if row.user_id == "root" and row.monitor_direction == "sell" else {}
+            snapshot = read_snapshot() if row.user_id == "root" else {}
         return {**data, **monitor_state(row, self.user_id, snapshot, config_error)}
 
     async def get_all(self):
+        if self.user_id == "root":
+            await sync_spot_holdings()
         query = UserSymbolPlotTable.select()
         if self.user_id != "root":
             query = query.where(UserSymbolPlotTable.user_id == self.user_id)
         rows = await query.order_by(UserSymbolPlotTable.create_ts, UserSymbolPlotTable.id).aio_execute()
         rows = list(rows)
-        snapshot = read_snapshot() if any(row.user_id == "root" and row.monitor_direction == "sell" for row in rows) else {}
+        snapshot = read_snapshot() if any(row.user_id == "root" for row in rows) else {}
         return [self.present(row, snapshot) for row in rows]
 
     def refresh_symbol_cache(self):
@@ -259,10 +261,10 @@ class SymbolHandle(object):
         direction = data.get("monitor_direction")
         if direction not in ("buy", "sell"):
             raise StandardResponseExc(msg="请选择买入或卖出监控")
-        if direction == "sell":
-            model_key = SPOT_MODEL
-        elif model_key not in MONITOR_MODELS or monitor_rule(model_key, direction) is None:
-            raise StandardResponseExc(msg="请选择支持买入的已开放策略模型")
+        if direction == "buy":
+            raise StandardResponseExc(msg="买入监控暂未开放")
+        if model_key not in (SPOT_MODEL, DEFAULT_SPOT_MODEL):
+            raise StandardResponseExc(msg="请选择现货止盈止损或1小时 MACD 死叉模型")
         prices = {}
         for field in ("take_profit_price", "stop_loss_price"):
             value = data.get(field)
@@ -278,10 +280,10 @@ class SymbolHandle(object):
             except Exception:
                 raise StandardResponseExc(msg="价格必须为正数，最多 12 位整数、8 位小数")
             prices[field] = price
-        if direction == "sell" and not any(value is not None for value in prices.values()):
+        if model_key == SPOT_MODEL and not any(value is not None for value in prices.values()):
             raise StandardResponseExc(msg="现货卖出监控至少设置一个止盈或止损价")
-        if direction == "buy" and any(value is not None for value in prices.values()):
-            raise StandardResponseExc(msg="买入监控不设置止盈止损价")
+        if model_key == DEFAULT_SPOT_MODEL and any(value is not None for value in prices.values()):
+            raise StandardResponseExc(msg="设置价格请切换为现货止盈止损模型")
         if (prices["take_profit_price"] is not None and prices["stop_loss_price"] is not None
                 and prices["stop_loss_price"] >= prices["take_profit_price"]):
             raise StandardResponseExc(msg="止损价必须低于止盈价")
@@ -323,8 +325,6 @@ class SymbolHandle(object):
         if sell and not pause_only:
             if self.user_id != "root" or original.user_id != "root":
                 raise StandardResponseExc(msg="币安现货卖出监控仅限 root 使用")
-            if original.strategy_model_key != SPOT_MODEL and data.get("monitor_direction") != "sell":
-                raise StandardResponseExc(msg="旧卖出监控请先编辑并保存现货止盈止损配置")
             await sync_spot_holdings()
         async with AsyncExitStack() as stack:
             if sell and not pause_only:
@@ -357,8 +357,14 @@ class SymbolHandle(object):
         return self.present(row)
 
     async def delete_symbol(self, monitor_id):
-        async with monitor_lock(f"lock_monitor:{monitor_id}"):
+        # Same lock order as sync and edits; unknown holdings must not permit removal.
+        async with AsyncExitStack() as stack:
+            await stack.enter_async_context(monitor_lock("lock_monitor_spot_sync:root"))
+            await stack.enter_async_context(monitor_lock(f"lock_monitor:{monitor_id}"))
             row = await self.get_owned_monitor(monitor_id)
+            action = self.present(row)["actions"]["delete"]
+            if not action["allowed"]:
+                raise StandardResponseExc(msg=action["reason"])
             await UserSymbolPlotTable.delete().where(UserSymbolPlotTable.id == row.id).aio_execute()
         self.refresh_symbol_cache()
         return {"message": "已移除监控，历史行情、指标和信号记录已保留"}

@@ -13,6 +13,8 @@ from settings.setting import cfgs
 from utils.exception import StandardResponseExc
 
 SPOT_MODEL = "binance_spot_price"
+# Keep the persisted placeholder key; its default rule is now closed 1h MACD death cross.
+DEFAULT_SPOT_MODEL = "binance_spot_pending"
 SNAPSHOT_KEY = "monitor:binance:spot:root"
 SYMBOLS_KEY = "monitor:binance:spot:symbols"
 MAX_AGE = 60
@@ -117,27 +119,39 @@ def parse_balances(data):
     return balances
 
 
-async def pause_closed_monitors(snapshot):
+async def reconcile_spot_monitors(snapshot):
+    """Called under the spot sync lock. is_valid records manual intent only.
+
+    Zero/insufficient balances block evaluation through monitor_state/position,
+    without losing the user's configuration or manual pause on the next deposit.
+    """
     from business.monitor import monitor_lock
-    rows = await UserSymbolPlotTable.select().where(
-        UserSymbolPlotTable.user_id == "root", UserSymbolPlotTable.is_valid == True,
-        UserSymbolPlotTable.monitor_direction == "sell",
-        UserSymbolPlotTable.strategy_model_key == SPOT_MODEL,
-    ).aio_execute()
-    for original in rows:
-        pair = snapshot["symbols"].get(original.symbol)
-        if not pair or pair.get("quote_asset") != "USDT":
-            continue  # Unsupported/delisted pair is not evidence of zero balance.
-        balance = snapshot["balances"].get(pair["base_asset"], {"free": "0", "locked": "0"})
-        if Decimal(balance["free"]) + Decimal(balance["locked"]) != 0:
-            continue
-        async with monitor_lock(f"lock_monitor:{original.id}"):
-            changed = await UserSymbolPlotTable.update(
-                is_valid=False, config_version=uuid.uuid4().hex,
-            ).where(UserSymbolPlotTable.id == original.id,
-                    UserSymbolPlotTable.config_version == original.config_version,
-                    UserSymbolPlotTable.is_valid == True).aio_execute()
-            if changed:
+    async with monitor_lock("lock_monitor_user:root"):
+        for symbol in snapshot["symbols"]:
+            holding = position(snapshot, symbol)
+            if holding is None or not holding["eligible"]:
+                continue
+            rows = list(await UserSymbolPlotTable.select().where(
+                UserSymbolPlotTable.user_id == "root",
+                UserSymbolPlotTable.symbol == symbol,
+            ).aio_execute())
+            if not rows:
+                await UserSymbolPlotTable.aio_create(
+                    user_id="root", symbol=symbol, monitor_direction="sell",
+                    strategy_model_key=DEFAULT_SPOT_MODEL, is_valid=True)
+                AllCache.get_client().delete("symbol:cfg")
+                continue
+            async with monitor_lock(f"lock_monitor:{rows[0].id}"):
+                row = await UserSymbolPlotTable.select().where(
+                    UserSymbolPlotTable.id == rows[0].id).aio_get()
+                if row.monitor_direction == "sell":
+                    continue  # Preserve selected model, thresholds and manual pause.
+                await UserSymbolPlotTable.update(
+                    monitor_direction="sell", strategy_model_key=DEFAULT_SPOT_MODEL,
+                    take_profit_price=None, stop_loss_price=None,
+                    config_version=uuid.uuid4().hex,
+                    last_signal_ts=0, last_signal_reason="",
+                ).where(UserSymbolPlotTable.id == row.id).aio_execute()
                 AllCache.get_client().delete("symbol:cfg")
 
 
@@ -181,8 +195,8 @@ async def sync_spot_holdings():
             except Exception:
                 # Balance success still permits confirmed closure; never reuse old prices.
                 logger.warning("Binance spot valuation failed; sell evaluation suspended")
-            # Persist closure before making the new snapshot available to API edits.
-            await pause_closed_monitors(snapshot)
+            # Reconcile before making the new snapshot available to API edits.
+            await reconcile_spot_monitors(snapshot)
         except Exception:
             logger.warning("Binance spot sync failed; sell evaluation suspended")
             snapshot["status"] = "error" if config.get("key") and config.get("secret") else "unconfigured"

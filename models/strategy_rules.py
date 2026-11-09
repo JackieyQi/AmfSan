@@ -50,6 +50,12 @@ CONDITIONS = {
         description="前一根已收盘小时 MACD 柱值 < 0，最新已收盘小时柱值 > 0；等于零不满足。",
         candle_scope="最近两根连续已收盘 1h K 线，按时间戳定位",
         factors=["MACD"], operation="前一根柱值 < 0，最新已收盘柱值 > 0"),
+    "hour_macd_death_closed": condition("已收盘 1h MACD 死叉", "macd_1h_factors",
+        "is_death_cross", {"index": 1},
+        closed_count=2, required_fields=["macd"],
+        description="前一根已收盘小时 DIF ≥ DEA，最新已收盘小时 DIF < DEA；即 MACD 柱值由非负转负。",
+        candle_scope="最近两根连续已收盘 1h K 线，按时间戳定位",
+        factors=["MACD"], operation="前一根柱值 ≥ 0，最新已收盘柱值 < 0"),
     "bullish_ratio": condition("4h 阳线比例", "kline_4h_factors",
         "is_bullish_k", indices=[1, 2, 3, 4], minimum=3,
         description="前四根至少三根阳线（原规则为比例 ≥ 70%）。", candle_scope="前四根已收盘 4h K 线",
@@ -145,8 +151,21 @@ DAILY_EMA_HOURLY_MACD = {
 }
 
 
+# Retain the previously persisted placeholder key so existing default monitors activate
+# without a database migration; manually selected price monitors stay unchanged.
+HOURLY_MACD_DEATH = {
+    "key": "binance_spot_pending",
+    "name": "1小时已收盘 MACD 死叉",
+    "version": "1",
+    "status": "可用于卖出监控",
+    "summary": "最新已收盘 1h DIF 下穿 DEA 时提醒，忽略未收盘 K 线及持续处于下方的状态。",
+    "entry": None,
+    "exit": group("all", "hour_macd_death_closed"),
+}
+
+
 # Explicit rollout allowlist; defining a rule alone does not activate a model.
-MONITOR_MODELS = {DAILY_EMA_HOURLY_MACD["key"]: DAILY_EMA_HOURLY_MACD}
+MONITOR_MODELS = {model["key"]: model for model in (DAILY_EMA_HOURLY_MACD, HOURLY_MACD_DEATH)}
 
 
 def monitor_rule(model_key, direction):
@@ -279,7 +298,7 @@ def describe_condition(key, definition):
                            {"label": "基准变化次数", "value": 4}])
     requirement = "全部满足" if minimum == len(samples) else "至少满足 %s / %s 项" % (minimum, len(samples))
     if definition["closed_count"] == 2:
-        requirement = "最新已收盘 K 线发生金叉（比较两根）"
+        requirement = "最新已收盘 K 线发生%s（比较两根）" % ("死叉" if key == "hour_macd_death_closed" else "金叉")
     if definition["negate"]:
         requirement = "全部不触发价格过热（对任一过热的结果取反）"
     if changes is not None:
@@ -292,7 +311,7 @@ def describe_condition(key, definition):
 
 
 def get_strategy_definitions():
-    catalog = deepcopy({"conditions": CONDITIONS, "models": [TOP_RISE, DAILY_EMA_HOURLY_MACD]})
+    catalog = deepcopy({"conditions": CONDITIONS, "models": [TOP_RISE, DAILY_EMA_HOURLY_MACD, HOURLY_MACD_DEATH]})
     for model in catalog["models"]:
         model["monitor_directions"] = monitor_directions(model["key"])
     for key, definition in catalog["conditions"].items():

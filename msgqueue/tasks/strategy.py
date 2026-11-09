@@ -332,8 +332,15 @@ class StrategyCheckHandle(BasePlotHandle):
 
     async def check(self, limit_count=7):
         from business.monitor import enqueue_monitor_notice
+        from business.spot_holdings import DEFAULT_SPOT_MODEL, sync_spot_holdings, read_snapshot, position
+        snapshot = await sync_spot_holdings()
+        if snapshot.get("status") != "ok":
+            return
         monitors = list(await UserSymbolPlotTable.select().where(
             UserSymbolPlotTable.symbol == self.symbol,
+            UserSymbolPlotTable.monitor_direction == "sell",
+            UserSymbolPlotTable.user_id == "root",
+            UserSymbolPlotTable.strategy_model_key == DEFAULT_SPOT_MODEL,
             UserSymbolPlotTable.is_valid == True,
         ).aio_execute())
         if not monitors:
@@ -343,8 +350,6 @@ class StrategyCheckHandle(BasePlotHandle):
         if not self.kline_list_1h:
             return
         expected_ts = self.check_time // 3600 * 3600
-        if self.kline_list_1h[0].open_ts != expected_ts:
-            return
         handler = StrategyHandle(
             self.kline_list_4h, self.kline_list_1h, self.kline_list_15m,
             self.bb_list_4h, self.bb_list_1h, self.bb_list_15m,
@@ -354,10 +359,17 @@ class StrategyCheckHandle(BasePlotHandle):
         )
         signals = {}
         for row in monitors:
+            holding = position(read_snapshot(), row.symbol)
+            if holding is None or not holding["eligible"]:
+                continue
             key = (row.strategy_model_key, row.monitor_direction)
             if key not in signals:
                 signals[key] = handler.check_monitor_direction(row.monitor_direction, row.strategy_model_key, self.check_time)
             if signals[key]:
+                closed_ts = expected_ts - 3600
+                closed = [k for k in self.kline_list_1h if k.open_ts == closed_ts]
+                if len(closed) != 1:
+                    continue
                 await enqueue_monitor_notice(row, signals[key],
-                                             self.kline_list_1h[0].close_price,
-                                             self.kline_list_1h[0].open_ts)
+                                             closed[0].close_price,
+                                             expected_ts)
